@@ -107,139 +107,33 @@ template<typename F>
 struct functional<F&&> : public functional<F>
 {};
 
-#if 0
 // -------
 // arg_type<n, CallableT>::type
-//     returns type of the n-th parameter if exisst, void otherwise
+//     returns type of the n-th parameter if exist, void otherwise
 
-template <bool is_valid, std::size_t arg_num, typename CallableT>
-struct arg_type_extractor
+template <std::size_t arg_num, typename CallableT> class arg_type
 {
-  using arg_type = typename function_traits<CallableT>::template arg<arg_num>::type;
-};
+ private:
+  template <bool is_valid, std::size_t arg_num_, typename CallableT_>
+  struct helper
+  {
+    using arg_type = typename functional<CallableT_>::template arg<arg_num_>::type;
+  };
 
-template <std::size_t arg_num, typename CallableT>
-struct arg_type_extractor<false, arg_num, CallableT>
-{
-  using arg_type = void;
-};
+  template <std::size_t arg_num_, typename CallableT_>
+  struct helper<false, arg_num_, CallableT_>
+  {
+    using arg_type = void;
+  };
 
-template <std::size_t arg_num, typename CallableT> struct arg_type
-{
-  using type = typename arg_type_extractor<
-        arg_num < function_traits<CallableT>::arity::value
+ public:
+  using type = typename helper<
+        arg_num < functional<CallableT>::arity::value
       , arg_num
       , CallableT
     >::arg_type;
 };
 
-// --------
-// calculate result type of parallel tasks as
-//     std::tuple<result_type1, result_type2, ...>
-// Note: for tasks not returning value it has to replace void with placeholder void*
-
-template <typename... Args>
-struct parallel_result
-{
-  using type = std::tuple<
-      typename std::conditional<
-          std::is_same<typename std::decay<typename std::decay<Args>::type::result_type>::type, void>::value
-        , void*
-        , typename std::remove_reference<Args>::type::result_type>::type...
-      >;
-};
-  
-// --------
-// result type  of sequential tasks is a result of the last task in the sequence
-template <typename... Args>
-class sequence_result
-{
-  using sequence = std::tuple<typename std::decay<Args>::type::result_type...>;
-
- public:
-  using type = typename std::tuple_element<std::tuple_size<sequence>::value - 1, sequence>::type;
-};
-
-// --------
-// parameter type of the first task in the sequence
-template <typename... Args>
-class first_task
-{
-  template <typename TaskT, typename... MoreTaskT>
-  struct helper
-  {
-    using type = TaskT;
-  };
-
- public:
-  using type = typename std::decay<typename helper<Args...>::type>::type;
-};
-
-// --------
-// all_same::value is true if all types in paramter pack are the same
-// type (after std::decay) and false if not
-
-template<typename... T>
-struct all_same : std::false_type
-{ };
-
-template<>
-struct all_same<> : std::true_type
-{ };
-
-template<typename T>
-struct all_same<T> : std::true_type
-{ };
-
-
-template<typename T, typename... Ts>
-struct all_same<T, T, Ts...> : all_same<T, Ts...>
-{ };
-
-// --------
-// all_chained::value is true if for all task types in the parameter pack
-// the parameter type of the next task is the same as the result type of the
-// preceding task
-
-template <typename T, typename Y, typename... Ts>
-struct all_chained
-{
-  using result = std::integral_constant<bool, all_chained<T, Y>::result::value && all_chained<Y, Ts...>::result::value>;
-};
-
-template <typename T, typename Y>
-struct all_chained<T, Y>
-{
-  using result = std::integral_constant<bool, std::is_same<typename std::decay<typename T::result_type>::type, typename std::decay<typename Y::input_type>::type>::value>;
-};
-
-// ---------
-// Misc utility traits:
-// - unbound_type: calculates function signature depending on whether it has input param or not
-// - result_reporter: calculates result reported signature depending on whether user lamda returns value or not
-template <typename RunT, typename InpT, typename RetT>
-struct unbound_type
-{
-  using type = std::function<RetT(const std::shared_ptr<RunT>&, const InpT&)>;
-};
-template <typename RunT, typename RetT>
-struct unbound_type<RunT, void, RetT>
-{
-  using type = std::function<RetT(const std::shared_ptr<RunT>&)>;
-};
-// ---
-template <typename RetT>
-struct result_reporter
-{
-  using type = std::function<void(const RetT&)>;
-};
-template <>
-struct result_reporter<void>
-{
-  using type = std::function<void()>;
-};
-
-#endif
 } } } // namespace
 
 #endif

@@ -39,6 +39,7 @@ set( COOL_NG_API_HEADERS
 
 set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/platform.h
+    include/cool/ng/impl/task_traits.h
 )
 
 
@@ -76,5 +77,6 @@ if( COOL_NG_UNIT_TESTS )
   enable_testing()
 
   unit_test( traits tests/unit/traits/traits.cpp )
+  unit_test( task_traits tests/unit/traits/task_traits.cpp )
 
 endif()
