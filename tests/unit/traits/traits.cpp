@@ -18,14 +18,14 @@ using fp_ulong_6 = unsigned long (*)(char*, unsigned char*, char, unsigned char,
 
 BOOST_AUTO_TEST_CASE(result_type)
 {
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<fp_void_0>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<fp_float_0>::result_type) == typeid(float));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<fp_void_0>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<fp_float_0>::result_type) == typeid(float));
 
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<fp_void_1>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<fp_int_1>::result_type) == typeid(int));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<fp_void_1>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<fp_int_1>::result_type) == typeid(int));
 
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<fp_void_6>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<fp_ulong_6>::result_type) == typeid(unsigned long));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<fp_void_6>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<fp_ulong_6>::result_type) == typeid(unsigned long));
 }
 
 BOOST_AUTO_TEST_CASE(arity)
@@ -77,14 +77,14 @@ class member_functions
 
 BOOST_AUTO_TEST_CASE(result_type)
 {
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::void_0)>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::float_0)>::result_type) == typeid(float));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_0)>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::float_0)>::result_type) == typeid(float));
 
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::void_1)>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::int_1)>::result_type) == typeid(int));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_1)>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::int_1)>::result_type) == typeid(int));
 
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::void_6)>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::ulong_6)>::result_type) == typeid(unsigned long));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_6)>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::ulong_6)>::result_type) == typeid(unsigned long));
 }
 
 // Note: member functions have one implicit parameter (this pointer)
@@ -144,14 +144,14 @@ public:
 
 BOOST_AUTO_TEST_CASE(result_type)
 {
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::void_0)>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::float_0)>::result_type) == typeid(float));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_0)>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::float_0)>::result_type) == typeid(float));
 
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::void_1)>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::int_1)>::result_type) == typeid(int));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_1)>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::int_1)>::result_type) == typeid(int));
 
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::void_6)>::result_type) == typeid(void));
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&member_functions::ulong_6)>::result_type) == typeid(unsigned long));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_6)>::result_type) == typeid(void));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::ulong_6)>::result_type) == typeid(unsigned long));
 }
 
 // Note: member functions have one implicit parameter (this pointer)
@@ -205,7 +205,7 @@ class members {
 
 BOOST_AUTO_TEST_CASE(member_type)
 {
-  BOOST_CHECK(typeid(typename cool::ng::traits::functional<decltype(&members::member)>::result_type) == typeid(void*));
+  BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&members::member)>::result_type) == typeid(void*));
 }
 
 BOOST_AUTO_TEST_CASE(arity)
