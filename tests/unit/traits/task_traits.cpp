@@ -4,7 +4,7 @@
 #define BOOST_TEST_MODULE TaskTraits
 #include <boost/test/unit_test.hpp>
 
-#include "cool/ng/impl/task_traits.h"
+#include "cool/ng/impl/async/task_traits.h"
 
 BOOST_AUTO_TEST_SUITE(task_traits)
 
