@@ -30,7 +30,7 @@
 
 #include "impl/platform.h"
 
-namespace cool{ namespace ng {
+namespace cool { namespace ng {
 
 /**
  * This namespace defines exception objects used by the rest of Cool.NG library.

@@ -34,10 +34,6 @@ namespace cool { namespace ng { namespace async { namespace impl {
 class executor : public bases::named
 {
  public:
-  using ptr_t = std::shared_ptr<executor>;
-  using weak_ptr_t = std::weak_ptr<executor>;
-
- public:
   executor(RunPolicy policy_);
   ~executor();
 

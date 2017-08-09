@@ -24,10 +24,19 @@ if( NOT DEFINED COOL_NG_UNIT_TESTS )
   set( COOL_NG_UNIT_TESTS true)
 endif()
 
+# --- library and binary directories
+if( NOT DEFINED COOL_NG_LIB_DIR )
+  set( COOL_NG_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
+endif()
+
+if( NOT DEFINED COOL_NG_BIN_DIR)
+  set( COOL_NG_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
+endif()
+
 # --- test programs location
 if( COOL_NG_UNIT_TESTS )
   if( NOT DEFINED COOL_NG_TEST_DIR )
-    set( COOL_NG_TEST_DIR ${COOL_NG_BUILD_DIR}/tests )
+    set( COOL_NG_TEST_DIR ${COOL_NG_BIN_DIR} )
   endif()
 endif()
 
@@ -41,24 +50,6 @@ endif()
 # --- whether to compile development library versions or not
 if( NOT DEFINED COOL_NG_DEV_LIBS )
   set ( COOL_NG_DEV_LIBS true)
-endif()
-
-# ### ##################################################
-# ###
-# ### Library names
-# ###
-# ### ##################################################
-
-if( NOT WINDOWS )
-  set( COOL_NG_LIB_STATIC      cool.ng)
-  set( COOL_NG_LIB_DYNAMIC     cool.ng)
-  set( COOL_NG_LIB_STATIC_DEV  cool.ng-dev)
-  set( COOL_NG_LIB_DYNAMIC_DEV cool.ng-dev)
-else()
-  set( COOL_NG_LIB_STATIC      libcool.ng)
-  set( COOL_NG_LIB_DYNAMIC     cool.ng)
-  set( COOL_NG_LIB_STATIC_DEV  libcool.ng-dev)
-  set( COOL_NG_LIB_DYNAMIC_DEV cool.ng-dev)
 endif()
 
 # ### ##################################################
@@ -100,6 +91,15 @@ elseif (MSVC)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 /MTd -D_SCL_SECURE_NO_WARNINGS")
   add_definitions("-DCOOL_ASYNC_PLATFORM_WINCP")
 
+  if( ${MSVC_VERSION} MATCHES "1800")
+    set( COOL_MSVC "12" )
+  elseif( ${MSVC_VERSION} MATCHES "1900" )
+    set( COOL_MSVC "14" )
+  elseif( ${MSVC_VERSION} MATCHES "1910" )
+    set( COOL_MSVC "15" )
+  else()
+    message( FATAL "unsupported visual studio compiler version ${MSVC_VERSION}" )
+  endif()
 else()
 
 # --- unknown target
@@ -109,6 +109,30 @@ endif()
 
 add_definitions( "-D${BUILD_TARGET}" )
 include_directories(${COOL_NG_HOME}/include ${COOL_NG_HOME}/lib ${COOL_NG_HOME}/lib/include)
+
+# ### ##################################################
+# ###
+# ### Library names
+# ###
+# ### ##################################################
+
+if( NOT WINDOWS )
+  set( COOL_NG_LIB_STATIC      cool.ng)
+  set( COOL_NG_LIB_DYNAMIC     cool.ng)
+  set( COOL_NG_LIB_STATIC_DEV  cool.ng-dev)
+  set( COOL_NG_LIB_DYNAMIC_DEV cool.ng-dev)
+else()
+  set( COOL_NG_LIB_STATIC      libcool.ng-vc${COOL_MSVC})
+  set( COOL_NG_LIB_DYNAMIC     cool.ng-vc${COOL_MSVC})
+  set( COOL_NG_LIB_STATIC_DEV  libcool.ng-dev-vc${COOL_MSVC})
+  set( COOL_NG_LIB_DYNAMIC_DEV cool.ng-dev-vc${COOL_MSVC})
+endif()
+
+# ### ##################################################
+# ###
+# ### Library source files
+# ###
+# ### ##################################################
 
 
 set( COOL_NG_API_HEADERS
@@ -142,10 +166,10 @@ set( COOL_NG_LIB_SRCS
 )
 
 # --- executor sources
-set (COOL_NG_GCD_EXECUTOR_SRCS    lib/src/async/gcd/executor.cpp )
-set (COOL_NG_GCD_EXECUTOR_HEADERS lib/src/async/gcd/executor.h )
-set (COOL_NG_WINCP_EXECUTOR_SRCS    )
-set (COOL_NG_WINCP_EXECUTOR_HEADERS )
+set (COOL_NG_GCD_EXECUTOR_SRCS      lib/src/async/gcd/executor.cpp )
+set (COOL_NG_GCD_EXECUTOR_HEADERS   lib/src/async/gcd/executor.h )
+set (COOL_NG_WINCP_EXECUTOR_SRCS    lib/src/async/wincp/executor.cpp)
+set (COOL_NG_WINCP_EXECUTOR_HEADERS lib/src/async/wincp/executor.h)
 
 if ( NOT WINDOWS )
   set (COOL_NG_EXECUTOR_FILES ${COOL_NG_GCD_EXECUTOR_SRCS} ${COOL_NG_GCD_EXECUTOR_HEADERS})
@@ -165,7 +189,7 @@ set( COOL_NG_WINCP_IMPL_HEADERS
   ${COOL_NG_WINCP_EXECUTOR_HEADERS}
 )
 set( COOL_NG_WINCP_IMPL_SRCS
-  ${COOL_NG_GCD_EXECUTOR_SRCS}
+  ${COOL_NG_WINCP_EXECUTOR_SRCS}
 )
 
 # -- cool library sources
@@ -178,9 +202,36 @@ endif()
 message(" ====== ${COOL_NG_LIB_FILES}")
 
 # --- developmen libraries
+
 add_library( cool.ng-dyn-dev SHARED ${COOL_NG_LIB_FILES} )
 add_library( cool.ng-dev STATIC ${COOL_NG_LIB_FILES} )
+target_compile_definitions(cool.ng-dev PUBLIC -DCOOL_NG_BUILD -DCOOL_NG_STATIC_LIBRARY)
+target_compile_definitions(cool.ng-dyn-dev PUBLIC -DCOOL_NG_BUILD)
 
+# --- now set file names and locations
+if( NOT WINDOWS )
+  set_target_properties( cool.ng-dyn-dev PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "${COOL_NG_LIB_DYNAMIC_DEV}"
+    LIBRARY_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
+  )
+  set_target_properties( cool.ng-dev PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "${COOL_NG_LIB_STATIC_DEV}"
+    ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
+  )
+else()
+  set_target_properties( cool.ng-dyn-dev PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "${COOL_NG_LIB_DYNAMIC_DEV}"
+    RUNTIME_OUTPUT_DIRECTORY "${COOL_NG_BIN_DIR}"
+  )
+  set_target_properties( cool.ng-dev PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "${COOL_NG_LIB_STATIC_DEV}"
+    ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
+  )
+endif()
 
 # ### ##################################################
 # ###
@@ -192,16 +243,13 @@ set( HEADER_ONLY_UNIT_TESTS
   traits
   task-traits
 )
-set ( LIBRARY_UNIT_TESTS
+set( LIBRARY_UNIT_TESTS
   executor
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
-set( task-traits_SRCS tests/unit/traits/task_traits.cpp)
-set( executor_SRCS
-  tests/unit/executor/executor.cpp
-  ${COOL_NG_EXECUTOR_FILES}
-)
+set( task-traits_SRCS tests/unit/traits/task_traits.cpp )
+set( executor_SRCS tests/unit/executor/executor.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
@@ -222,11 +270,12 @@ macro(internal_unit_test TestName)
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} )
   endif()
+target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
   )
-  target_link_libraries(${TestName}-test ${COOL_NG_LIB_STATIC_DEV})
+  target_link_libraries(${TestName}-test cool.ng-dev)
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
@@ -275,7 +324,7 @@ if( COOL_NG_UNIT_TESTS )
   # --- unit tests for internal stuff using static library
   foreach( ut ${LIBRARY_UNIT_TESTS} )
     internal_unit_test( ${ut} ${${ut}_SRCS} )
-    set( LIBRARY_UNIT_TESTS_SOURCES ${HEADER_ONLY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
+    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
   endforeach()
 
 endif()
@@ -288,9 +337,10 @@ endif()
 
 source_group( "API Header Files" FILES ${COOL_NG_API_HEADERS} )
 source_group( "Impl Header Files" FILES ${COOL_NG_IMPL_HEADERS} )
-source_group( "Header Unit Tests" FILES ${HEADER_ONLY_UNIT_TESTS_SOURCES})
-source_group( "Library Unit Tests" FILES ${LIBRARY_UNIT_TESTS_SOURCES})
+source_group( "Header Unit Tests" FILES ${HEADER_ONLY_UNIT_TESTS_SOURCES} )
+source_group( "Library Unit Tests" FILES ${LIBRARY_UNIT_TESTS_SOURCES} )
 source_group( "GCD Specific Files" FILES ${COOL_NG_GCD_IMPL_HEADERS} ${COOL_NG_GCD_IMPL_SRCS} )
+source_group( "Windows Specific Files" FILES ${COOL_NG_WINCP_IMPL_HEADERS} ${COOL_NG_WINCP_IMPL_SRCS} )
 source_group( "Library Files" FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
 
 # --- custom target listing all source files (for IDEs only)
@@ -299,6 +349,8 @@ add_custom_target("All-Sources" SOURCES
   ${COOL_NG_IMPL_HEADERS}
   ${COOL_NG_GCD_IMPL_HEADERS}
   ${COOL_NG_GCD_IMPL_SRCS}
+  ${COOL_NG_WINCP_IMPL_HEADERS}
+  ${COOL_NG_WINCP_IMPL_SRCS}
   ${COOL_NG_LIB_HEADERS}
   ${COOL_NG_LIB_SRCS}
   ${HEADER_ONLY_UNIT_TESTS_SOURCES}

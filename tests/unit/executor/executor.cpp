@@ -132,14 +132,15 @@ BOOST_AUTO_TEST_SUITE(executor)
 BOOST_AUTO_TEST_CASE(basic)
 {
   auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux(0);
+  std::atomic_int aux;
+  aux = 0;
   test_stack* stack = new test_stack;
   auto ctx = new test_context(
       runner
-    , [&aux, &stack] (const std::shared_ptr<cool::ng::async::runner>&)
+    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
       {
-        delete stack->pop();  // remove itself from stack - simulation of real contexts
         ++aux;
+        delete stack->pop();  // remove itself from stack - simulation of real contexts
       }
   );
 
@@ -151,12 +152,18 @@ BOOST_AUTO_TEST_CASE(basic)
   BOOST_CHECK_EQUAL(1, aux);
 }
 
+#if 1
 BOOST_AUTO_TEST_CASE(deep_stack)
 {
+#if defined(WINDOWS_TARGET)
+  const int NUM_TASKS = 100000;
+#else
   const int NUM_TASKS = 1000000;
+#endif
 
   auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux(0);
+  std::atomic_int aux;
+  aux = 0;
   test_stack* stack = new test_stack;
   std::mutex m;
   std::condition_variable cv;
@@ -164,7 +171,7 @@ BOOST_AUTO_TEST_CASE(deep_stack)
   // the last task to execute - notify it's complete
   stack->push(new test_context(
       runner
-    , [&m, &cv, &stack, &aux] (const std::shared_ptr<cool::ng::async::runner>&)
+    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
       {
         std::unique_lock<std::mutex> l(m);
         cv.notify_one();
@@ -176,7 +183,7 @@ BOOST_AUTO_TEST_CASE(deep_stack)
   {
     stack->push(new test_context(
         runner
-      , [&aux, &stack] (const std::shared_ptr<cool::ng::async::runner>&)
+      , [&] (const std::shared_ptr<cool::ng::async::runner>&)
         {
           ++aux;
           delete stack->pop(); // remove self from stack
@@ -185,21 +192,27 @@ BOOST_AUTO_TEST_CASE(deep_stack)
     );
   }
 
+  runner->impl()->run(stack);
   {
     std::unique_lock<std::mutex> l(m);
 
-    runner->impl()->run(stack);
-    cv.wait_for(l, ms(10000), [&aux] { return aux == NUM_TASKS; } );
+    cv.wait_for(l, ms(15000), [&] { return aux == NUM_TASKS; } );
   }
 
   BOOST_CHECK_EQUAL(aux, NUM_TASKS);
 }
-
+#endif
+#if 1
 BOOST_AUTO_TEST_CASE(many_stacks)
 {
+#if defined(WINDOWS_TARGET)
+  const int NUM_TASKS = 100000;
+#else
   const int NUM_TASKS = 1000000;
+#endif
   auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux(0);
+  std::atomic_int aux;
+  aux = 0;
   std::mutex m;
   std::condition_variable cv;
 
@@ -208,7 +221,7 @@ BOOST_AUTO_TEST_CASE(many_stacks)
   {
     runner->impl()->run(new test_simple(
         runner
-      , [&aux] (const std::shared_ptr<cool::ng::async::runner>&)
+      , [&] (const std::shared_ptr<cool::ng::async::runner>&)
         {
           ++aux;
         }
@@ -219,7 +232,7 @@ BOOST_AUTO_TEST_CASE(many_stacks)
   // the last task to execute - notify it's complete
   runner->impl()->run(new test_simple(
       runner
-    , [&m, &cv, &aux] (const std::shared_ptr<cool::ng::async::runner>&)
+    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
       {
         std::unique_lock<std::mutex> l(m);
         cv.notify_one();
@@ -230,17 +243,23 @@ BOOST_AUTO_TEST_CASE(many_stacks)
   {
     std::unique_lock<std::mutex> l(m);
 
-    cv.wait_for(l, ms(5000), [&aux] { return aux == NUM_TASKS; } );
+    cv.wait_for(l, ms(5000), [&] { return aux == NUM_TASKS; } );
   }
 
   BOOST_CHECK_EQUAL(aux, NUM_TASKS);
 }
-
+#endif
+#if 1
 BOOST_AUTO_TEST_CASE(many_stacks_start_stop)
 {
+#if defined(WINDOWS_TARGET)
+  const int NUM_TASKS = 100000;
+#else
   const int NUM_TASKS = 1000000;
+#endif
   auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux(0);
+  std::atomic_int aux;
+  aux = 0;
   std::mutex m;
   std::condition_variable cv;
 
@@ -251,9 +270,10 @@ BOOST_AUTO_TEST_CASE(many_stacks_start_stop)
   {
     runner->impl()->run(new test_simple(
         runner
-      , [&aux] (const std::shared_ptr<cool::ng::async::runner>&)
+      , [&, i] (const std::shared_ptr<cool::ng::async::runner>&)
         {
-          ++aux;
+          if (aux == i)
+            ++aux;
         }
       )
     );
@@ -262,7 +282,7 @@ BOOST_AUTO_TEST_CASE(many_stacks_start_stop)
   // the last task to execute - notify it's complete
   runner->impl()->run(new test_simple(
       runner
-    , [&m, &cv, &aux] (const std::shared_ptr<cool::ng::async::runner>&)
+    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
       {
         std::unique_lock<std::mutex> l(m);
         cv.notify_one();
@@ -275,25 +295,30 @@ BOOST_AUTO_TEST_CASE(many_stacks_start_stop)
   {
     std::unique_lock<std::mutex> l(m);
 
-    cv.wait_for(l, ms(5000), [&aux] { return aux == NUM_TASKS; } );
+    cv.wait_for(l, ms(5000), [&] { return aux == NUM_TASKS; } );
   }
 
   BOOST_CHECK_EQUAL(aux, NUM_TASKS);
 }
-
+#endif
+#if 1
 BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
 {
+#if defined(WINDOWS_TARGET)
+  const int NUM_TASKS = 10000;
+#else
   const int NUM_TASKS = 100000;
+#endif
   const int NUM_THREADS = 10;
 
   auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux(0);
+  std::atomic_int aux;
+  aux = 0;
   std::mutex thread_m;
   std::condition_variable thread_cv;
   std::mutex m;
   std::condition_variable cv;
 
-  int thread_count_down = 0;
   bool go_for_it = false;
 
   std::unique_ptr<std::thread> threads[NUM_THREADS];
@@ -302,7 +327,7 @@ BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
   for (int i = 0; i < NUM_THREADS; ++i)
   {
     threads[i].reset(new std::thread(
-      [&thread_m, &thread_cv, &go_for_it, &runner, &aux, &m, &cv]
+      [&]
       {
         {
           std::unique_lock<std::mutex> l(thread_m);
@@ -318,9 +343,12 @@ BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
               }
           ));
         }
+        // the last task should notify the main thread that this thred's task
+        // sequence is complete - that will wake up main thread NUM_THREADS
+        // times but lamda should prevent premature completion
         runner->impl()->run(new test_simple(
             runner
-          , [&m, &cv, &aux] (const std::shared_ptr<cool::ng::async::runner>&)
+          , [&] (const std::shared_ptr<cool::ng::async::runner>&)
             {
               std::unique_lock<std::mutex> l(m);
               cv.notify_one();
@@ -330,22 +358,24 @@ BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
     ));
   }
 
+  // notify threads to start sending tasks into runner
   {
     std::unique_lock<std::mutex> l(thread_m);
     thread_cv.notify_all();
   }
 
+  // wait for all tasks to complete
   {
-
-    cv.wait_for(l, ms(5000), [&aux] { return aux == NUM_TASKS * NUM_THREADS; } );
+    cv.wait_for(l, ms(5000), [&] { return aux == NUM_TASKS * NUM_THREADS; } );
   }
 
+  // join threads
   for (int i = 0; i < NUM_THREADS; ++i)
     threads[i]->join();
 
   BOOST_CHECK_EQUAL(aux, NUM_TASKS * NUM_THREADS);
 }
 
+#endif
 
 BOOST_AUTO_TEST_SUITE_END()
-

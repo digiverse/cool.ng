@@ -57,7 +57,7 @@ class identified
    *
    * @return Numerical identification.
    */
-  dlldecl unsigned long id() const { return m_number; }
+  unsigned long id() const { return m_number; }
 
  protected:
  /**
@@ -98,7 +98,7 @@ class identified
    *
    * Creates a new @ref identified object with a unique numerical identification.
    */
-  dlldecl identified() : m_number(++m_counter)
+  identified() : m_number(++m_counter)
   { /* noop */ }
 
  private:
@@ -133,7 +133,7 @@ class named : public identified
   *
   * @return The name of this object.
   */
-  dlldecl const std::string& name() const { return m_name; }
+  const std::string& name() const { return m_name; }
   /**
    * Return the object's name prefix.
    *
@@ -146,7 +146,7 @@ class named : public identified
   /**
    * Set the name for this object
    */
-  dlldecl void name(const std::string& name) { m_name = name; }
+   void name(const std::string& name) { m_name = name; }
 
  protected:
  /**
