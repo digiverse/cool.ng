@@ -28,6 +28,10 @@
 
 namespace cool { namespace ng {  namespace traits {
 
+template <typename T> struct naked_type
+{
+  using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
+};
 
 // -------
 // functional<Callable> determines the following information about
@@ -40,6 +44,28 @@ namespace cool { namespace ng {  namespace traits {
 //       member pointers. lambdas and std::function objects. It does not work
 //       for std::bind<> produced types as they have multiple operator()
 //       overloads. If you need this anyway, assign it to std::function.
+template <typename T> struct arg_info
+{
+  using arg_type = T;
+  using naked_type = typename naked_type<T>::type;
+  using is_lref = std::is_lvalue_reference<T>;
+  using is_const = std::is_const<T>;
+};
+template <typename T> struct arg_info<const T>
+{
+  using arg_type = T;
+  using naked_type = typename naked_type<T>::type;
+  using is_lref = std::true_type;
+  using is_const = std::true_type;
+};
+template <typename T> struct arg_info<const T&>
+{
+  using arg_type = T;
+  using naked_type = typename naked_type<T>::type;
+  using is_lref = std::true_type;
+  using is_const = std::true_type;
+};
+
 
 template<typename F> struct functional;
 
@@ -49,13 +75,14 @@ struct functional<R(Args...)>
   using result_type = R;
 
   using arity = std::integral_constant<std::size_t, sizeof...(Args) >;
-  using arguments = std::tuple<Args...>;
-
+//  using arguments = std::tuple<Args...>;
+  using arguments = std::tuple<arg_info<Args>...>;
   template <std::size_t N>
   struct arg
   {
     static_assert(N < arity::value, "error: invalid parameter index.");
-    using type = typename std::tuple_element<N, arguments>::type;
+    using info = typename std::tuple_element<N, arguments>::type;
+    using type = typename std::tuple_element<N, arguments>::type::arg_type;
   };
 };
 
@@ -96,6 +123,7 @@ public:
   {
     static_assert(N < arity::value, "error: invalid parameter index.");
     using type = typename call_type::template arg<N+1>::type;
+    using info = typename call_type::template arg<N+1>::info;
   };
 };
 

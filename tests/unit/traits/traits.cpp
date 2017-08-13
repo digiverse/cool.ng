@@ -15,6 +15,11 @@ using fp_void_1  = void (*)(double);
 using fp_int_1 = int (*)(char*);
 using fp_void_6  = void (*)(double, int, int*, int&, const int&, const int*);
 using fp_ulong_6 = unsigned long (*)(char*, unsigned char*, char, unsigned char, double, void*);
+using fp_by_value = void (*)(int);
+using fp_by_cvalue = void (*)(const int);
+using fp_by_rref = void (*)(int&&);
+using fp_by_lref = void (*)(int&);
+using fp_by_clref = void (*)(const int&);
 
 BOOST_AUTO_TEST_CASE(result_type)
 {
@@ -58,6 +63,22 @@ BOOST_AUTO_TEST_CASE(arg_type)
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_ulong_6>::arg<3>::type) == typeid(unsigned char));
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_ulong_6>::arg<4>::type) == typeid(double));
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_ulong_6>::arg<5>::type) == typeid(void*));
+
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_value>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_value>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_cvalue>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_cvalue>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_rref>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_rref>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(cool::ng::traits::functional<fp_by_lref>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<fp_by_lref>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(cool::ng::traits::functional<fp_by_clref>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(cool::ng::traits::functional<fp_by_clref>::arg<0>::info::is_const::value);
+
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -283,6 +304,11 @@ using void_1 = std::function<void(double)>;
 using int_1 = std::function<int(char*)>;
 using void_6 = std::function<void(double, int, int*, int&, unsigned int*, short)>;
 using ulong_6 = std::function<unsigned long(char*, unsigned char*, char, unsigned char, double, void*)>;
+using by_value = std::function<void(int)>;
+using by_const_value = std::function<void(const int)>;
+using by_rref = std::function<void(int&&)>;
+using by_lref = std::function<void(int&)>;
+using by_clref = std::function<void(const int&)>;
 
 BOOST_AUTO_TEST_CASE(result_type)
 {
@@ -326,6 +352,21 @@ BOOST_AUTO_TEST_CASE(arg_type)
   BOOST_CHECK(typeid(cool::ng::traits::functional<ulong_6>::arg<3>::type) == typeid(unsigned char));
   BOOST_CHECK(typeid(cool::ng::traits::functional<ulong_6>::arg<4>::type) == typeid(double));
   BOOST_CHECK(typeid(cool::ng::traits::functional<ulong_6>::arg<5>::type) == typeid(void*));
+
+  BOOST_CHECK(!cool::ng::traits::functional<by_value>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<by_value>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(!cool::ng::traits::functional<by_const_value>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<by_const_value>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(!cool::ng::traits::functional<by_rref>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<by_rref>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(cool::ng::traits::functional<by_lref>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(!cool::ng::traits::functional<by_lref>::arg<0>::info::is_const::value);
+
+  BOOST_CHECK(cool::ng::traits::functional<by_clref>::arg<0>::info::is_lref::value);
+  BOOST_CHECK(cool::ng::traits::functional<by_clref>::arg<0>::info::is_const::value);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

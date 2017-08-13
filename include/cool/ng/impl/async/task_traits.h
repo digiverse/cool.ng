@@ -142,12 +142,13 @@ struct is_chain<T, Y>
 // - unbound_type: calculates function signature depending on whether it has input param or not
 // - result_reporter: calculates result reported signature depending on whether user lamda returns value or not
 template <typename RunT, typename InpT, typename RetT>
-struct unbound_type
+struct run_signature
 {
   using type = std::function<RetT(const std::shared_ptr<RunT>&, const InpT&)>;
 };
+
 template <typename RunT, typename RetT>
-struct unbound_type<RunT, void, RetT>
+struct run_signature<RunT, void, RetT>
 {
   using type = std::function<RetT(const std::shared_ptr<RunT>&)>;
 };
@@ -162,7 +163,6 @@ struct result_reporter<void>
 {
   using type = std::function<void()>;
 };
-
 
 } } } } }// namespace
 

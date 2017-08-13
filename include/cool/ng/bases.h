@@ -25,13 +25,14 @@
 #include <functional>
 #include <exception>
 #include <atomic>
+#include <memory>
 
 #include "impl/platform.h"
 
 namespace cool { namespace ng {
 
 /**
- * This namespace contains classes that provide common utility objects.
+ * This namespace contains several reusable base clases.
  */
 namespace bases {
 
@@ -200,6 +201,39 @@ class named : public identified
   std::string m_prefix;
 };
 
+template <typename T> class self_aware : public T
+{
+ public:
+  using this_type = self_aware;
+  using element_type = T;
+  using ptr = std::shared_ptr<T>;
+  using weak_ptr = std::weak_ptr<T>;
+
+ public:
+  ~self_aware()
+  {
+    m_self.reset();  // this is to enable cleanup of all weak pointers
+  }
+  template <typename ...Y>
+  static ptr create(Y&& ...arg_)
+  {
+    auto ret = std::make_shared<self_aware<T>>(std::forward<Y>(arg_)...);
+    ret->m_self = ret;
+    return ret;
+  }
+
+  weak_ptr self() const
+  {
+    return m_self;
+  }
+
+ private:
+  template <typename ...Y> self_aware(Y&& ...arg_) : T(std::forward<Y>(arg_)...)
+  { /* noop */ }
+
+ private:
+  weak_ptr m_self;
+};
 
 } } } // namespace
 

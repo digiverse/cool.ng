@@ -26,18 +26,19 @@
 #include <functional>
 #include <iostream>
 
-#include "cool2/impl/platform.h"
-#include "cool2/impl/traits.h"
-#include "cool/exception.h"
-#include "impl/task.h"
+#include "cool/ng/exception.h"
+#include "cool/ng/traits.h"
+#include "cool/ng/impl/platform.h"
+#include "cool/ng/impl/async/task.h"
 
 namespace cool { namespace ng { namespace async {
 
-using impl::exception::internal;
-using impl::exception::bad_runner_cast;
-using impl::exception::runner_not_available;
+using detail::exception::internal;
+using detail::exception::bad_runner_cast;
+using detail::exception::runner_not_available;
+using detail::exception::no_context;
 
-class factory;
+struct factory;
 
 /**
  * A class template representing the objects that can be scheduled for
@@ -96,7 +97,7 @@ class task
   using tag_type    = TagT;
   using input_type  = InputT;
   using result_type = ResultT;
-  using impl_type   = impl::inert::task<
+  using impl_type   = detail::taskinfo<
       tag_type
     , runner_type
     , input_type
@@ -105,9 +106,9 @@ class task
 
  public:
   template <typename T = InputT>
-  void run(const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
+  void run(const typename std::enable_if<!std::is_same<T, void>::value, T>::type& arg_)
   {
-    m_impl->run(m_impl, i_);
+    m_impl->run(m_impl, arg_);
   }
 
   template <typename T = InputT>
@@ -117,7 +118,7 @@ class task
   }
 
  private:
-  friend class factory;
+  friend struct factory;
   task(const std::shared_ptr<impl_type> impl_) : m_impl(impl_)
   { /* noop */ }
 
@@ -125,6 +126,60 @@ class task
   std::shared_ptr<impl_type> m_impl;
 };
 
+struct factory {
+ public:
+  template <typename RunnerT, typename CallableT>
+  inline static task<
+      detail::tag::simple
+    , RunnerT
+    , typename traits::arg_type<1, CallableT>::type
+    , typename traits::functional<CallableT>::result_type
+  > create(const std::weak_ptr<RunnerT>& r_, const CallableT& f_)
+  {
+    using result_type = typename traits::functional<CallableT>::result_type;
+    using input_type = typename traits::arg_type<1, CallableT>::type;
+    using task_type = task<detail::tag::simple, RunnerT, input_type, result_type>;
+
+    // Make diagnostics a bit more user friendly - do some compile time checks
+    // user callable must accept one or two parameters ...
+    static_assert(
+        traits::functional<CallableT>::arity::value > 0 && traits::functional<CallableT>::arity::value < 3
+      , "The user supplied callable must accept one or two parameters");
+    // ... the first paramer must be shared_ptr to runner type ...
+    static_assert(
+        std::is_same<
+            std::shared_ptr<RunnerT>
+          , typename traits::functional<CallableT>::template arg<0>::info::naked_type
+        >::value
+      , "The user Callable must accept std::shared_ptr<runner-type> as the first parameter");
+
+    // ... but neither passed as rvalue reference ...
+    static_assert(
+        !std::is_rvalue_reference<typename traits::functional<CallableT>::template arg<0>::type>::value
+      , "The first parameter to user Callable must not be rvalue reference");
+
+    // ... nor as non-const lvalue reference
+    static_assert(
+        !traits::functional<CallableT>::template arg<0>::info::is_lref::value
+     || (traits::functional<CallableT>::template arg<0>::info::is_lref::value
+          && traits::functional<CallableT>::template arg<0>::info::is_const::value)
+      , "The first parameter to user Callable must either be by value or const lvalue reference");
+
+    return task_type(std::make_shared<typename task_type::impl_type>(r_, f_));
+  }
+  template <typename RunnerT, typename CallableT>
+  inline static task<
+      detail::tag::simple
+    , RunnerT
+    , typename traits::arg_type<1, CallableT>::type
+    , typename traits::functional<CallableT>::result_type
+  > create(const std::shared_ptr<RunnerT>& r_, const CallableT& f_)
+  {
+    return factory::create(std::weak_ptr<RunnerT>(r_), f_);
+  }
+};
+
+#if 0
 /**
  * This is task factory.
  */
@@ -180,10 +235,10 @@ class factory
    */
   template <typename RunnerT, typename CallableT>
   inline static task<
-      impl::tag::simple
+      detail::tag::simple
     , RunnerT
-    , typename impl::traits::arg_type<1, CallableT>::type
-    , typename impl::traits::function_traits<CallableT>::result_type
+    , typename traits::arg_type<1, CallableT>::type
+    , typename traits::functional<CallableT>::result_type
   > create(const std::weak_ptr<RunnerT>& r_, const CallableT& f_)
   {
     using result_type = typename impl::traits::function_traits<CallableT>::result_type;
@@ -476,7 +531,7 @@ class factory
   }
 };
 
-
+#endif
 #if 0
 /**
  * A class template representing the basic objects that can be scheduled for execution
@@ -1087,6 +1142,6 @@ task<TagT, ResultT, void>::sequential(TaskT&&... tasks)
   return taskop::sequential(m_impl->get_runner(), *this, std::forward<TaskT>(tasks)...);
 }
 #endif
-} } // namespace
+} } } // namespace
 
 #endif

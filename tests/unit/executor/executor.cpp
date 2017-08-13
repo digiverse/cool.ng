@@ -120,7 +120,7 @@ class test_simple : public context, public context_stack
   {
     return true;
   }
- private:
+
  private:
   std::shared_ptr<cool::ng::async::runner> m_runner;
   std::function<void(const std::shared_ptr<cool::ng::async::runner>&)> m_func;

@@ -148,6 +148,8 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/platform.h
     include/cool/ng/impl/async/task_traits.h
     include/cool/ng/impl/async/context.h
+    include/cool/ng/impl/async/task.h
+    include/cool/ng/impl/async/simple_impl.h
 )
 
 # ### ##################################################
@@ -245,11 +247,13 @@ set( HEADER_ONLY_UNIT_TESTS
 )
 set( LIBRARY_UNIT_TESTS
   executor
+  simple_task
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
 set( task-traits_SRCS tests/unit/traits/task_traits.cpp )
 set( executor_SRCS tests/unit/executor/executor.cpp )
+set( simple_task_SRCS tests/unit/task/simple_task.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )

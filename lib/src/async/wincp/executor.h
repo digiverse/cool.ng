@@ -34,37 +34,43 @@
 namespace cool { namespace ng { namespace async { namespace impl {
 
 class poolmgr;
-class cs_lock;
 
-class critical_section {
-public:
-  inline critical_section()
+class critical_section
+{
+  critical_section(const critical_section&) = delete;
+  critical_section(critical_section&&) = delete;
+  critical_section& operator =(const critical_section&) = delete;
+  critical_section& operator =(critical_section&&) = delete;
+
+ public:
+  inline critical_section(long spin_count = 1000000)
   {
-    InitializeCriticalSectionAndSpinCount(&m_cs, 1000000);
+    InitializeCriticalSectionAndSpinCount(&m_cs, spin_count);
   }
   inline ~critical_section()
   {
     DeleteCriticalSection(&m_cs);
   }
 
-private:
-  friend class cs_lock;
-  CRITICAL_SECTION m_cs;
-};
+  // BasicLockable requirements
+  void lock()
+  {
+    EnterCriticalSection(&m_cs);
+  }
+  void unlock()
+  {
+    LeaveCriticalSection(&m_cs);
+  }
 
-class cs_lock {
-public:
-  inline cs_lock(critical_section& cs_) : m_cs(cs_)
+  // Lockable requirements
+  bool try_lock()
   {
-    EnterCriticalSection(&m_cs.m_cs);
+#pragma warning( suppress: 4800 )
+    return static_cast<bool>(TryEnterCriticalSection(&m_cs));
   }
-  inline ~cs_lock()
-  {
-    LeaveCriticalSection(&m_cs.m_cs);
-  }
-  
+
 private:
-  critical_section& m_cs;
+  CRITICAL_SECTION m_cs;
 };
 
 class executor : public bases::named

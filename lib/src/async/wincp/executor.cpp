@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Digiverse d.o.o.
+/* Copyright (c) 2017 Digiverse d.o.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License. The
@@ -18,11 +18,11 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+#include <mutex>
 
 #include "cool/ng/async/runner.h"
 #include "cool/ng/exception.h"
 #include "executor.h"
-
 namespace cool { namespace ng { namespace async { namespace impl {
 
 /*constexpr*/ const int TASK = 1;
@@ -116,7 +116,7 @@ executor::~executor()
     // elements still left on the stack
       delete static_cast<cool::ng::async::detail::context_stack*>(static_cast<void*>(aux));
     }
-    
+
     // now close the completion port
     CloseHandle(m_fifo);
   }
@@ -131,7 +131,7 @@ executor::~executor()
 // expected to be pretty infrequent calls and critical section is okay for that
 void executor::check_create_thread_pool()
 {
-  cs_lock l(m_cs);
+  std::unique_lock<critical_section> l(m_cs);
 
   if (m_refcnt++ == 0)
   {
@@ -141,7 +141,7 @@ void executor::check_create_thread_pool()
 
 void executor::check_delete_thread_pool()
 {
-  cs_lock l(m_cs);
+  std::unique_lock<critical_section> l(m_cs);
 
   if (--m_refcnt == 0)
   {
@@ -216,15 +216,8 @@ void executor::run(cool::ng::async::detail::context_stack* ctx_)
 {
   bool do_start = false;
 
-  {
-    if (!m_work_in_progress)
-    {
-      m_work_in_progress = true;
-      do_start = true;
-    }
-
-    PostQueuedCompletionStatus(m_fifo, TASK, NULL, reinterpret_cast<LPOVERLAPPED>(ctx_));
-  }
+  PostQueuedCompletionStatus(m_fifo, TASK, NULL, reinterpret_cast<LPOVERLAPPED>(ctx_));
+  do_start = m_work_in_progress.compare_exchange_strong(do_start, true);
 
   if (do_start)
     start_work();
