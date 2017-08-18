@@ -24,6 +24,11 @@ if( NOT DEFINED COOL_NG_UNIT_TESTS )
   set( COOL_NG_UNIT_TESTS true)
 endif()
 
+# --- enable/disable documentation build
+if( NOT DEFINED COOL_NG_BUILD_DOC )
+  set( COOL_NG_BUILD_DOC true )
+endif()
+
 # --- library and binary directories
 if( NOT DEFINED COOL_NG_LIB_DIR )
   set( COOL_NG_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
@@ -31,6 +36,10 @@ endif()
 
 if( NOT DEFINED COOL_NG_BIN_DIR)
   set( COOL_NG_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
+endif()
+
+if( NOT DEFINED COOL_NG_DOC_DIR)
+  set( COOL_NG_DOC_DIR ${CMAKE_CURRENT_BINARY_DIR}/doc)
 endif()
 
 # --- test programs location
@@ -63,7 +72,7 @@ if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
 # --- Apple OS/X
   set( BUILD_TARGET OSX_TARGET)
   set( OSX true)
-  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC" )
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
   add_definitions("-DCOOL_ASYNC_PLATFORM_GCD")
 
 elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
@@ -150,6 +159,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/context.h
     include/cool/ng/impl/async/task.h
     include/cool/ng/impl/async/simple_impl.h
+    include/cool/ng/impl/async/sequential_impl.h
 )
 
 # ### ##################################################
@@ -237,6 +247,35 @@ endif()
 
 # ### ##################################################
 # ###
+# ### Doxygen documentation
+# ###
+# ### ##################################################
+
+
+if (COOL_NG_BUILD_DOC)
+
+  find_package(Doxygen)
+  if (NOT Doxygen_FOUND)
+    message(WARNING "Doxygen package not found, will not generate documentation")
+  else ()
+    make_directory (${COOL_NG_DOC_DIR})
+    configure_file(
+      ${COOL_NG_HOME}/cool.ng.dox.in
+      ${COOL_NG_DOC_DIR}/cool.ng.dox
+      @ONLY
+    )
+    add_custom_command(
+      OUTPUT ${COOL_NG_DOC_DIR}/doc/html/index.html
+      COMMAND ${DOXYGEN_EXECUTABLE} ${COOL_NG_DOC_DIR}/cool.ng.dox
+      DEPENDS ${COOL_NG_API_HEADERS}
+      WORKING_DIRECTORY ${COOL_NG_DOC_DIR}
+    )
+    add_custom_target(Documentation ALL DEPENDS ${COOL_NG_DOC_DIR}/doc/html/index.html)
+  endif()
+
+endif()
+# ### ##################################################
+# ###
 # ### Unit tests
 # ###
 # ### ##################################################
@@ -245,15 +284,23 @@ set( HEADER_ONLY_UNIT_TESTS
   traits
   task-traits
 )
+
+# unit tests for library internals, require static lib owing to MS dll export/import
 set( LIBRARY_UNIT_TESTS
   executor
+)
+
+# api level unit tests, will use dynamic library
+set( API_UNIT_TESTS
   simple_task
+  sequential_task
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
 set( task-traits_SRCS tests/unit/traits/task_traits.cpp )
 set( executor_SRCS tests/unit/executor/executor.cpp )
 set( simple_task_SRCS tests/unit/task/simple_task.cpp )
+set( sequential_task_SRCS tests/unit/task/sequential_task.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
@@ -274,12 +321,27 @@ macro(internal_unit_test TestName)
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} )
   endif()
-target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
+  target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
   )
   target_link_libraries(${TestName}-test cool.ng-dev)
+  add_test( NAME ${TestName} COMMAND ${TestName}-test )
+endmacro()
+
+macro(api_unit_test TestName)
+  add_executable( ${TestName}-test ${ARGN} )
+  if( NOT WINDOWS )
+    # --- on windows we use autolink feature
+    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} )
+  endif()
+  target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
+  set_target_properties( ${TestName}-test PROPERTIES
+    COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
+    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+  )
+  target_link_libraries(${TestName}-test cool.ng-dyn-dev)
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
@@ -328,6 +390,12 @@ if( COOL_NG_UNIT_TESTS )
   # --- unit tests for internal stuff using static library
   foreach( ut ${LIBRARY_UNIT_TESTS} )
     internal_unit_test( ${ut} ${${ut}_SRCS} )
+    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
+  endforeach()
+
+  # --- API unit tests using dynamic library
+  foreach( ut ${API_UNIT_TESTS} )
+    api_unit_test( ${ut} ${${ut}_SRCS} )
     set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
   endforeach()
 

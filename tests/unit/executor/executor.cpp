@@ -69,6 +69,9 @@ class test_context : public context
   {
     return true;
   }
+  void set_input(const boost::any&) override { }
+  void set_res_reporter(const result_reporter& arg_) override { }
+  void set_exc_reporter(const exception_reporter& arg_) override { }
 
  private:
   std::shared_ptr<cool::ng::async::runner> m_runner;
@@ -103,6 +106,9 @@ class test_simple : public context, public context_stack
   {
     return true;
   }
+  void set_input(const boost::any&) override { }
+  void set_res_reporter(const result_reporter& arg_) override { }
+  void set_exc_reporter(const exception_reporter& arg_) override { }
 
   // context stack interface
 

@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <memory>
 #include <functional>
+#include <boost/any.hpp>
 
 namespace cool { namespace ng {  namespace async {
 
@@ -36,6 +37,7 @@ namespace detail {
 class context
 {
 public:
+  using result_reporter    = std::function<void(const boost::any&)>;
   using exception_reporter = std::function<void(const std::exception_ptr&)>;
 
 public:
@@ -49,6 +51,10 @@ public:
   virtual const char* name() const = 0;
   // returns true if entry point will execute, false otherwise
   virtual bool will_execute() const = 0;
+  // sets the input
+  virtual void set_input(const boost::any&) = 0;
+  virtual void set_res_reporter(const result_reporter& arg_) = 0;
+  virtual void set_exc_reporter(const exception_reporter& arg_) = 0;
 };
 
 // ---- execution context stack interface

@@ -22,7 +22,12 @@
 #if !defined(cool_ng_f36abcb0_dda1_42a1_b25a_943f5951523a)
 #define      cool_ng_f36abcb0_dda1_42a1_b25a_943f5951523a
 
+#include <memory>
+#include <functional>
 #include <type_traits>
+#include <array>
+#include <stack>
+#include <boost/any.hpp>
 
 #include "cool/ng/async/runner.h"
 #include "context.h"
@@ -35,7 +40,7 @@ namespace tag
 {
 
   struct simple      { }; // simple task
-  struct serial      { }; // compound task with sequential execution
+  struct sequential  { }; // compound task with sequential execution
   struct parallel    { }; // compound task with concurrent execution
   struct conditional { }; // compount task with conditional execution
   struct oneof       { }; // oneof compound task
@@ -90,10 +95,14 @@ class nothing_to_run : public internal
   
 } // namspace exception
 
+using default_runner_type = cool::ng::async::runner;
+
 // ---- ----
 // ---- Helper class templates to help keep implementations generic without
 // ---- needless specializations for void result types
 // ---- ----
+
+//using any_value = boost::any;
 
 // ---- Value container that can hold value of any type, including void
 template <typename T>
@@ -117,7 +126,6 @@ inline any_value<void> get_value_container()
   return any_value<void>();
 }
 
-
 // --- Result reporter that can will call user Callable with or without
 // --- input parameter, depending on the user Callable declaration and will
 // --- report the return value to the provided reporter function
@@ -129,7 +137,7 @@ struct report
   inline static void run_report(
       const RunnerT& r_
     , const TaskPtrT& p_
-    , const any_value<typename std::enable_if<!std::is_same<T, void>::value, T>::type>& i_
+    , const any_value<typename std::enable_if<!std::is_same<T, void>::value, void>::type>& i_
     , const ReporterT& rep_)
   {
     ResultT aux = p_->user_callable()(r_, i_.value);
@@ -160,7 +168,7 @@ struct report<InputT, void>
   inline static void run_report(
       const RunnerT& r_
     , const TaskPtrT& p_
-    , const any_value<typename std::enable_if<!std::is_same<T, void>::value, T>::type>& i_
+    , const any_value<typename std::enable_if<!std::is_same<T, void>::value, void>::type>& i_
     , const ReporterT& rep_)
   {
     p_->user_callable()(r_, i_.value);
@@ -179,13 +187,28 @@ struct report<InputT, void>
       rep_();
   }
 };
-
 // ---- task implementation interface
 class task
 {
  public:
   virtual ~task() { /* noop */ }
+  // Return runner for this task - makes sense only for tag::simple tasks,
+  // compound tasks should never have their entry point executed anyway
   virtual std::weak_ptr<runner> get_runner() const = 0;
+  // Returns the subtask at index - makes sense only for compound tasks
+  virtual std::shared_ptr<task> get_subtask(std::size_t) const
+  {
+    return std::shared_ptr<task>();
+  }
+  // Returns number of subtasks
+  virtual std::size_t get_subtask_count() const
+  {
+    return 0;
+  }
+  virtual context* create_context(
+        context_stack* stack_
+      , const std::shared_ptr<task>& self_
+      , const boost::any& input_) const = 0;
 };
 
 // ---- task static information
@@ -196,34 +219,69 @@ class taskinfo { };
 template <typename TagT, typename RunnerT, typename InputT, typename ResultT, typename... TaskT>
 class task_context : public context { };
 
-template <typename ResultT> class task_context_base : public context
+class task_context_base : public context
 {
  public:
-  using result_reporter = typename traits::result_reporter<ResultT>::type;
-  using exception_reporter = std::function<void(const std::exception_ptr&)>;
-
- public:
-  inline task_context_base(context_stack* stack_, const result_reporter& r_rep_, const exception_reporter& e_rep_)
-    : m_stack(stack_), m_res_reporter(r_rep_), m_exc_reporter(e_rep_)
+  inline task_context_base(context_stack* stack_, const std::shared_ptr<task>& task_)
+      : m_task(task_), m_stack(stack_)
   { /* noop */ }
+
   virtual inline ~task_context_base()
   { /* noop */ }
 
-  void set_res_reporter(const result_reporter& arg_)    { m_res_reporter = arg_; }
-  void set_exc_reporter(const exception_reporter& arg_) { m_exc_reporter = arg_; }
+  void set_res_reporter(const result_reporter& arg_) override
+  {
+    m_res_reporter = arg_;
+  }
+  void set_exc_reporter(const exception_reporter& arg_) override
+  {
+    m_exc_reporter = arg_;
+  }
+  void set_input(const boost::any& input_) override
+  {
+    m_input = input_;
+  }
+
+  // most task types do not need entry point as their context gets called
+  // through exception and result reporters
+  void entry_point(const std::shared_ptr<async::runner>& r_, context* ctx_) override
+  { /* noop */ }
 
  protected:
-  context_stack*     m_stack;
-  result_reporter    m_res_reporter; // result reporter if set
-  exception_reporter m_exc_reporter; // exception reporter if set
+  std::shared_ptr<task> m_task;         // Reference to static task data
+  context_stack*        m_stack;        // Reference to context stack
+  boost::any            m_input;        // Input to pass to task
+  result_reporter       m_res_reporter; // result reporter if set
+  exception_reporter    m_exc_reporter; // exception reporter if set
 };
 
 // ---- Task execution kick-starter
-void kickstart(context_stack*);
+dlldecl void kickstart(context_stack*);
+
+// ---- Default implementation of task stack
+class default_task_stack : public context_stack
+{
+public:
+  ~default_task_stack()
+  {
+    while (!empty())
+      delete pop();
+  }
+  void push(context* arg_) override  { m_stack.push(arg_); }
+  context* pop() override            { auto aux = m_stack.top(); m_stack.pop(); return aux; }
+  context* top() const override      { return m_stack.top(); }
+  bool empty() const override        { return m_stack.empty(); }
+
+private:
+  std::stack<context*> m_stack;
+};
+  
 
 } } } }
 
 #include "simple_impl.h"
+#include "sequential_impl.h"
+
 
 
 

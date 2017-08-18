@@ -24,7 +24,11 @@
 
 namespace cool { namespace ng { namespace async { namespace detail {
 
-// ---- Static task information for tag::simple tasks
+// ---- -----------------------------------------------------------------------
+// ----
+// ---- Static task information
+// ----
+// ---- -----------------------------------------------------------------------
 
 template <typename RunnerT, typename InputT, typename ResultT>
 class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
@@ -48,15 +52,23 @@ class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
       const std::shared_ptr<this_type>& self_
     , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
   {
-    auto aux = create_context(nullptr, self_);
-    aux->set_input(get_value_container(i_));
-    kickstart(aux);
+    auto aux = create_context(nullptr, self_, boost::any(i_));
+    kickstart(dynamic_cast<context_stack*>(aux));
   }
 
-  inline context_type* create_context(context_stack* stack_, const std::shared_ptr<this_type>& self_)
+  template <typename T = InputT>
+  typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
   {
-    auto aux = context_type::create(stack_, self_);
-    return aux;
+    auto aux = create_context(nullptr, self_, boost::any());
+    kickstart(dynamic_cast<context_stack*>(aux));
+  }
+
+  inline context* create_context(
+      context_stack* stack_
+    , const std::shared_ptr<task>& self_
+    , const boost::any& input_) const override
+  {
+    return context_type::create(stack_, self_, m_user_func, input_);
   }
 
   inline std::weak_ptr<runner> get_runner() const override
@@ -75,31 +87,42 @@ class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
 };
 
 
-// ---- Runtime task context for tag::simple tasks
+// ---- -----------------------------------------------------------------------
+// ----
+// ---- Runtime task context
+// ----
+// ---- -----------------------------------------------------------------------
+
 template <typename RunnerT, typename InputT, typename ResultT>
 class task_context<tag::simple, RunnerT, InputT, ResultT>
-  : public task_context_base<ResultT>
+  : public task_context_base
   , public context_stack // context stack interface
 {
  public:
   using task_type  = taskinfo<tag::simple, RunnerT, InputT, ResultT>;
   using this_type  = task_context;
-  using base       = task_context_base<ResultT>;
+  using base       = task_context_base;
+
+ private:
+  inline task_context(context_stack* st_, const std::shared_ptr<task>& t_, const typename task_type::function_type& f_)
+      : base(st_, t_), m_user_func(f_)
+  {
+    //    REP("++++++ context::simple::context void");
+    /* noop */
+  }
 
  public:
   inline static this_type* create(
       context_stack* stack_
-    , const std::shared_ptr<task_type>& task_)
+    , const std::shared_ptr<task>& task_
+    , const typename task_type::function_type& f_
+    , const boost::any& i_)
   {
-    auto aux = new this_type(stack_, task_);
+    auto aux = new this_type(stack_, task_, f_);
+    aux->set_input(i_);
     if (stack_ != nullptr)
       stack_->push(aux);
     return aux;
-  }
-
-  void set_input(const any_value<InputT>& input_)
-  {
-    m_input = input_;
   }
 
   // context interface
@@ -134,21 +157,67 @@ class task_context<tag::simple, RunnerT, InputT, ResultT>
   }
 
  private:
-  inline task_context(
-      context_stack* st_
-    , const std::shared_ptr<task_type>& t_
-    , const typename base::result_reporter& r_rep_ = typename base::result_reporter()
-    , const typename base::exception_reporter& e_rep_ = typename base::exception_reporter())
-        : base(st_, r_rep_, e_rep_), m_task(t_)
-  {
-//    REP("++++++ context::simple::context void");
-    /* noop */
-  }
-
-private:
-  any_value<InputT>          m_input;  // Input to pass to user Callable
-  std::shared_ptr<task_type> m_task;   // Reference to static task data
+  const typename task_type::function_type&  m_user_func;
 };
+
+
+template <typename InputT, typename ResultT>
+struct invoker
+{
+  template<typename EntryPointT, typename RunnerT, typename ReporterT>
+  static void invoke(const EntryPointT& ep_,
+              const std::shared_ptr<RunnerT>& r_,
+              const boost::any& i_,
+              const ReporterT& rep_)
+  {
+    boost::any res = ep_(r_, boost::any_cast<InputT>(i_));
+    if (rep_)
+      rep_(res);
+  }
+};
+template <typename ResultT>
+struct invoker<void, ResultT>
+{
+  template<typename EntryPointT, typename RunnerT, typename ReporterT>
+  static void invoke(const EntryPointT& ep_,
+              const std::shared_ptr<RunnerT>& r_,
+              const boost::any& i_,
+              const ReporterT& rep_)
+  {
+    boost::any res = ep_(r_);
+    if (rep_)
+      rep_(res);
+  }
+};
+template <typename InputT>
+struct invoker<InputT, void>
+{
+  template<typename EntryPointT, typename RunnerT, typename ReporterT>
+  static void invoke(const EntryPointT& ep_,
+                     const std::shared_ptr<RunnerT>& r_,
+                     const boost::any& i_,
+                     const ReporterT& rep_)
+  {
+    ep_(r_, boost::any_cast<InputT>(i_));
+    if (rep_)
+      rep_(boost::any());
+  }
+};
+template <>
+struct invoker<void, void>
+{
+  template<typename EntryPointT, typename RunnerT, typename ReporterT>
+  static void invoke(const EntryPointT& ep_,
+                     const std::shared_ptr<RunnerT>& r_,
+                     const boost::any& i_,
+                     const ReporterT& rep_)
+  {
+    ep_(r_);
+    if (rep_)
+      rep_(boost::any());
+  }
+};
+
 
 // --- entry point implementation
 template <typename RunnerT, typename InputT, typename ResultT>
@@ -170,70 +239,21 @@ void task_context<tag::simple, RunnerT, InputT, ResultT>::entry_point(
     if (!r)
       throw exception::bad_runner_cast();
 
-    report<InputT, ResultT>::run_report(r, m_task, m_input, base::m_res_reporter);
+    invoker<InputT, ResultT>::invoke(m_user_func, r, m_input, m_res_reporter);
   }
   catch (...)
   {
-    if (base::m_exc_reporter)
-      base::m_exc_reporter(std::current_exception());
+    if (m_exc_reporter)
+      m_exc_reporter(std::current_exception());
   }
 
   // NOTE: null stack indicates standalone simple task which will get deleted as
   //       context stack in runner::task_executor. Do not delete it here!
-  if (base::m_stack != nullptr)
+  if (m_stack != nullptr)
     delete this;  // now suicide is in order
 }
 
 
-#if 0
-template <typename RunnerT, typename InputT, typename ResultT>
-class task<tag::simple, RunnerT, InputT, ResultT> : public detail::task
-{
- public:
-  using tag_type     = tag::simple;
-  using this_type    = task;
-  using runner_type  = RunnerT;
-  using result_type  = ResultT;
-  using input_type   = InputT;
-//  using runtime_type = runtime::task<tag_type, runner_type, input_type, result_type>;
-  using unbound_type = typename traits::unbound_type<runner_type, input_type, result_type>::type;
-
- public:
-  explicit inline task(const std::weak_ptr<runner_type>& r_, const unbound_type& f_)
-  : m_runner(r_), m_unbound(f_)
-  { /* noop */ }
-
-  // NOTE:
-  // Run methods for simple tasks cheat a little - since a simple task by definition
-  // has no subtasks they will allocate an execution context which is also a dummy
-  // context stack. As its empty() method always return true it will get deleted
-  // by task executor immediatelly after the task is done. This optimisation will
-  // boost the run() speed for simple tasks to almost double the speed we can get
-  // if stack and context were allocated separatelly.
-  template <typename T = InputT>
-  inline void run(
-                  const std::shared_ptr<this_type>& self_
-                  , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
-  {
-    auto aux = create_runtime(nullptr, self_);
-    aux->set_input(helpers::get_container(i_));
-    ::cool::async::entrails::kick(aux);
-  }
-
-  inline void run(const std::shared_ptr<this_type>& self_)
-  {
-    ::cool::async::entrails::kick(create_runtime(nullptr, self_));
-  }
-
-  inline std::weak_ptr<runner> get_runner() const override { return m_runner; }
-  inline unbound_type& user_callable() { return m_unbound; }
-  
- private:
-  std::weak_ptr<runner_type> m_runner;
-  unbound_type               m_unbound;    // user Callable
-};
-
-#endif
 
 } } } }
 

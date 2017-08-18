@@ -31,12 +31,186 @@
 #include "cool/ng/impl/platform.h"
 #include "cool/ng/impl/async/task.h"
 
-namespace cool { namespace ng { namespace async {
+namespace cool { namespace ng {
+
+/**
+ * Namespace doc.
+ */
+namespace async {
+
+namespace exception
+{
 
 using detail::exception::internal;
 using detail::exception::bad_runner_cast;
 using detail::exception::runner_not_available;
 using detail::exception::no_context;
+
+}
+/**
+ * Tags marking the task types.
+ */
+struct tag
+{
+/**
+ * Simple task tag.
+ *
+ * Simple task contains a user's @em Callable and is associated with a
+ * specific @ref runner, which will, when requested, schedule and execute the 
+ * @em Callable. A simple task may accept one input parameter and may or may 
+ * not return a value. Both the input parameter and the return value of the
+ * simple task are determined by inspecting the user @em Callable, as follows:
+ *  * the input paramter of the simple task is the second parameter of the
+ *    @em Callable. If the @em Callable does not have the second parameter the
+ *    simple task will accept no input parameter
+ *  * the return value of the simple task is the return value of the user supplied
+ *    @em Callable. If the @em Callable does not return value the simple task
+ *    will not return value either.
+ *
+ * The user @em Callable may be a function pointer, lambda closure,
+ * @c std::function, or any other functor object as long as it provides a 
+ * single overload of the function call operator '<tt>()</tt>' with the
+ * following signature:
+ *  * the first parameter must be a <tt>std::shared_ptr</tt>, or a <tt>const</tt>
+ *    @em lvalue reference to one, to the @ref runner type the simple task is 
+ *    associated with
+ *  * The optional second parameter of any type; if present it willl determine
+ *    the input paramer of the simple task.
+ *
+ * Whe the @em Callable is executed its first argument will be set to the @ref
+ * runner executing the simple task and the second parameter, if present, will
+ * be se to either the value passed to the task's @c run() method
+ * or to the value determined by the rules of the compound task, if executed as
+ * a part of a compound task.
+ * <br><br>@b Examples<br>
+ * The following code fragment will create a simple task which accepts a
+ * parameter of type @c double and returns result of type @c bool:
+ * @code
+ *   #include <cool/ng/async.h>
+ *   using cool::ng::async::runner;
+ *   using cool::ng::async::factory;
+ *
+ *   runnner run;
+ *   auto t = factory::create(run,
+ *     [] (const std::shared_ptr<runner>& r, double arg)
+ *     {
+ *       return arg < 0;
+ *     });
+ * @endcode
+ * When run, the task @c t would require a parameter of type @c double, or
+ * a type convertible to @c double:
+ * @code
+ *    t.run(3.14);
+ * @endcode
+ *
+ * The following code fragment will create a simple task with no input parameter
+ * and which returns no result:
+ * @code
+ *   class my_runner : public runner {
+ *      ....
+ *   };
+ *      ....
+ *   my_runner run;
+ *   auto t2 = factory::create(run,
+ *     [] (const std::shared_ptr<runner>& r)
+ *     {
+ *       r->do_something();
+ *     });
+ * @endcode
+ * When run, the task @c t2 requires no input parameter:
+ * @code
+ *    t2.run();
+ * @endcode
+ *
+ * @note Objects created by <tt>std::bind</tt> usually provide several overloads
+ * of operator '<tt>()</tt>' and cannot be directly used to create simple tasks.
+ * Convert them to an appropriate <tt>std::function</tt> object first.
+ */
+   using simple = detail::tag::simple;
+/**
+ * Sequential compound task tag.
+ *
+ * Sequential tasks are compound tasks that consist of two or more subtasks. The
+ * order of the subtasks is determined at the sequential task creation and is 
+ * the same as they are provided to the call to @ref factory::sequential factory
+ * method.
+ * <br>
+ * The input parameter of the sequential compund task is the input parameter of
+ * its first subtask. The result value and the type of the result of the
+ * sequential compound task is the result of of its last subtask. All subtasks
+ * in a sequential compound tasks must be chained, meaning that the type of the
+ * result of the preceding subtask must match the type of the input of the next
+ * subtask. During the execution the sequential task will, in the same order as 
+ * they were provided at creation, schedule the subtask for execution, wait for
+ * its execution to complete, and fetch its result and pass it as an input parameter
+ * into the next subtask. Should any of its subtask throw an unhandled exception, the
+ * execution  chain is terminated and the sequential subtask will propagate the exception
+ * as own exception. 
+ * <br><br>@b Examples<br>
+ * The following code fragmet will create a @em sequential compound task consisting
+ * of three simple sub-tasks:
+ * @code
+ * my_runner_class_1 r1;
+ * my_runner_class_2 r2;
+ *
+ *   auto t1 = factory::create(r1,
+ *     [] (const std::shared_ptr<runner>& r, double input) -> int
+ *     {
+ *       ...
+ *       return some_integer;
+ *     });
+ *   auto t2 = factory::create(r2,
+ *     [] (const std::shared_ptr<runner>& r, int input) -> my_class
+ *     {
+ *       ...
+ *       return my_class;
+ *     });
+ *   auto t3 = factory::create(r1,
+ *     [] (const std::shared_ptr<runner>& r, const my_class& input) -> void
+ *     {
+ *       ...
+ *     });
+ *
+ *   auto sequence = factory::sequential(t1, t2, t3);
+ * @endcode
+ * From the functional perspective, running the sequential task @c sequence:
+ * @code
+ *   sequence.run(42.0);
+ * @endcode
+ * would functionally correspond to the following synchronous code:
+ * @code
+ * int t1(double input) 
+ * { 
+ *    ... 
+ *    return some_integer;
+ * }
+ * my_class t2(int input)
+ * {
+ *    ...
+ *    return my_class;
+ * }
+ * void t3(const my_class& input)
+ * {
+ *    ...
+ * }
+ *
+ * t3( t2( t1( 42.0 ) ) );
+ * @endcode
+ * The only difference is that tasks @c t1 and @c t3 would run in the context
+ * of @ref runner @c r1 and task @c t2 would run in the context of @ref runner
+ * @c r2, thus serializing the access to the data grouped around these runners.
+ */
+   using sequential = detail::tag::sequential;
+//using detail::tag::parallel;
+//using detail::tag::conditional;
+//using detail::tag::oneof;
+//using detail::tag::loop;
+//using detail::tag::repeat;
+/**
+ * Intercept compound task.
+ */
+ using intercept = detail::tag::intercept;
+};
 
 struct factory;
 
@@ -94,11 +268,11 @@ class task
  public:
   using this_type   = task;
   using runner_type = RunnerT;
-  using tag_type    = TagT;
+  using tag         = TagT;
   using input_type  = InputT;
   using result_type = ResultT;
   using impl_type   = detail::taskinfo<
-      tag_type
+      tag
     , runner_type
     , input_type
     , result_type
@@ -126,11 +300,17 @@ class task
   std::shared_ptr<impl_type> m_impl;
 };
 
+/**
+ * Task factory
+ */
 struct factory {
  public:
+  //--- ------------------------------------------------------------------------
+  //--- Simple tasks factory methods
+  //--- ------------------------------------------------------------------------
   template <typename RunnerT, typename CallableT>
   inline static task<
-      detail::tag::simple
+      tag::simple
     , RunnerT
     , typename traits::arg_type<1, CallableT>::type
     , typename traits::functional<CallableT>::result_type
@@ -138,7 +318,7 @@ struct factory {
   {
     using result_type = typename traits::functional<CallableT>::result_type;
     using input_type = typename traits::arg_type<1, CallableT>::type;
-    using task_type = task<detail::tag::simple, RunnerT, input_type, result_type>;
+    using task_type = task<tag::simple, RunnerT, input_type, result_type>;
 
     // Make diagnostics a bit more user friendly - do some compile time checks
     // user callable must accept one or two parameters ...
@@ -167,15 +347,48 @@ struct factory {
 
     return task_type(std::make_shared<typename task_type::impl_type>(r_, f_));
   }
+
   template <typename RunnerT, typename CallableT>
   inline static task<
-      detail::tag::simple
+      tag::simple
     , RunnerT
     , typename traits::arg_type<1, CallableT>::type
     , typename traits::functional<CallableT>::result_type
   > create(const std::shared_ptr<RunnerT>& r_, const CallableT& f_)
   {
     return factory::create(std::weak_ptr<RunnerT>(r_), f_);
+  }
+
+  // IMPLEMENTATION_NOTE:
+  //   Compound tasks do not need a runner of their own hence the
+  //   default_runner_type is used as a type constant for all compounds.
+  //--- -----------------------------------------------------------------------
+  //--- Sequential tasks factory methods
+  //--- -----------------------------------------------------------------------
+  /**
+   * Factory method for creating sequential compound tasks.
+   */
+  template <typename... TaskT>
+  inline static task<
+      tag::sequential
+    , detail::default_runner_type
+    , typename detail::traits::get_first<TaskT...>::type::input_type
+    , typename detail::traits::get_sequence_result_type<TaskT...>::type
+    , typename std::decay<TaskT>::type ...
+  > sequential(const TaskT&... t_)
+  {
+    static_assert(
+        sizeof...(t_) > 1
+      , "It takes at least two tasks to create a sequential compound task");
+    static_assert(
+        detail::traits::is_chain<typename std::decay<TaskT>::type...>::result::value
+      , "The type of the parameter of each task in the sequence must match the return type of the preceding task.");
+
+    using result_type = typename detail::traits::get_sequence_result_type<TaskT...>::type;
+    using input_type = typename detail::traits::get_first<TaskT...>::type::input_type;
+    using task_type = task<tag::sequential, detail::default_runner_type, input_type, result_type, typename std::decay<TaskT>::type...>;
+
+    return task_type(std::make_shared<typename task_type::impl_type>(t_.m_impl...));
   }
 };
 
