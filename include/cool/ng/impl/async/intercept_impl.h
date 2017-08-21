@@ -25,58 +25,86 @@
 // ----
 // ---- -----------------------------------------------------------------------
 
+
+struct catcher
+{
+  virtual ~catcher() { /* noop */ }
+  virtual bool try_catch(
+      const std::exception_ptr& e_
+    , context_stack* stack_
+    , const context::result_reporter& res_
+    , const context::exception_reporter& exc_) = 0;
+  virtual std::shared_ptr<task> get_task() const = 0;
+};
+
+template <typename E> class catcher_impl : public catcher
+{
+ public:
+  catcher_impl(const std::shared_ptr<task>& t_) : m_task(t_)
+  { /* noop */ }
+  bool try_catch (
+      const std::exception_ptr& e_
+    , context_stack* stack_
+    , const context::result_reporter& res_
+    , const context::exception_reporter& exc_) override
+  {
+    try
+    {
+      std::rethrow_exception(e_);
+    }
+    catch ( const E& ex)
+    {
+      boost::any input = ex;
+      auto ctx = m_task->create_context(stack_, m_task, input);
+      ctx->set_res_reporter(res_);
+      ctx->set_exc_reporter(exc_);
+      return true;
+    }
+    catch ( ... )
+    { }
+    return false;
+  }
+
+  std::shared_ptr<task> get_task() const override
+  {
+    return m_task;
+  }
+
+ private:
+  std::shared_ptr<task> m_task;
+};
+
+// std::exception_ptr type of parameter is a catch-all catcher
+template <> class catcher_impl<std::exception_ptr> : public catcher
+{
+ public:
+  catcher_impl(const std::shared_ptr<task>& t_) : m_task(t_)
+  { /* noop */ }
+  bool try_catch (
+      const std::exception_ptr& e_
+    , context_stack* stack_
+    , const context::result_reporter& res_
+    , const context::exception_reporter& exc_) override
+  {
+    boost::any input = e_;
+    auto ctx = m_task->create_context(stack_, m_task, input);
+    ctx->set_res_reporter(res_);
+    ctx->set_exc_reporter(exc_);
+    return true;
+  }
+  std::shared_ptr<task> get_task() const override
+  {
+    return m_task;
+  }
+
+ private:
+  std::shared_ptr<task> m_task;
+};
+
+
 template <typename InputT, typename ResultT>
 class taskinfo<tag::intercept, default_runner_type, InputT, ResultT> : public detail::task
 {
-
-  struct catcher
-  {
-    virtual ~catcher() { /* noop */ }
-    virtual bool try_catch(
-        const std::exception_ptr& e_
-      , context_stack* stack_
-      , const context::result_reporter& res_
-      , const context::exception_reporter& exc_) = 0;
-    virtual std::shared_ptr<task> get_task() const = 0;
-  };
-
-  template <typename E> class catcher_impl : public catcher
-  {
-   public:
-    catcher_impl(const std::shared_ptr<task>& t_) : m_task(t_)
-    { /* noop */ }
-    bool try_catch (
-        const std::exception_ptr& e_
-      , context_stack* stack_
-      , const context::result_reporter& res_
-      , const context::exception_reporter& exc_) override
-    {
-      try
-      {
-        std::rethrow_exception(e_);
-      }
-      catch ( const E& ex)
-      {
-        boost::any input = ex;
-        auto ctx = m_task->create_context(stack_, m_task, input);
-        ctx->set_res_reporter(res_);
-        ctx->set_exc_reporter(exc_);
-        return true;
-      }
-      catch ( ... )
-      { }
-      return false;
-    }
-
-    std::shared_ptr<task> get_task() const override
-    {
-      return m_task;
-    }
-
-   private:
-    std::shared_ptr<task> m_task;
-  };
-
  public:
   using tag           = tag::intercept;
   using this_type     = taskinfo;
@@ -193,7 +221,7 @@ class task_context<tag::intercept, RunnerT, InputT, ResultT>
   }
   const char* name() const override
   {
-    return "context::sequential";
+    return "context::intercept";
   }
   bool will_execute() const override
   {

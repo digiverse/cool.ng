@@ -150,8 +150,14 @@ struct tag
  * The following code fragmet will create a @em sequential compound task consisting
  * of three simple sub-tasks:
  * @code
- * my_runner_class_1 r1;
- * my_runner_class_2 r2;
+ *   #include <cool/ng/async.h>
+ *   using cool::ng::async::runner;
+ *   using cool::ng::async::factory;
+ *   class my_runner_class_1 : public runner { };
+ *   class my_runner_class_2 : public runner { };
+ *     ...
+ *   my_runner_class_1 r1;
+ *   my_runner_class_2 r2;
  *
  *   auto t1 = factory::create(r1,
  *     [] (const std::shared_ptr<runner>& r, double input) -> int
@@ -208,6 +214,97 @@ struct tag
 //using detail::tag::repeat;
 /**
  * Intercept compound task.
+ *
+ * An intercept task is a compound task that handles the exceptions that may
+ * be thrown in its subtask. The intercept tasks consists of:
+ *  - the @em main subtask (a @em try task) that is expected to throw exception(s)
+ *    that must be handled
+ *  - one or more exception handling subtasks (the @em catch tasks) that will 
+ *    only be scheduled to run if the @em try task throws an exception of the
+ *    appropriate type. The try tasks mustv accept an input parameter.
+ *
+ * When an intercept task is run, it immediatelly schedules its @em try task
+ * for execution. Should the @em try task throws an exception, the intercept
+ * compound task will @em catch the thrown exception and inspect the @em catch
+ * tasks in the same order as they were specified to the @em factory::intercept
+ * call. The first @em catch task that accepts the input parameter of the same
+ * type, or of the base type of the thrown exception object will be scheduled
+ * to run and will receive the thrown exception object as its input. If no
+ * mathing @em catch task is found, the exception object is propagated out of
+ * the intercept compound task.
+ *
+ * The @em catch task with the input parameter of type @c std::exception_ptr has
+ * has a special meaning - it acts as a catch-all entity and will intercept
+ * an exception object of any type.
+ *
+ * The @em catch tasks must meet the following requirements:
+ *  - the must accept an input parameter - its type determines the type of the
+ *    exception object they will intercept
+ *  - they must return the result of the same type as the @em try task - if
+ *    run, the returend result will be the result of the intercept compound task.
+ *
+ * <br>@b Example<br>
+ * @code
+ *   #include <cool/ng/async.h>
+ *   using cool::ng::async::runner;
+ *   using cool::ng::async::factory;
+ *   class my_runner_class_1 : public runner { };
+ *   class my_runner_class_2 : public runner { };
+ *     ...
+ *   my_runner_class_1 r1 : public runner { };
+ *   my_runner_class_2 r2 : public runner { };
+ *
+ *   auto t1 = factory::create(r1,
+ *     [] (const std::shared_ptr<runner>& r1, double input) -> int
+ *     {
+ *       ...
+ *     });
+ *   auto t2 = factory::create(r2,
+ *     [] (const std::shared_ptr<runner>& r1, const std::runtime_error& e) -> int
+ *     {
+ *       ...
+ *     });
+ *   auto t3 = factory::create(r1,
+ *     [] (const std::shared_ptr<runner>& r2, const std::exception_ptr& e) -> int
+ *     {
+ *       ...
+ *     });
+ *
+ *   auto task = factory::try_catch(t1, t2, t3);
+ * @endcode
+ * When task @c task is run, it will immediatelly schedule the @em try task @c t1
+ * for execution. If this task, during its run, throws an exception, the intercept
+ * compound task @c task will catch the exception and examine @em catch tasks
+ * @c t1 and @c t2, in this order. Should the exception object be of type
+ * @c std::runtime_error, or should this be one of its base types, the intercept
+ * compound task @c task will schedule the @em catch task @c t2 for execution on
+ * its associated runner @c r1. If the exception was of any other type, it will
+ * schedule the @em catch task @c t3 (since it acts as a catch-all @em catch
+ * task due to its input parameter) for execution on its associated runner @c r2.
+ * The @c int result returned by either @c t2 or @c t3 Em catch task would then
+ * represent the result of the intercept compound task @c task.
+ * <br>
+ * Functionally, the intercept compound task corresponds to the <tt>try-catch</tt>
+ * block in the synchronous programming. Thus the above example functionally
+ * corresponds to the following synchronous pattern:
+ * @code
+ *   try
+ *   {
+ *     // code of try task t1 that may throw
+ *   }
+ *   catch (const std::runtime_error& e)
+ *   {
+ *     // code of catch task t2
+ *   }
+ *   catch (...)
+ *   {
+ *     // code of catch task t3
+ *   }
+ * @endcode
+ * @note Except for catch-all @em catch task, the exception object is re-thrown
+ *  and re-caught at each @em catch task to test whether this @em catch task
+ *  should intercept it or not. This may incurr certain processing overhead
+ *  should the intercept compound task have a long string of @em catch tasks.
  */
  using intercept = detail::tag::intercept;
 };
@@ -402,7 +499,7 @@ struct factory {
   > try_catch(const TryT& t_, const CatchT&... c_)
   {
     static_assert(
-        sizeof...(c_) > 1
+        sizeof...(c_) > 0
       , "It takes at least one catch task to create a try_catch (intercept) compound task");
 
 #if defined(WINDOWS_TARGET)
