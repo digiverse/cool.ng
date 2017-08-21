@@ -19,11 +19,6 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(cool_ng_f36abcb0_33a1_42a1_b25a_943f5951523a)
-#define      cool_ng_f36abcb0_33a1_42a1_b25a_943f5951523a
-
-namespace cool { namespace ng { namespace async { namespace detail {
-
 // ---- -----------------------------------------------------------------------
 // ----
 // ---- Static task information
@@ -254,7 +249,3 @@ void task_context<tag::simple, RunnerT, InputT, ResultT>::entry_point(
 }
 
 
-
-} } } }
-
-#endif

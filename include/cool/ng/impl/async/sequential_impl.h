@@ -19,11 +19,6 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(cool_ng_f36abcb0_33a1_84a1_b25a_943f5951523a)
-#define      cool_ng_f36abcb0_33a1_84a1_b25a_943f5951523a
-
-namespace cool { namespace ng { namespace async { namespace detail {
-
 // ---- -----------------------------------------------------------------------
 // ----
 // ---- Static task information
@@ -31,7 +26,7 @@ namespace cool { namespace ng { namespace async { namespace detail {
 // ---- -----------------------------------------------------------------------
 
 template <typename InputT, typename ResultT>
-class taskinfo<tag::sequential, default_runner_type, InputT, ResultT, TaskT...> : public detail::task
+class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public detail::task
 {
  public:
   using tag           = tag::sequential;
@@ -39,13 +34,12 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT, TaskT...> 
   using runner_type   = default_runner_type;
   using result_type   = ResultT;
   using input_type    = InputT;
-
-  using subtasks_vector_type = std::array<std::shared_ptr<detail::task>, sizeof...(TaskT)>;
-
-  using function_type = typename traits::run_signature<runner_type, input_type, result_type>::type;
   using context_type  = task_context<tag, runner_type, input_type, result_type>;
 
+  using subtasks_vector_type = std::vector<std::shared_ptr<detail::task>>;
+
  public:
+  template <typename... TaskT>
   explicit inline taskinfo(const std::shared_ptr<TaskT>&... tasks_)
       : m_subtasks( { tasks_ ... } )
   { /* noop */ }
@@ -187,6 +181,3 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
   const std::size_t m_num_tasks;
 };
 
-} } } }
-
-#endif

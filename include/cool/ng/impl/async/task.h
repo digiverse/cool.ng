@@ -25,7 +25,7 @@
 #include <memory>
 #include <functional>
 #include <type_traits>
-#include <array>
+#include <vector>
 #include <stack>
 #include <boost/any.hpp>
 
@@ -276,11 +276,11 @@ private:
   std::stack<context*> m_stack;
 };
   
-
-} } } }
-
 #include "simple_impl.h"
 #include "sequential_impl.h"
+#include "intercept_impl.h"
+
+} } } }
 
 
 

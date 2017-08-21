@@ -374,7 +374,6 @@ struct factory {
     , detail::default_runner_type
     , typename detail::traits::get_first<TaskT...>::type::input_type
     , typename detail::traits::get_sequence_result_type<TaskT...>::type
-    , typename std::decay<TaskT>::type ...
   > sequential(const TaskT&... t_)
   {
     static_assert(
@@ -386,11 +385,44 @@ struct factory {
 
     using result_type = typename detail::traits::get_sequence_result_type<TaskT...>::type;
     using input_type = typename detail::traits::get_first<TaskT...>::type::input_type;
-    using task_type = task<tag::sequential, detail::default_runner_type, input_type, result_type, typename std::decay<TaskT>::type...>;
+    using task_type = task<tag::sequential, detail::default_runner_type, input_type, result_type>;
 
     return task_type(std::make_shared<typename task_type::impl_type>(t_.m_impl...));
   }
+
+  /**
+   * Factory method for creating sequential compound tasks.
+   */
+  template <typename TryT, typename... CatchT>
+  inline static task<
+      tag::intercept
+    , detail::default_runner_type
+    , typename TryT::input_type
+    , typename TryT::result_type
+  > try_catch(const TryT& t_, const CatchT&... c_)
+  {
+    static_assert(
+        sizeof...(c_) > 1
+      , "It takes at least one catch task to create a try_catch (intercept) compound task");
+
+#if defined(WINDOWS_TARGET)
+#if (_MSC_VER > 1800)
+    static_assert(
+        detail::traits::is_same<typename TryT::result_type, typename CatchT::result_type...>::value
+      , "TryT task and CatchT tasks must have the same result type");
+#endif
+#endif
+
+    using result_type = typename TryT::result_type;
+    using input_type = typename TryT::input_type;
+;
+    using task_type = task<tag::intercept, detail::default_runner_type, input_type, result_type>;
+
+    return task_type(std::make_shared<typename task_type::impl_type>(t_.m_impl, c_.m_impl...));
+  }
 };
+
+
 
 #if 0
 /**
