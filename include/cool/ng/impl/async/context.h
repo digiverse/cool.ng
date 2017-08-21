@@ -1,4 +1,6 @@
-/* Copyright (c) 2017 Digiverse d.o.o.
+/*
+ * Copyright (c) 2017 Leon Mlakar.
+ * Copyright (c) 2017 Digiverse d.o.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License. The
