@@ -28,22 +28,20 @@
 // ---- -----------------------------------------------------------------------
 
 template <typename InputT, typename ResultT>
-class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public detail::task
+class taskinfo<tag::conditional, default_runner_type, InputT, ResultT> : public detail::task
 {
  public:
-  using tag           = tag::sequential;
+  using tag           = tag::conditional;
   using this_type     = taskinfo;
   using runner_type   = default_runner_type;
   using result_type   = ResultT;
   using input_type    = InputT;
   using context_type  = task_context<tag, runner_type, input_type, result_type>;
 
-  using subtasks_vector_type = std::vector<std::shared_ptr<detail::task>>;
-
  public:
-  template <typename... TaskT>
-  explicit inline taskinfo(const std::shared_ptr<TaskT>&... tasks_)
-      : m_subtasks( { tasks_ ... } )
+  template <typename PredicateT, typename IfT, typename ElseT>
+  explicit inline taskinfo(const std::shared_ptr<PredicateT>& p_, const std::shared_ptr<IfT>& if_, const std::shared_ptr<ElseT>& else_)
+      : m_predicate(p_), m_if(if_), m_else(else_)
   { /* noop */ }
 
   template <typename T = InputT>
@@ -61,7 +59,7 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public d
   typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
   {
     auto stack = new default_task_stack();
-    auto aux = create_context(stack, self_, boost::any());
+    create_context(stack, self_, boost::any());
     kickstart(stack);
   }
 
@@ -70,27 +68,29 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public d
     , const std::shared_ptr<task>& self_
     , const boost::any& input_) const override
   {
-    auto aux = context_type::create(stack_, self_, input_);
+    auto aux = context_type::create(stack_, self_, m_predicate, m_if, m_else, input_);
     return aux;
   }
 
   inline std::weak_ptr<runner> get_runner() const override
   {
-    return m_subtasks[0]->get_runner();
+    return m_predicate->get_runner();
   }
 
   inline std::size_t get_subtask_count() const override
   {
-    return m_subtasks.size();
+    return 0;
   }
 
   inline std::shared_ptr<task> get_subtask(std::size_t index) const override
   {
-    return m_subtasks[index];
+    return nullptr;
   }
 
  private:
-  subtasks_vector_type m_subtasks;
+  std::shared_ptr<task> m_predicate;
+  std::shared_ptr<task> m_if;
+  std::shared_ptr<task> m_else;
 };
 
 // ---- -----------------------------------------------------------------------
@@ -99,7 +99,7 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public d
 // ----
 // ---- -----------------------------------------------------------------------
 template <typename RunnerT, typename InputT, typename ResultT>
-class task_context<tag::sequential, RunnerT, InputT, ResultT>
+class task_context<tag::conditional, RunnerT, InputT, ResultT>
   : public task_context_base
 {
  public:
@@ -107,21 +107,28 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
   using base       = task_context_base;
 
  private:
-  inline task_context(context_stack* st_, const std::shared_ptr<task>& t_)
-    : base(st_, t_), m_next_task(0), m_num_tasks(t_->get_subtask_count())
+  inline task_context(
+      context_stack* st_
+    , const std::shared_ptr<task>& task_
+    , const std::shared_ptr<task>& if_
+    , const std::shared_ptr<task>& else_)
+        : base(st_, task_), m_predicate_result(true), m_if(if_), m_else(else_)
   { /* noop */ }
 
  public:
   inline static this_type* create(
       context_stack* stack_
     , const std::shared_ptr<task>& task_
+    , const std::shared_ptr<task>& predicate_
+    , const std::shared_ptr<task>& if_
+    , const std::shared_ptr<task>& else_
     , const boost::any& input_)
   {
-    auto aux = new this_type(stack_, task_);
+    auto aux = new this_type(stack_, task_, if_, else_);
     stack_->push(aux);
 
     aux->set_input(input_);
-    aux->prepare_next_task();
+    aux->prepare_next_task(predicate_);
 
     return aux;
   }
@@ -137,22 +144,41 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
   }
   bool will_execute() const override
   {
-    return m_next_task < m_num_tasks;
+    return true;
   }
 
   void result_report(const boost::any& res_)
   {
-    if (m_next_task == m_num_tasks)
+    if (!m_predicate_result)
     {
+      // result of one of branches
       m_stack->pop();
       if (m_res_reporter)
         m_res_reporter(res_);
       delete this;
+      return;
+    }
+
+    m_predicate_result = false; // next report will come from one of branches
+    if (boost::any_cast<bool>(res_))
+    {
+      prepare_next_task(m_if);
     }
     else
     {
-      m_input = res_;
-      prepare_next_task();
+      if (m_else)
+      {
+        prepare_next_task(m_else);
+      }
+      else
+      {
+        // else part is missing
+        m_stack->pop();
+        if (m_res_reporter)
+          m_res_reporter(boost::any());
+        delete this;
+        return;
+      }
     }
   }
 
@@ -164,22 +190,16 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
     delete this;
   }
 
-  bool prepare_next_task()
+  void prepare_next_task(const std::shared_ptr<task>& t_)
   {
-    if (m_next_task < m_num_tasks)
-    {
-      auto t_ = m_task->get_subtask(m_next_task);
-      auto ctx = t_->create_context(m_stack, t_, m_input);
-      ctx->set_res_reporter(std::bind(&this_type::result_report, this, std::placeholders::_1));
-      ctx->set_exc_reporter(std::bind(&this_type::exception_report, this, std::placeholders::_1));
-      m_next_task++;
-      return true;
-    }
-    return false;
+    auto ctx = t_->create_context(m_stack, t_, m_input);
+    ctx->set_res_reporter(std::bind(&this_type::result_report, this, std::placeholders::_1));
+    ctx->set_exc_reporter(std::bind(&this_type::exception_report, this, std::placeholders::_1));
   }
 
  private:
-  std::size_t       m_next_task;
-  const std::size_t m_num_tasks;
+  bool m_predicate_result;
+  std::shared_ptr<task> m_if;
+  std::shared_ptr<task> m_else;
 };
 

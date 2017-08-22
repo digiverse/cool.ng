@@ -1,0 +1,139 @@
+/**
+@mainpage
+
+@section async Asynchronous Module
+
+The asynchronous module contains abstractions that support a structured approach
+to the asynchronous programming model. In essence, these abstractions rely on
+the three basic concepts:
+
+ - a @ref cool::ng::async::runner "runner", which in its simplest form is a 
+   FIFO queue that executes its tasks one after another
+   
+ - a @ref cool::ng::async::task "task", which in its simplest form represents
+   a unit of execution and consists of the user code and an association with a
+   specific @ref cool::ng::async::runner "runner"
+   
+ - an event source, a reactive facility which, when the conditions are met,
+   execute the associated task; event sources are non-blocking communitation
+   channels between the program and the exterior world and may be associated
+   with data I/O, timers or any other exterior asynchronous resource
+
+@subsection async-runner Runner
+
+A @ref cool::ng::async::runner "runner" is an object capable of executing
+@ref cool::ng::async::task "tasks". While runners use some form of a thread pool
+to commence the actual execution, there is no association between the runner
+and any particular thread. The runner will notify the thread pool that it has
+tasks waiting for execution and the thread pool will, when a worker thread
+becomes available, assign the thread to execute the tasks. The scheduling policies
+and thread assignments are under-the-hood details depend on the platform and
+the thread pool technologies used by the platfofrm.
+
+The aim of the runner absgtration is to shift the focus away from the threading
+models and their details to the actual tasks that need to be performed in other 
+for the program to do its job.
+
+Runners use one of two possible @ref cool::ng::async::RunPolicy "task scheduling policies":
+ - @ref cool::ng::async::RunPolicy::SEQUENTIAL "Sequential" scheduling policy
+   where @ref cool::ng::async::runner "runner" schedules its tasks one after another
+   and waits for the completion of the previous @ref cool::ng::async::task "task"
+   before scheduling another task. This is a default scheduling policy and is
+   supported on all platforms. Sequential runners act as a FIFO mechanism and
+   allow a serizalization of execution while preserving tha maximal load
+   on the system CPUs
+ - @ref cool::ng::async::RunPolicy::CONCURRENT "Concurrent" scheduling policy
+   where runner tries to schedule a task for execution as soon as the task
+   arrives, regardless of the completion status of the preceding task. The actual
+   concurrency of execution depends on the availability of the worker threads.
+   Concurrent scheduling policy, while available, may also not be implemented
+   on all platforms.
+  
+Owing to the intrinsic serialization of execution the sequential runners are the
+cornerstone of the abstractions provided by the Asynchronous Module. The
+concurrent runners are provided for the sake of completeness but are of
+limited practical use.
+
+@subsubsection async-runner-use Recommended Runner Use Model
+
+The foundation of asynchronous programming is grouping the related data together
+and serializing the access to these data groups. While the Asynchronous Model
+consists of C++ class templates that implement the three basic concepts and as
+such can be used in any context permitted by the C++ language, the design
+aim of the module was to support both data grouping and access serialization
+by bringing OO and asyncronous concepts together. From OO perspective the best
+data grouping tool is a C++ class, which contains data elements and provides 
+methods for retrieving and modifying these elements. For instance:
+@code
+class GroupOfRelatedData
+{
+  public:
+    SomeDataType get_some_data() const     { return some_data; }
+    set_some_data(const SomeDataType& arg) { some_data = arg; }
+
+  private:
+    SomeDataType some_data;
+};
+@endcode
+Using the Asynchronous Module abstractions, such data class can easily be
+extended to support concurrent operations.
+@code
+class GroupOfRelatedData : public cool::ng::async::runner
+{
+  public:
+    using ptr = std::shared_ptr<GroupOfRelatedData>;
+
+  public:
+    auto get_some_data() const
+    {
+      return cool::ng::factory::create(
+        myself,
+        [](const ptr& self)
+        {
+          return self->some_data;
+        }
+      );
+    }
+
+    auto set_some_data() const
+    {
+      return cool::ng::factory::create(
+        myself,
+        [](const ptr& self, const SomeDataType& arg)
+        {
+          self->some_data = arg;
+        }
+      );
+    }
+
+  private:
+    SomeDataType some_data;
+    std::weak_ptr<GroupOfRelatedData> myself;
+}
+@endcode
+The modified @c GroupOfRelatedData class is using @ref cool::ng::async::runner
+"runner" to serialize access to the data elements and its public interface now
+returns the @ref cool::ng::async::task "tasks" which fetch and modify its data
+elements without any concurrency related synchronization issues. The users
+of this class would have to change the old use:
+@code
+  GroupOrRelatedData my_group;
+  
+  // use data from my_group to  do something
+  do_something( my_group.get_some_data() );
+  
+  // modify data in my group
+  my_group.set_some_data( new_data );
+@endcode
+
+into asynchronous code:
+@code
+  GroupOfRelatedData my_group;
+  
+  // use data in my_group to do something
+  cool::ng::factory::sequence( my_group.get_some_data(), task_doing_something ).run();
+
+  // modify data in my_group
+  my_group.set_some_data().run( new_data );
+@endcode
+*/

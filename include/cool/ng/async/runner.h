@@ -52,7 +52,16 @@ namespace impl { class executor; }
  * the runner using sequential policy <em>will not</em> execute the tasks 
  * from its task queue concurrently.
  */
-enum class RunPolicy { SEQUENTIAL, CONCURRENT };
+enum class RunPolicy {
+  /**
+   * Sequantial scheduling policy where runner executes the tasks one after another.
+   */
+  SEQUENTIAL,
+  /**
+   * Concurrent scheduling policy where runner may execute several tasks in parallel.
+   */
+  CONCURRENT
+};
 
 /**
  * A representation of the queue of asynchronously executing tasks.

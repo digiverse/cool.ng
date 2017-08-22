@@ -104,7 +104,7 @@ elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
   set( LINUX true )
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC" )
   add_definitions("-DCOOL_ASYNC_PLATFORM_GCD")
-
+  set( COOL_NG_PLATFORM_LIBRARIES pthread dispatch)
 elseif (MSVC)
 
 # --- Windows
@@ -183,6 +183,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/simple_impl.h
     include/cool/ng/impl/async/sequential_impl.h
     include/cool/ng/impl/async/intercept_impl.h
+    include/cool/ng/impl/async/conditional_impl.h
 )
 
 # ### ##################################################
@@ -290,13 +291,14 @@ if (COOL_NG_BUILD_DOC)
     add_custom_command(
       OUTPUT ${COOL_NG_DOC_DIR}/doc/html/index.html
       COMMAND ${DOXYGEN_EXECUTABLE} ${COOL_NG_DOC_DIR}/cool.ng.dox
-      DEPENDS ${COOL_NG_API_HEADERS}
+      DEPENDS ${COOL_NG_API_HEADERS} ${COOL_NG_HOME}/mainpage.dox
       WORKING_DIRECTORY ${COOL_NG_DOC_DIR}
     )
-    add_custom_target(Documentation ALL DEPENDS ${COOL_NG_DOC_DIR}/doc/html/index.html)
+    add_custom_target(doc ALL DEPENDS ${COOL_NG_DOC_DIR}/doc/html/index.html)
   endif()
 
 endif()
+
 # ### ##################################################
 # ###
 # ### Unit tests
@@ -318,6 +320,7 @@ set( API_UNIT_TESTS
   simple_task
   sequential_task
   intercept_task
+  conditional_task
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
@@ -326,12 +329,13 @@ set( executor_SRCS tests/unit/executor/executor.cpp )
 set( simple_task_SRCS tests/unit/task/simple_task.cpp )
 set( sequential_task_SRCS tests/unit/task/sequential_task.cpp )
 set( intercept_task_SRCS tests/unit/task/intercept_task.cpp )
+set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
   if( NOT WINDOWS )
     # --- on windows we use autolink feature
-    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} )
+    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
   set_target_properties( ${TestName}-test PROPERTIES
       COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
@@ -342,31 +346,33 @@ endmacro()
 
 macro(internal_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
+  target_link_libraries(${TestName}-test cool.ng-dev)
+
   if( NOT WINDOWS )
     # --- on windows we use autolink feature
-    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} )
+    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
   target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
   )
-  target_link_libraries(${TestName}-test cool.ng-dev)
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
 macro(api_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
+  target_link_libraries(${TestName}-test cool.ng-dyn-dev)
+
   if( NOT WINDOWS )
     # --- on windows we use autolink feature
-    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} )
+    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
   target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
   )
-  target_link_libraries(${TestName}-test cool.ng-dyn-dev)
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
@@ -439,6 +445,7 @@ source_group( "Library Unit Tests" FILES ${LIBRARY_UNIT_TESTS_SOURCES} )
 source_group( "GCD Specific Files" FILES ${COOL_NG_GCD_IMPL_HEADERS} ${COOL_NG_GCD_IMPL_SRCS} )
 source_group( "Windows Specific Files" FILES ${COOL_NG_WINCP_IMPL_HEADERS} ${COOL_NG_WINCP_IMPL_SRCS} )
 source_group( "Library Files" FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
+source_group( "Documentation" FILES ${COOL_NG_HOME}/mainpage.dox )
 
 # --- custom target listing all source files (for IDEs only)
 add_custom_target("All-Sources" SOURCES
@@ -452,5 +459,6 @@ add_custom_target("All-Sources" SOURCES
   ${COOL_NG_LIB_SRCS}
   ${HEADER_ONLY_UNIT_TESTS_SOURCES}
   ${LIBRARY_UNIT_TESTS_SOURCES}
+  ${COOL_NG_HOME}/mainpage.dox
 )
 

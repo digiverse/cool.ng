@@ -281,6 +281,7 @@ private:
 #include "simple_impl.h"
 #include "sequential_impl.h"
 #include "intercept_impl.h"
+#include "conditional_impl.h"
 
 } } } }
 

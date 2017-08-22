@@ -210,7 +210,10 @@ struct tag
  */
    using sequential = detail::tag::sequential;
 //using detail::tag::parallel;
-//using detail::tag::conditional;
+/**
+ * Conditional compound task.
+ */
+  using conditional = detail::tag::conditional;
 //using detail::tag::oneof;
 //using detail::tag::loop;
 //using detail::tag::repeat;
@@ -407,6 +410,14 @@ struct factory {
   //--- ------------------------------------------------------------------------
   //--- Simple tasks factory methods
   //--- ------------------------------------------------------------------------
+  /**
+   * Factory method to create @ref tag::simple "simple" tasks.
+   *
+   * @param r_ @ref runner to use for task execution
+   * @param f_ user Callable runner should invoke during task execution
+   *
+   * @see @ref tag::simple "simple" task
+   */
   template <typename RunnerT, typename CallableT>
   inline static task<
       tag::simple
@@ -465,7 +476,11 @@ struct factory {
   //--- Sequential tasks factory methods
   //--- -----------------------------------------------------------------------
   /**
-   * Factory method for creating sequential compound tasks.
+   * Factory method for creating @ref tag::sequential "sequential" compound tasks.
+   *
+   * @param t_ two or more tasks to run in sequence
+   *
+   * @see @ref tag::sequential "sequential" compound task
    */
   template <typename... TaskT>
   inline static task<
@@ -473,7 +488,7 @@ struct factory {
     , detail::default_runner_type
     , typename detail::traits::get_first<TaskT...>::type::input_type
     , typename detail::traits::get_sequence_result_type<TaskT...>::type
-  > sequential(const TaskT&... t_)
+  > sequence(const TaskT&... t_)
   {
     static_assert(
         sizeof...(t_) > 1
@@ -490,7 +505,12 @@ struct factory {
   }
 
   /**
-   * Factory method for creating sequential compound tasks.
+   * Factory method for creating @ref tag::intercept "intercept" compound tasks.
+   *
+   * @param t_ task to execute (@em try task)
+   * @param c_ one or more exeception handling (@em catch) tasks
+   *
+   * @see @ref tag::intercept "intercept" compound task
    */
   template <typename TryT, typename... CatchT>
   inline static task<
@@ -511,13 +531,36 @@ struct factory {
       , "TryT task and CatchT tasks must have the same result type");
 #endif
 #endif
-
     using result_type = typename TryT::result_type;
     using input_type = typename TryT::input_type;
-;
     using task_type = task<tag::intercept, detail::default_runner_type, input_type, result_type>;
 
     return task_type(std::make_shared<typename task_type::impl_type>(t_.m_impl, c_.m_impl...));
+  }
+
+  template <typename PredicateT, typename IfT, typename ElseT>
+  inline static task<
+      tag::conditional
+    , detail::default_runner_type
+    , typename PredicateT::input_type
+    , typename IfT::result_type
+  > conditional(const PredicateT& p_, const IfT& if_, const ElseT& else_)
+  {
+    static_assert(
+        std::is_same<typename PredicateT::result_type, bool>::value
+      , "The predicate task must return result of type bool");
+    static_assert(
+        detail::traits::is_same<typename PredicateT::input_type, typename IfT::input_type, typename ElseT::input_type>::value
+      , "All tasks must accept the input parameter of the same type");
+    static_assert(
+        std::is_same<typename IfT::result_type, typename ElseT::result_type>::value
+      , "If and Else part tasks must return result of the same type");
+
+    using result_type = typename IfT::result_type;
+    using input_type = typename PredicateT::input_type;
+    using task_type = task<tag::conditional, detail::default_runner_type, input_type, result_type>;
+
+    return task_type(std::make_shared<typename task_type::impl_type>(p_.m_impl, if_.m_impl, else_.m_impl));
   }
 };
 

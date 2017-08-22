@@ -82,7 +82,7 @@ BOOST_AUTO_TEST_CASE(basic)
       }
   );
 
-  auto seq = cool::ng::async::factory::sequential(t1, t2, t3);
+  auto seq = cool::ng::async::factory::sequence(t1, t2, t3);
   std::unique_lock<std::mutex> l(m);
   seq.run(5);
   cv.wait_for(l, ms(100), [&counter] { return counter == 8; });
@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE(basic_two_runners)
       }
   );
 
-  auto seq = cool::ng::async::factory::sequential(t1, t2, t3);
+  auto seq = cool::ng::async::factory::sequence(t1, t2, t3);
   std::unique_lock<std::mutex> l(m);
   seq.run(5);
   cv.wait_for(l, ms(100), [&counter] { return counter == 8; });
@@ -172,10 +172,10 @@ BOOST_AUTO_TEST_CASE(sequence_of_sequence)
       }
   );
 
-  auto seq1 = cool::ng::async::factory::sequential(t1, t2);
-  auto seq2 = cool::ng::async::factory::sequential(t1, t2, t3);
+  auto seq1 = cool::ng::async::factory::sequence(t1, t2);
+  auto seq2 = cool::ng::async::factory::sequence(t1, t2, t3);
 
-  auto seq = cool::ng::async::factory::sequential(seq1, seq2);
+  auto seq = cool::ng::async::factory::sequence(seq1, seq2);
 
   std::unique_lock<std::mutex> l(m);
   seq.run(5);
@@ -223,9 +223,9 @@ BOOST_AUTO_TEST_CASE(deep_sequence)
       }
   );
 
-  cool::ng::async::factory::sequential(
-      cool::ng::async::factory::sequential(
-          cool::ng::async::factory::sequential(t1, t2)
+  cool::ng::async::factory::sequence(
+      cool::ng::async::factory::sequence(
+          cool::ng::async::factory::sequence(t1, t2)
         , t1
       )
     , t3
@@ -242,11 +242,11 @@ BOOST_AUTO_TEST_CASE(deep_sequence)
   runner1->counter = 0;
   runner2->counter = 0;
 
-  cool::ng::async::factory::sequential(
+  cool::ng::async::factory::sequence(
     t2
-    , cool::ng::async::factory::sequential(
-          cool::ng::async::factory::sequential(
-              cool::ng::async::factory::sequential(t1, t2)
+    , cool::ng::async::factory::sequence(
+          cool::ng::async::factory::sequence(
+              cool::ng::async::factory::sequence(t1, t2)
             , t1
           )
         , t2
@@ -300,11 +300,11 @@ BOOST_AUTO_TEST_CASE(deep_sequence_exception)
       }
   );
 
-  cool::ng::async::factory::sequential(
+  cool::ng::async::factory::sequence(
     t1
-    , cool::ng::async::factory::sequential(
-          cool::ng::async::factory::sequential(
-              cool::ng::async::factory::sequential(t1, t1)
+    , cool::ng::async::factory::sequence(
+          cool::ng::async::factory::sequence(
+              cool::ng::async::factory::sequence(t1, t1)
             , t2
           )
         , t1
