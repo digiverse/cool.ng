@@ -134,7 +134,7 @@ struct tag
  *
  * Sequential tasks are compound tasks that consist of two or more subtasks. The
  * order of the subtasks is determined at the sequential task creation and is 
- * the same as they are provided to the call to @ref factory::sequential factory
+ * the same as they are provided to the call to @ref factory::sequence factory
  * method.
  * <br>
  * The input parameter of the sequential compund task is the input parameter of
@@ -561,6 +561,30 @@ struct factory {
     using task_type = task<tag::conditional, detail::default_runner_type, input_type, result_type>;
 
     return task_type(std::make_shared<typename task_type::impl_type>(p_.m_impl, if_.m_impl, else_.m_impl));
+  }
+
+  template <typename PredicateT, typename IfT>
+  inline static task<
+      tag::conditional
+    , detail::default_runner_type
+    , typename PredicateT::input_type
+    , typename IfT::result_type
+  > conditional(const PredicateT& p_, const IfT& if_)
+  {
+    static_assert(
+        std::is_same<typename IfT::result_type, void>::value
+      , "The IfT part in a conditional without ElseT part must not return value");
+    static_assert(
+        std::is_same<typename PredicateT::result_type, bool>::value
+      , "The predicate task must return result of type bool");
+    static_assert(
+        detail::traits::is_same<typename PredicateT::input_type, typename IfT::input_type>::value
+      , "All tasks must accept the input parameter of the same type");
+    using result_type = typename IfT::result_type;
+    using input_type = typename PredicateT::input_type;
+    using task_type = task<tag::conditional, detail::default_runner_type, input_type, result_type>;
+
+    return task_type(std::make_shared<typename task_type::impl_type>(p_.m_impl, if_.m_impl));
   }
 };
 

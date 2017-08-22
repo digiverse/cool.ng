@@ -43,6 +43,11 @@ class taskinfo<tag::conditional, default_runner_type, InputT, ResultT> : public 
   explicit inline taskinfo(const std::shared_ptr<PredicateT>& p_, const std::shared_ptr<IfT>& if_, const std::shared_ptr<ElseT>& else_)
       : m_predicate(p_), m_if(if_), m_else(else_)
   { /* noop */ }
+  
+  template <typename PredicateT, typename IfT>
+  explicit inline taskinfo(const std::shared_ptr<PredicateT>& p_, const std::shared_ptr<IfT>& if_)
+      : m_predicate(p_), m_if(if_)
+  { /* noop */ }
 
   template <typename T = InputT>
   inline void run(

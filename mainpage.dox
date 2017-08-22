@@ -86,7 +86,7 @@ class GroupOfRelatedData : public cool::ng::async::runner
   public:
     auto get_some_data() const
     {
-      return cool::ng::factory::create(
+      return cool::ng::async::factory::create(
         myself,
         [](const ptr& self)
         {
@@ -97,7 +97,7 @@ class GroupOfRelatedData : public cool::ng::async::runner
 
     auto set_some_data() const
     {
-      return cool::ng::factory::create(
+      return cool::ng::async::factory::create(
         myself,
         [](const ptr& self, const SomeDataType& arg)
         {
