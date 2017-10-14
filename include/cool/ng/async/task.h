@@ -403,6 +403,76 @@ class task
 };
 
 /**
+ * Helper type alias for tasks accessing member data.
+ *
+ * This type alias may be used to simplify the syntax of member methods of
+ * @ref runner derived data classes that return tasks accessing member data when
+ * using C++11 based compilers which do not support @c auto declared
+ * functions, as in the following example:
+ * @code
+ *   class MyClass : public cool::ng::async::runner
+ *   {
+ *     public:
+ *       cool::ng::async::GetterTask<MyClass, int> get_value()
+ *       {
+ *         return cool::ng::async::factor::create(
+ *           myself,
+ *           [](const std::shared_ptr<MyClass>& r) { return value; });
+ *       }
+ *     private:
+ *       int value;
+ *       std::weak_ptr<MyClass> myself;
+ *   };
+ * @endcode
+ * The C++14 enabled compilers that support @c auto declared functions would
+ * allow further simplification of the above @c get_value declaration into:
+ * @code
+ *     ...
+ *   auto get_value()
+ *   {
+ *     ...
+ * @endcode
+ * but such simplifiaction is not possible with C++11 based compilers.
+ */
+template <typename ClassT, typename ValueT>
+using GetterTask = task<tag::simple, ClassT, void, ValueT>;
+
+/**
+ * Helper type alias for tasks modifying member data.
+ *
+ * This type alias may be used to simplify the syntax of member methods of
+ * @ref runner derived data classes that return tasks modifying member data when
+ * using C++11 based compilers which do not support @c auto declared
+ * functions, as in the following example:
+ * @code
+ *   class MyClass : public cool::ng::async::runner
+ *   {
+ *     public:
+ *       cool::ng::async::MutatorTask<MyClass, int> set_value()
+ *       {
+ *         return cool::ng::async::factor::create(
+ *           myself,
+ *           [](const std::shared_ptr<MyClass>& r, int arg) { value = arg; });
+ *       }
+ *     private:
+ *       int value;
+ *       std::weak_ptr<MyClass> myself;
+ *   };
+ * @endcode
+ * The C++14 enabled compilers that support @c auto declared functions would
+ * allow further simplification of the above @c get_value declaration into:
+ * @code
+ *     ...
+ *   auto set_value()
+ *   {
+ *     ...
+ * @endcode
+ * but such simplifiaction is not possible with C++11 based compilers.
+ */
+template <typename ClassT, typename ValueT>
+using MutatorTask = task<tag::simple, ClassT, ValueT, void>;
+
+/**
  * Task factory
  */
 struct factory {

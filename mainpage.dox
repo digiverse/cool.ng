@@ -136,4 +136,9 @@ into asynchronous code:
   // modify data in my_group
   my_group.set_some_data().run( new_data );
 @endcode
+@note The above example requires C++14 based compiler. C++11 based compilers
+  that do not support @c auto function declarations can use
+  @ref cool::ng::async::GetterTask "GetterTask" and @ref cool::ng::async::MutatorTask 
+  "MutatorTask" type aliases to declare return types of @c get_some_data() and
+  @c set_some_data() methods, respectively.
 */

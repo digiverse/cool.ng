@@ -245,7 +245,7 @@ void task_context<tag::simple, RunnerT, InputT, ResultT>::entry_point(
   }
 
   // NOTE: null stack indicates standalone simple task which will get deleted as
-  //       context stack in runner::task_executor. Do not delete it here!
+  //       context stack in runner::task_executor. Hence do not delete it here!
   if (m_stack != nullptr)
     delete this;  // now suicide is in order
 }
