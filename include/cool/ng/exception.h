@@ -56,7 +56,7 @@ class base : public std::exception
 #else
   dlldecl virtual const char* what() const noexcept override { return m_what.c_str(); }
 #endif
-private:
+ private:
   std::string m_what;
 };
 /**

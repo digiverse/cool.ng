@@ -216,7 +216,53 @@ struct tag
   using conditional = detail::tag::conditional;
 //using detail::tag::oneof;
 //using detail::tag::loop;
-//using detail::tag::repeat;
+/**
+ * Repeat compound task.
+ *
+ * The repeat task is a compound task that repeatedly schedules its subtask for
+ * execution. The number of repetitions is specified as the parameter to the
+ * @c run() call. The subtask will receive the repetition number as its input
+ * parameter of type @c std::size_t and range <i>1&ndash;(num-repetitions-1)</i>.
+ * The return value type of the repeat compount task corresponds to the return
+ * value type of its subtask. The return value is the return value of its last
+ * execution. The input type of the repeat compound task is @c std::size_t.
+ *
+ * <br>@b Example<br>
+ * @code
+ *   #include <cool/ng/async.h>
+ *   using cool::ng::async::runner;
+ *   using cool::ng::async::factory;
+ *   class my_runner_class : public runner { ... class content ...  };
+ *     ...
+ *   my_runner_class r;
+ *
+ *   auto t1 = factory::create(r,
+ *     [] (const std::shared_ptr<my_runner_class>& r, std::size_t counter) -> void
+ *     {
+ *       ...
+ *     });
+ *  auto task = factory::repeat(t1);
+ *    ...
+ *  task.run(100);   // execute task t1 100 times
+ * @endcode
+ * <br>
+ * Functionally, the repeat compound task corresponds to the <tt>for</tt>
+ * loop in the synchronous programming. Thus the above example functionally
+ * corresponds to the following synchronous pattern:
+ * @code
+ *   void t1(std::size_t counter)
+ *   {
+ *     ...
+ *   }
+ *
+ *     ...
+ *
+ *   for (std::size_t i = 0; i < 100; ++i)
+ *     t1(i);
+ * @endcode
+ *
+ */
+  using repeat = detail::tag::repeat;
 /**
  * Intercept compound task.
  *
@@ -253,24 +299,24 @@ struct tag
  *   #include <cool/ng/async.h>
  *   using cool::ng::async::runner;
  *   using cool::ng::async::factory;
- *   class my_runner_class_1 : public runner { };
- *   class my_runner_class_2 : public runner { };
+ *   class my_runner_class_1 : public runner {  ... class content ... } };
+ *   class my_runner_class_2 : public runner {  ... class content ... } };
  *     ...
- *   my_runner_class_1 r1 : public runner { };
- *   my_runner_class_2 r2 : public runner { };
+ *   my_runner_class_1 r1;
+ *   my_runner_class_2 r2;
  *
  *   auto t1 = factory::create(r1,
- *     [] (const std::shared_ptr<runner>& r1, double input) -> int
+ *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> int
  *     {
  *       ...
  *     });
  *   auto t2 = factory::create(r2,
- *     [] (const std::shared_ptr<runner>& r1, const std::runtime_error& e) -> int
+ *     [] (const std::shared_ptr<my_runner_class_2>& r, const std::runtime_error& e) -> int
  *     {
  *       ...
  *     });
  *   auto t3 = factory::create(r1,
- *     [] (const std::shared_ptr<runner>& r2, const std::exception_ptr& e) -> int
+ *     [] (const std::shared_ptr<my_runner_class_1>& r, const std::exception_ptr& e) -> int
  *     {
  *       ...
  *     });
@@ -655,6 +701,27 @@ struct factory {
     using task_type = task<tag::conditional, detail::default_runner_type, input_type, result_type>;
 
     return task_type(std::make_shared<typename task_type::impl_type>(p_.m_impl, if_.m_impl));
+  }
+
+  template <typename TaskT>
+  inline static task<
+      tag::repeat
+    , detail::default_runner_type
+    , std::size_t
+    , void
+  > repeat( const TaskT t_)
+  {
+    using result_type = void;
+    using input_type = std::size_t;
+    using task_type = task<tag::repeat, detail::default_runner_type, input_type, result_type>;
+
+    static_assert(
+        std::is_same<typename TaskT::input_type, std::size_t>::value
+      , "The task to be repeated must have input_type std::size_t.");
+    static_assert(
+        std::is_same<typename TaskT::result_type, void>::value
+      , "The task to be repeated must have result_type void.");
+    return task_type(std::make_shared<typename task_type::impl_type>(t_.m_impl));
   }
 };
 

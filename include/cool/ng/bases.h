@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(MISCELLANEOUS_H_HEADER_GUARD)
-#define MISCELLANEOUS_H_HEADER_GUARD
+#if !defined(cool_ng_6c2a783d_18a0_4a18_abe5_908c1f127780)
+#define      cool_ng_6c2a783d_18a0_4a18_abe5_908c1f127780
 
 #include <functional>
 #include <exception>
@@ -201,40 +201,6 @@ class named : public identified
  private:
   std::string m_name;
   std::string m_prefix;
-};
-
-template <typename T> class self_aware : public T
-{
- public:
-  using this_type = self_aware;
-  using element_type = T;
-  using ptr = std::shared_ptr<T>;
-  using weak_ptr = std::weak_ptr<T>;
-
- public:
-  ~self_aware()
-  {
-    m_self.reset();  // this is to enable cleanup of all weak pointers
-  }
-  template <typename ...Y>
-  static ptr create(Y&& ...arg_)
-  {
-    auto ret = std::make_shared<self_aware<T>>(std::forward<Y>(arg_)...);
-    ret->m_self = ret;
-    return ret;
-  }
-
-  weak_ptr self() const
-  {
-    return m_self;
-  }
-
- private:
-  template <typename ...Y> self_aware(Y&& ...arg_) : T(std::forward<Y>(arg_)...)
-  { /* noop */ }
-
- private:
-  weak_ptr m_self;
 };
 
 } } } // namespace

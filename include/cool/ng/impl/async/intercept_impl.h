@@ -27,7 +27,6 @@
 // ----
 // ---- -----------------------------------------------------------------------
 
-
 struct catcher
 {
   virtual ~catcher() { /* noop */ }
@@ -238,21 +237,21 @@ class task_context<tag::intercept, RunnerT, InputT, ResultT>
     delete this;
   }
 
-  void final_exception_report(const std::exception_ptr& e)
+  void final_exception_report(const std::exception_ptr& e_)
   {
     m_stack->pop();
     if (m_exc_reporter)
-      m_exc_reporter(e);
+      m_exc_reporter(e_);
     delete this;
   }
 
-  void exception_report(const std::exception_ptr& e)
+  void exception_report(const std::exception_ptr& e_)
   {
     // first go through catch testers to see if any subtask would catch exception
     for (std::size_t i = 0; i < m_catchers.size(); ++i)
     {
       if (m_catchers[i]->try_catch(
-          e
+          e_
         , m_stack
         , std::bind(&this_type::result_report, this, std::placeholders::_1)
         , std::bind(&this_type::final_exception_report, this, std::placeholders::_1)))
@@ -263,7 +262,7 @@ class task_context<tag::intercept, RunnerT, InputT, ResultT>
     }
 
     // no catcher found, propagate exception upwards if possible
-    final_exception_report(e);
+    final_exception_report(e_);
   }
 
  private:

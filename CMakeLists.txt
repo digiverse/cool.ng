@@ -184,6 +184,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/sequential_impl.h
     include/cool/ng/impl/async/intercept_impl.h
     include/cool/ng/impl/async/conditional_impl.h
+    include/cool/ng/impl/async/repeat_impl.h
 )
 
 # ### ##################################################
@@ -321,6 +322,7 @@ set( API_UNIT_TESTS
   sequential_task
   intercept_task
   conditional_task
+  repeat_task
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
@@ -330,6 +332,7 @@ set( simple_task_SRCS tests/unit/task/simple_task.cpp )
 set( sequential_task_SRCS tests/unit/task/sequential_task.cpp )
 set( intercept_task_SRCS tests/unit/task/intercept_task.cpp )
 set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
+set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )

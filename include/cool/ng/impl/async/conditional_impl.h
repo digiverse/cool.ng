@@ -114,10 +114,10 @@ class task_context<tag::conditional, RunnerT, InputT, ResultT>
  private:
   inline task_context(
       context_stack* st_
-    , const std::shared_ptr<task>& task_
+    , const std::shared_ptr<task>& predicate_
     , const std::shared_ptr<task>& if_
     , const std::shared_ptr<task>& else_)
-        : base(st_, task_), m_predicate_result(true), m_if(if_), m_else(else_)
+        : base(st_, predicate_), m_predicate_result(true), m_if(if_), m_else(else_)
   { /* noop */ }
 
  public:
@@ -145,7 +145,7 @@ class task_context<tag::conditional, RunnerT, InputT, ResultT>
   }
   const char* name() const override
   {
-    return "context::sequential";
+    return "context::conditional";
   }
   bool will_execute() const override
   {
