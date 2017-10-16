@@ -50,7 +50,7 @@ using detail::exception::no_context;
 
 }
 /**
- * Tags marking the task types.
+ * Tags marking the task kinds.
  */
 struct tag
 {
@@ -84,7 +84,32 @@ struct tag
  * be se to either the value passed to the task's @c run() method
  * or to the value determined by the rules of the compound task, if executed as
  * a part of a compound task.
- * <br><br>@b Examples<br>
+ *
+ * <b>Member Types And Requirements</b>@n
+ *
+ * When created with a call to:
+ * @code
+ *   ...
+ *   auto task = factory::create(runner, callable);
+ *   ...
+ * @endcode
+ * the resulting task type of object @c task exposes the following public type
+ * declarations:
+ *
+ *  <table><tr><th>Member type <th>Declared as
+ *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>decltype(@em runner)::element_type</tt>
+ *    <tr><td><tt>tag</tt>             <td><tt>tag::simple</tt>
+ *    <tr><td><tt>input_type</tt>      <td>type of the second arg to @em callable, @c void if none
+ *    <tr><td><tt>result_type</tt>     <td>return type of @em callable
+ *  </table>
+ *
+ * The following requirements are imposed on the user @em callable:
+ *   - the first input parameter to @em callable must be of type <tt>const std::shared_ptr<decltype(@em runner)>&</tt>.
+ *   - the user @em callable may accept one or two input parameters
+ *
+ * <b>Examples</b>@n
+ *
  * The following code fragment will create a simple task which accepts a
  * parameter of type @c double and returns result of type @c bool:
  * @code
@@ -143,12 +168,45 @@ struct tag
  * in a sequential compound tasks must be chained, meaning that the type of the
  * result of the preceding subtask must match the type of the input of the next
  * subtask. During the execution the sequential task will, in the same order as 
- * they were provided at creation, schedule the subtask for execution, wait for
+ * they were provided at creation, schedule each subtask for execution, wait for
  * its execution to complete, and fetch its result and pass it as an input parameter
- * into the next subtask. Should any of its subtask throw an unhandled exception, the
- * execution  chain is terminated and the sequential subtask will propagate the exception
- * as own exception. 
- * <br><br>@b Examples<br>
+ * into the next subtask.
+ *
+ * <b>Member Types And Requirements</b>@n
+ *
+ * When created with a call to:
+ * @code
+ *   ...
+ *   auto task = factory::sequence(task_1, task_2, .... , task_n);
+ *   ...
+ * @endcode
+ * the resulting task type of object @c task exposes the following public type
+ * declarations:
+ *
+ *  <table><tr><th>Member type <th>Declared as
+ *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
+ *    <tr><td><tt>tag</tt>             <td><tt>tag::sequential</tt>
+ *    <tr><td><tt>input_type</tt>      <td>decltype(@em task_1)::input_type
+ *    <tr><td><tt>result_type</tt>     <td>decltype(@em task_n)::result_type
+ *  </table>
+ * Note that sequential task, as all compound tasks, is not associated with any
+ * runner and uses @c detail::default_runner_type as a filler type.
+ *
+ * The following requirements are imposed on the subtasks of the sequential task:
+ *  - sequential task must have at least two subtasks
+ *  - for every @em i in range 1&ndash;(<i>n</i>-1):
+ *    <tt>std::is_same<decltype(task_<i>i</i>)::result_type, decltype(task_<i>(i+1)</i>)::input_type>::value</tt> must yield @c true
+ *
+ * <b>Exception Handling</b>@n
+ *
+ * If any of he subtasks in sequence, when run, throws an uncontained exception,
+ * the sequential task will terminate the sequence and propagate this exception as
+ * its own exception. The subtasks that follow the subtasks that threw the
+ * uncontained exception will not be scheduled to run.
+ *
+ * <b> Examples</b>@n
+ *
  * The following code fragmet will create a @em sequential compound task consisting
  * of three simple sub-tasks:
  * @code
@@ -158,8 +216,8 @@ struct tag
  *   class my_runner_class_1 : public runner { };
  *   class my_runner_class_2 : public runner { };
  *     ...
- *   my_runner_class_1 r1;
- *   my_runner_class_2 r2;
+ *   auto r1 = std::make_shared<my_runner_class_1>();
+ *   auto r2 = std::make_shared<my_runner_class_2>();
  *
  *   auto t1 = factory::create(r1,
  *     [] (const std::shared_ptr<runner>& r, double input) -> int
@@ -212,20 +270,162 @@ struct tag
 //using detail::tag::parallel;
 /**
  * Conditional compound task.
+ *
+ * Conditional task is a compund that consists of a predicate task which returns
+ * a boolean value, a task which is scheduled for execution when the predicate
+ * task returns @c true, and an optionl third task whcih, if present, is
+ * scheduled for execution when the predicate task returns @c false. The following
+ * are the constrains imposed on subtasks that constitute the conditional compound
+ * task (see the next section for more formal expression of the requirements):
+ *  - the predicate task must return value of @c bool type
+ *  - the predicate task, the second, @em if task, and the optional third, @em else
+ *    task must all accept the input parameter of the same type (which can be
+ *    @c void if none is desired).
+ *  - if the @em else task is not present the result type of the @em if task
+ *    must be @c void
+ *  - if the @em else task is present the result types of both @em if and
+ *    @em else tasks must be the same
+ *
+ * When run, the conditional compund task first schedules the predicate subtask
+ * for execution. When the predicate task is complete and reports the result,
+ * it schedules the @em if subtask for execution, if the result of the predicate
+ * subtask was @c true. If it was @c false and the @em else subtask is present,
+ * it schedules the @em else subtask for execution. If the result of the predicate
+ * subtask was @c false and the @em else subtask is not present, no further
+ * action is taken and the conditional compound task terminates.
+ *
+ * <b>Member Types And Requirements</b>@n
+ *
+ * When created with a call to:
+ * @code
+ *   ...
+ *   auto task = factory::conditional(predicate, if_task);             // (1)
+ *   auto task = factory::conditional(predicate, if_task, else_task);  // (2)
+ *   ...
+ * @endcode
+ * the resulting task type of object @c task exposes the following public type
+ * declarations:
+ *
+ *  <table><tr><th>Member type         <th>Declared as
+ *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
+ *    <tr><td><tt>tag</tt>             <td><tt>tag::conditional</tt>
+ *    <tr><td><tt>input_type</tt>      <td><tt>decltype(@em predicate)::input_type</tt>
+ *    <tr><td><tt>result_type</tt>     <td>if (1): @c void<br>if (2): <tt>decltype(if_task)::result_type</tt>
+ *  </table>
+ * Note that sequential task, as all compound tasks, is not associated with any
+ * runner and uses @c detail::default_runner_type as a filler type.
+ *
+ * The following are the requirements for use (1):
+ *  - <tt>std::is_same<decltype(predicate)::result_type, bool>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(predicate)::input_type, decltype(if_task)::input_type>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(if_task)::result_type, void>::value</tt> must yield @c true
+ *
+ * The following are the requirements for use (2):
+ *  - <tt>std::is_same<decltype(predicate)::result_type, bool>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(predicate)::input_type, decltype(if_task)::input_type>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(if_task)::input_type, decltype(else_task)::input_type>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(if_task)::result_type, decltype(else_task)::result_type>::value</tt> must yield @c true
+ *
+ * <b>Exception Handling</b>@n
+ *
+ * If the predicate subtask, when run, throws an uncontained exception,
+ * the conditional task will terminate immediately and propagate this exception as
+ * its own exception. Neither @em if_task nor @em else_task, if present, will be
+ * scheduled for execution. If either @em if_task or @em else_task, when run,
+ * throw and exception, the conditional task will propagate this exception as its
+ * own exception.
+ *
+ * <b>Example</b>@n
+ *
+ * The following code fragment will create a conditional compound task consisting
+ * of the predicate task, the @em if_task and the @em else_task:
+ * @code
+ *   #include <cool/ng/async.h>
+ *   using cool::ng::async::runner;
+ *   using cool::ng::async::factory;
+ *   class my_runner_class_1 : public runner { };
+ *   class my_runner_class_2 : public runner { };
+ *     ...
+ *   auto r1 = std::make_shared<my_runner_class_1>();
+ *   auto r2 = std::make_shared<my_runner_class_2>();
+ *
+ *   auto predicate = factory::create(r1,
+ *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> bool
+ *     {
+ *       ...
+ *       return some_integer;
+ *     });
+ *   auto if_task = factory::create(r2,
+ *     [] (const std::shared_ptr<my_runner_class_2>& r, double input) -> int
+ *     {
+ *       ...
+ *       return my_class;
+ *     });
+ *   auto else_task = factory::create(r1,
+ *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> int
+ *     {
+ *       ...
+ *     });
+ *
+ *   auto task = factory::conditional(predicate, if_task, else_task);
+ *   task.run(3.14);
+ * @endcode
+ *
+ * From the functional perspective this would correspond to the following
+ * @c if statement (assuming methods instead of tasks):
+ * @code
+ *   int result;
+ *   if (predicate(3.14))
+ *     result = if_task(3.14);
+ *   else
+ *     result = else_task(3.14);
+ * @endcode
  */
   using conditional = detail::tag::conditional;
 //using detail::tag::oneof;
 //using detail::tag::loop;
 /**
- * Repeat compound task.
+ * Repeat compound task tag.
  *
  * The repeat task is a compound task that repeatedly schedules its subtask for
  * execution. The number of repetitions is specified as the parameter to the
- * @c run() call. The subtask will receive the repetition number as its input
- * parameter of type @c std::size_t and range <i>1&ndash;(num-repetitions-1)</i>.
- * The return value type of the repeat compount task corresponds to the return
- * value type of its subtask. The return value is the return value of its last
- * execution. The input type of the repeat compound task is @c std::size_t.
+ * @c run() call. When run, the repeat compound task will schedule its subtask for
+ * execution, wait for its completion and schedule it again, repeating this cycle
+ * the number of times specified to the @c run() call. The subtask will receive
+ * the iteration number as its input parameter, in range <i>0&ndash;(num_repetitions-1)</i>.
+ *
+ * <b>Member Types And Requirements</b>@n
+ *
+ * When created with a call to:
+ * @code
+ *   ...
+ *   auto task = factory::repeat(subtask);
+ *   ...
+ * @endcode
+ * the resulting task type of object @c task exposes the following public type
+ * declarations:
+ *
+ *  <table><tr><th>Member type         <th>Declared as
+ *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
+ *    <tr><td><tt>tag</tt>             <td><tt>tag::repeat</tt>
+ *    <tr><td><tt>input_type</tt>      <td><tt>std::size_t</tt>
+ *    <tr><td><tt>result_type</tt>     <td>@c void
+ *  </table>
+ * Note that repeat task, as all compound tasks, is not associated with any
+ * runner and uses @c detail::default_runner_type as a filler type.
+ *
+ * The following are the requirements for the @em subtask:
+ *  - <tt>std::is_same<decltype(subtask)::input_type, std::size_t>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(subtask)::result_type, void>::value</tt> must yield @c true
+ *
+ * <b>Exception Handling</b>@n
+ *
+ * If the subtask, when run at any iteration, throws an uncontained exception,
+ * the repeat task will terminate immediately and propagate this exception as
+ * its own exception. The @em subtask will not be scheduled to run again regardless
+ * of the state of the internal iteration counter.
  *
  * <br>@b Example<br>
  * @code
@@ -234,18 +434,18 @@ struct tag
  *   using cool::ng::async::factory;
  *   class my_runner_class : public runner { ... class content ...  };
  *     ...
- *   my_runner_class r;
+ *   auto r = std::make_shared<my_runner_class>();
  *
  *   auto t1 = factory::create(r,
  *     [] (const std::shared_ptr<my_runner_class>& r, std::size_t counter) -> void
  *     {
  *       ...
  *     });
- *  auto task = factory::repeat(t1);
- *    ...
- *  task.run(100);   // execute task t1 100 times
+ *   auto task = factory::repeat(t1);
+ *      ...
+ *   task.run(100);   // execute task t1 100 times
  * @endcode
- * <br>
+ *
  * Functionally, the repeat compound task corresponds to the <tt>for</tt>
  * loop in the synchronous programming. Thus the above example functionally
  * corresponds to the following synchronous pattern:
@@ -279,7 +479,7 @@ struct tag
  * compound task will @em catch the thrown exception and inspect the @em catch
  * tasks in the same order as they were specified to the @em factory::intercept
  * call. The first @em catch task that accepts the input parameter of the same
- * type, or of the base type of the thrown exception object will be scheduled
+ * type, or of the base type of the thrown exception object, will be scheduled
  * to run and will receive the thrown exception object as its input. If no
  * mathing @em catch task is found, the exception object is propagated out of
  * the intercept compound task.
@@ -288,13 +488,51 @@ struct tag
  * has a special meaning - it acts as a catch-all entity and will intercept
  * an exception object of any type.
  *
- * The @em catch tasks must meet the following requirements:
- *  - the must accept an input parameter - its type determines the type of the
- *    exception object they will intercept
- *  - they must return the result of the same type as the @em try task - if
- *    run, the returend result will be the result of the intercept compound task.
+ * <b>Member Types And Requirements</b>@n
  *
- * <br>@b Example<br>
+ * When created with a call to:
+ * @code
+ *   ...
+ *   auto task = factory::intercept(try, catch_1, catch_2, ... catch_n, catch_all);
+ *   ...
+ * @endcode
+ * the resulting task type of object @c task exposes the following public type
+ * declarations:
+ *
+ *  <table><tr><th>Member type         <th>Declared as
+ *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
+ *    <tr><td><tt>tag</tt>             <td><tt>tag::intercept</tt>
+ *    <tr><td><tt>input_type</tt>      <td><tt>decltype(@em try)::input_type</tt>
+ *    <tr><td><tt>result_type</tt>     <td><tt>decltype(@em try)::result_type</tt>
+ *  </table>
+ * Note that intercept task, as all compound tasks, is not associated with any
+ * runner and uses @c detail::default_runner_type as a filler type.
+ *
+ * The following are the requirements for the subtasks of the intercept task:
+ *  - for each @em i in range 1&ndash;<i>n</i>: <tt>std::is_same<decltype(try)::result_type, std::is_same<decltype(catch_<i>i</i>)::result_type>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(try)::result_type, std::is_same<decltype(catch_all)::result_type>::value</tt> must yield @c true
+ *  - for each @em i in range 1&ndash;<i>n</i>: <tt>std::is_same<decltype(catch_<i>i</i>)::input_type, void>::value</tt> must yield @c false
+ *  - <tt>std::is_same<decltype(catch_all)::input_type, std::exception_ptr>::value</tt> must yield @c true
+ *
+ * <b>Exception Handling</b>@n
+ *
+ * If the @em try subtask, when run, throws an uncontained exception,
+ * the intercept task will examine the @em catch_i subtasks in the creation order
+ * to find one that would handle the exception. If such @em catch subtask is found,
+ * the intercept will schedule it to run and will pass the exception object as an
+ * input parameter. The result value of this subtask, if any, will be returned as
+ * the result of the intercept compound task. If no handling @em catch subtask
+ * is found, the intercept compund task will propagate the exception as its
+ * own exception and terminate immediatelly. No @em catch subtasks will be run
+ * in this case.
+ *
+ * If the handling subtask, when run, throws an uncontained exception, the intercept
+ * task will propagate the exception as its own and terminate. No result value
+ * is produced.
+ *
+ * <b>Example</b>@n
+ *
  * @code
  *   #include <cool/ng/async.h>
  *   using cool::ng::async::runner;
@@ -302,8 +540,8 @@ struct tag
  *   class my_runner_class_1 : public runner {  ... class content ... } };
  *   class my_runner_class_2 : public runner {  ... class content ... } };
  *     ...
- *   my_runner_class_1 r1;
- *   my_runner_class_2 r2;
+ *   auto r1 = std::make_shared<my_runner_class_1>();
+ *   auto r2 = std::make_shared<my_runner_class_2>();
  *
  *   auto t1 = factory::create(r1,
  *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> int
@@ -389,6 +627,18 @@ struct factory;
  * not picked up by the execution context of the compund task it is irrevocably
  * lost.
  *
+ * Formally, each tasks exposes the following public member types:
+ *   - @c this_type, the type of this task type
+ *   - @c runner_type, the type of the @ref runner, associated with this task type
+ *   - @c tag, the @ref tag type associated with this task type - the tag type
+ *      determines the kind of this task (e.g. simple, sequential, loop, ...)
+ *   - @c input_type, the type of the input for this task type. Input type
+ *     @c void denotes no input.
+ *   - @c result_type, the type of the result value of this task type. Result type
+ *     @c void denotes that this task type has no result value.
+ *   - @c impl_type, the type that will store the static information about this
+ *     task type.
+ *
  * <b>Simple Tasks</b>@n
  * Simple tasks are the cornerstone of asynchronous execution paradigm and the only
  * type of tasks that contain the user code. The user code is provided in a form
@@ -401,6 +651,8 @@ struct factory;
  *
  * <b>Composed Tasks</b>@n
  *
+ * Composed tasks are tasks that combine one or more tasks into a single task. The
+ * composed tasks are one of the following:
  *  - @em sequential
  *  - @em parallel
  *  - @em conditional
@@ -408,6 +660,8 @@ struct factory;
  *  - @em loop
  *  - @em repeat
  *  - @em intercept
+ *
+ * See @ref tag for more details on ech kind of tasks.
  */
 
 template <typename TagT, typename RunnerT, typename InputT, typename ResultT, typename... TaskT>

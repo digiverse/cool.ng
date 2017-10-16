@@ -28,6 +28,7 @@
 #include <exception>
 #include <atomic>
 #include <memory>
+#include <string>
 
 #include "impl/platform.h"
 
@@ -36,7 +37,7 @@ namespace cool { namespace ng {
 /**
  * This namespace contains several reusable base clases.
  */
-namespace bases {
+namespace util {
 
 /**
  * Base class for identified instances.
@@ -202,6 +203,28 @@ class named : public identified
   std::string m_name;
   std::string m_prefix;
 };
+
+template <typename T>
+class self_aware
+{
+ public:
+
+  void self(const std::shared_ptr<T>& s_) { m_self = s_;   }
+  void self(const std::weak_ptr<T>& s_)   { m_self = s_;   }
+  const std::weak_ptr<T>& self() const    { return m_self; }
+
+ private:
+  std::weak_ptr<T> m_self;
+};
+
+template <typename T, typename... Args>
+std::shared_ptr<T> shared_new(Args&&... args_)
+{
+  auto ret = std::make_shared<T>(std::forward(args_)...);
+  ret->self(ret);
+  return ret;
+}
+
 
 } } } // namespace
 

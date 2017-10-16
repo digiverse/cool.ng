@@ -33,7 +33,7 @@
 
 namespace cool { namespace ng { namespace async { namespace impl {
 
-class executor : public bases::named
+class executor : public ::cool::ng::util::named
 {
  public:
   executor(RunPolicy policy_);

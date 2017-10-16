@@ -21,8 +21,6 @@
  * IN THE SOFTWARE.
  */
 
-#include <sstream>
-
 #if defined(WIN32_TARGET)
 #define WIN32_COOL_BUILD
 #endif
@@ -31,7 +29,7 @@
 
 namespace cool { namespace ng {
 
-namespace bases
+namespace util
 {
 
 
@@ -54,10 +52,7 @@ named::named(const std::string& prefix)
     : identified()
     , m_prefix(prefix)
 {
-  std::stringstream ss;
-  ss << prefix << "-" << id();
-
-  m_name = ss.str();
+  m_name = prefix + "-" + std::to_string(id());
 }
 
 named::named(named&& original)
