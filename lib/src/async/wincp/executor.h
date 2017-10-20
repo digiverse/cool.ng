@@ -75,7 +75,7 @@ private:
   CRITICAL_SECTION m_cs;
 };
 
-class executor : public bases::named
+class executor : public ::cool::ng::util::named
 {
   using queue_type = HANDLE;
 

@@ -20,14 +20,47 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+
+ #if !defined(__COOL_INCLUDE_TASK_IMPL_FILES__)
+#error "This header file cannot be directly included in the application code."
+#endif
+
 // ---- -----------------------------------------------------------------------
 // ----
 // ---- Runtime task context
 // ----
 // ---- -----------------------------------------------------------------------
-template <>
-class task_context<tag::repeat, default_runner_type, std::size_t, void>
-: public task_context_base
+
+namespace {
+template <typename R> class reporter
+{
+ public:
+  static void report(const context::result_reporter& r_, const boost::any& res_)
+  {
+    if (res_.empty())
+    {
+      boost::any aux = R();
+      r_(aux);
+    }
+    else
+      r_(res_);
+  }
+};
+
+template <> class reporter<void>
+{
+ public:
+  static void report(const context::result_reporter& r_, const boost::any& res_)
+  {
+    r_(res_);
+  }
+};
+
+}
+
+template <typename ResultT>
+class task_context<tag::repeat, default_runner_type, std::size_t, ResultT>
+  : public task_context_base
 {
  public:
   using this_type  = task_context;
@@ -35,10 +68,9 @@ class task_context<tag::repeat, default_runner_type, std::size_t, void>
 
  private:
   inline task_context(
-                      context_stack* st_
-                      , const std::shared_ptr<task>& task_
-                      , std::size_t limit_)
-  : base(st_, task_), m_limit(limit_), m_counter(0)
+      context_stack* st_
+    , const std::shared_ptr<task>& task_
+    , std::size_t limit_) : base(st_, task_), m_limit(limit_), m_counter(0)
   { /* noop */ }
 
  public:
@@ -83,7 +115,7 @@ class task_context<tag::repeat, default_runner_type, std::size_t, void>
     // done
     m_stack->pop();
     if (m_res_reporter)
-      m_res_reporter(res_);
+      reporter<ResultT>::report(m_res_reporter, res_);
     delete this;
   }
 
@@ -114,14 +146,14 @@ private:
 // ----
 // ---- -----------------------------------------------------------------------
 
-template <>
-class taskinfo<tag::repeat, default_runner_type, std::size_t, void> : public detail::task
+template <typename ResultT>
+class taskinfo<tag::repeat, default_runner_type, std::size_t, ResultT> : public detail::task
 {
  public:
   using tag           = tag::repeat;
   using this_type     = taskinfo;
   using runner_type   = default_runner_type;
-  using result_type   = void;
+  using result_type   = ResultT;
   using input_type    = std::size_t;
   using context_type  = task_context<tag, runner_type, input_type, result_type>;
 

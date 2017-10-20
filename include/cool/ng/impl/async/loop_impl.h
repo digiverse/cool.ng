@@ -32,22 +32,25 @@
 // ---- -----------------------------------------------------------------------
 
 template <typename InputT, typename ResultT>
-class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public detail::task
+class taskinfo<tag::loop, default_runner_type, InputT, ResultT> : public detail::task
 {
  public:
-  using tag           = tag::sequential;
+  using tag           = tag::loop;
   using this_type     = taskinfo;
   using runner_type   = default_runner_type;
   using result_type   = ResultT;
   using input_type    = InputT;
   using context_type  = task_context<tag, runner_type, input_type, result_type>;
 
-  using subtasks_vector_type = std::vector<std::shared_ptr<detail::task>>;
-
  public:
-  template <typename... TaskT>
-  explicit inline taskinfo(const std::shared_ptr<TaskT>&... tasks_)
-      : m_subtasks( { tasks_ ... } )
+  template <typename PredicateT, typename BodyT>
+  explicit inline taskinfo(const std::shared_ptr<PredicateT>& p_, const std::shared_ptr<BodyT>& body_)
+      : m_predicate(p_), m_body(body_)
+  { /* noop */ }
+  
+  template <typename PredicateT>
+  explicit inline taskinfo(const std::shared_ptr<PredicateT>& p_)
+      : m_predicate(p_)
   { /* noop */ }
 
   template <typename T = InputT>
@@ -80,21 +83,31 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public d
 
   inline std::weak_ptr<runner> get_runner() const override
   {
-    return m_subtasks[0]->get_runner();
+    return m_predicate->get_runner();
   }
 
   inline std::size_t get_subtask_count() const override
   {
-    return m_subtasks.size();
+    return 0;
   }
 
   inline std::shared_ptr<task> get_subtask(std::size_t index) const override
   {
-    return m_subtasks[index];
+    switch (index)
+    {
+      case 0:
+        return m_predicate;
+      case 1:
+        return m_body;
+      default:
+        break;
+    }
+    return nullptr;
   }
 
  private:
-  subtasks_vector_type m_subtasks;
+  std::shared_ptr<task> m_predicate;
+  std::shared_ptr<task> m_body;
 };
 
 // ---- -----------------------------------------------------------------------
@@ -102,8 +115,8 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public d
 // ---- Runtime task context
 // ----
 // ---- -----------------------------------------------------------------------
-template <typename RunnerT, typename InputT, typename ResultT>
-class task_context<tag::sequential, RunnerT, InputT, ResultT>
+template <typename InputT, typename ResultT>
+class task_context<tag::loop, default_runner_type, InputT, ResultT>
   : public task_context_base
 {
  public:
@@ -111,8 +124,10 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
   using base       = task_context_base;
 
  private:
-  inline task_context(context_stack* st_, const std::shared_ptr<task>& t_)
-    : base(st_, t_), m_next_task(0), m_num_tasks(t_->get_subtask_count())
+  inline task_context(
+      context_stack* st_
+    , const std::shared_ptr<task>& self_)
+        : base(st_, self_), m_predicate_result(true)
   { /* noop */ }
 
  public:
@@ -125,7 +140,7 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
     stack_->push(aux);
 
     aux->set_input(input_);
-    aux->prepare_next_task();
+    aux->prepare_predicate_task();
 
     return aux;
   }
@@ -137,27 +152,33 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
   }
   const char* name() const override
   {
-    return "context::sequential";
+    return "context::loop";
   }
   bool will_execute() const override
   {
-    return m_next_task < m_num_tasks;
+    return true;
   }
 
-  void result_report(const boost::any& res_)
+  void predicate_result_report(const boost::any& res_)
   {
-    if (m_next_task == m_num_tasks)
+    m_predicate_result = boost::any_cast<bool>(res_);
+    if (!m_predicate_result)   // predicate evaluated to false, terminate loop
     {
       m_stack->pop();
       if (m_res_reporter)
-        m_res_reporter(res_);
+        m_res_reporter(m_input);
       delete this;
+      return;
     }
-    else
-    {
-      m_input = res_;
-      prepare_next_task();
-    }
+
+    if (!prepare_body_task())  // if no body rerun predicate task
+      prepare_predicate_task();
+  }
+
+  void body_result_report(const boost::any& r_)
+  {
+    set_input(r_);
+    prepare_predicate_task();
   }
 
   void exception_report(const std::exception_ptr& e)
@@ -168,22 +189,28 @@ class task_context<tag::sequential, RunnerT, InputT, ResultT>
     delete this;
   }
 
-  bool prepare_next_task()
+  bool prepare_body_task()
   {
-    if (m_next_task < m_num_tasks)
-    {
-      auto t_ = m_task->get_subtask(m_next_task);
-      auto ctx = t_->create_context(m_stack, t_, m_input);
-      ctx->set_res_reporter(std::bind(&this_type::result_report, this, std::placeholders::_1));
-      ctx->set_exc_reporter(std::bind(&this_type::exception_report, this, std::placeholders::_1));
-      m_next_task++;
-      return true;
-    }
-    return false;
+    auto t_ = m_task->get_subtask(1);
+    if (!t_)
+      return false;
+
+    auto ctx = t_->create_context(m_stack, t_, m_input);
+    ctx->set_res_reporter(std::bind(&this_type::body_result_report, this, std::placeholders::_1));
+    ctx->set_exc_reporter(std::bind(&this_type::exception_report, this, std::placeholders::_1));
+    return true;
+  }
+
+  void prepare_predicate_task()
+  {
+    auto t_ = m_task->get_subtask(0);
+    auto ctx = t_->create_context(m_stack, t_, m_input);
+    ctx->set_res_reporter(std::bind(&this_type::predicate_result_report, this, std::placeholders::_1));
+    ctx->set_exc_reporter(std::bind(&this_type::exception_report, this, std::placeholders::_1));
   }
 
  private:
-  std::size_t       m_next_task;
-  const std::size_t m_num_tasks;
+  std::shared_ptr<task> m_predicate;
+  bool                  m_predicate_result;
 };
 

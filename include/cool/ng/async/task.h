@@ -354,13 +354,11 @@ struct tag
  *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> bool
  *     {
  *       ...
- *       return some_integer;
  *     });
  *   auto if_task = factory::create(r2,
  *     [] (const std::shared_ptr<my_runner_class_2>& r, double input) -> int
  *     {
  *       ...
- *       return my_class;
  *     });
  *   auto else_task = factory::create(r1,
  *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> int
@@ -383,8 +381,108 @@ struct tag
  * @endcode
  */
   using conditional = detail::tag::conditional;
-//using detail::tag::oneof;
-//using detail::tag::loop;
+
+/**
+ * Loop compound task tag.
+ *
+ * The loop task is a compound task that consits of the predicate task and an
+ * optional body task and iterativelly schedules them for the execution
+ * until the predicate task returns @false. When run, the loop task will first
+ * schedule the predicate task, wait for its completion and evaluate the result
+ * of the predicate task. If @c true, and if the body task is present,
+ * it will schedule the body task for execution, wait for its completion and
+ * schedule the predicate task again, using the result of the body task as an
+ * input to the predicate task. If the predicate task returs @c true but the body
+ * task is not present, it will immediatelly schedule the predicate task again.
+ * The loop will terminate if the predicate task return @c false and, if @em
+ * body_task was present, return the return value of its last iteration as
+ * the return value of the loop task.
+ *
+ * If the body task is present and returns a value, and if the body task is
+ * never run (that is if the predicate returns @c false the first time), the
+ * return value of the loop compound task is equal to its input. Otherwise the
+ * return value of the loop compound task is equal to the last return value of
+ * the body task.
+ *
+ * <b>Member Types And Requirements</b>@n
+ *
+ * When created with a call to:
+ * @code
+ *   ...
+ *   auto task = factory::loop(predicate);             // (1)
+ *   auto task = factory::loop(predicate, body_task);  // (2)
+ *   ...
+ * @endcode
+ * the resulting task type of object @c task exposes the following public type
+ * declarations:
+ *
+ *  <table><tr><th>Member type         <th>Declared as
+ *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
+ *    <tr><td><tt>tag</tt>             <td><tt>tag::loop</tt>
+ *    <tr><td><tt>input_type</tt>      <td>if (1): @c void<br>if (2):<tt>decltype(@em predicate)::input_type</tt>
+ *    <tr><td><tt>result_type</tt>     <td>if (1): @c void<br>if (2):<tt>decltype(@em body_task)::result_type</tt>
+ *  </table>
+ * Note that loop task, as all compound tasks, is not associated with any
+ * runner and uses @c detail::default_runner_type as a filler type.
+ *
+ * The following are the requirements for use (1):
+ *  - <tt>std::is_same<decltype(predicate)::result_type, bool>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(predicate)::input_type, void>::value</tt> must yield @c true
+ *
+ * The following are the requirements for use (2):
+ *  - <tt>std::is_same<decltype(predicate)::result_type, bool>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(predicate)::input_type, decltype(body_task)::input_type>::value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(predicate)::input_type, decltype(body_task)::result_type>::value</tt> must yield @c true
+ *
+ * <b>Exception Handling</b>@n
+ *
+ * If the predicate subtask, when run, throws an uncontained exception,
+ * the loop task will terminate immediately and propagate this exception as
+ * its own exception. The @em body_task  will not be
+ * scheduled for execution. If the @em body_task subtask, when run,
+ * throws and exception, the loop task will terminate and propagate
+ * this exception as its own exception.
+ *
+ * <b>Example</b>@n
+ *
+ * The following code fragment will create a loop compound task consisting
+ * of the predicate subtask and the @em body subttask:
+ * @code
+ *   #include <cool/ng/async.h>
+ *   using cool::ng::async::runner;
+ *   using cool::ng::async::factory;
+ *   class my_runner_class_1 : public runner { };
+ *   class my_runner_class_2 : public runner { };
+ *     ...
+ *   auto r1 = std::make_shared<my_runner_class_1>();
+ *   auto r2 = std::make_shared<my_runner_class_2>();
+ *
+ *   auto predicate = factory::create(r1,
+ *     [] (const std::shared_ptr<my_runner_class_1>& r, double input) -> bool
+ *     {
+ *       ...
+ *     });
+ *   auto body = factory::create(r2,
+ *     [] (const std::shared_ptr<my_runner_class_2>& r, double input) -> double
+ *     {
+ *       ...
+ *     });
+ *
+ *   auto task = factory::loop(predicate, body;
+ *   task.run(3.14);
+ * @endcode
+ *
+ * From the functional perspective this would correspond to the following
+ * @c if statement (assuming methods instead of tasks):
+ * @code
+ *   double result = 3.14;
+ *   while (predicate(result))
+ *     result = body(result);
+ * @endcode
+ */
+  using loop = detail::tag::loop;
+
 /**
  * Repeat compound task tag.
  *
@@ -394,6 +492,9 @@ struct tag
  * execution, wait for its completion and schedule it again, repeating this cycle
  * the number of times specified to the @c run() call. The subtask will receive
  * the iteration number as its input parameter, in range <i>0&ndash;(num_repetitions-1)</i>.
+ * The return value, if any, of the repeat compound task is the last return
+ * value of its subtask. If the subtask was never run, the return value is a
+ * default constructed instance of the return value type.
  *
  * <b>Member Types And Requirements</b>@n
  *
@@ -411,14 +512,14 @@ struct tag
  *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::repeat</tt>
  *    <tr><td><tt>input_type</tt>      <td><tt>std::size_t</tt>
- *    <tr><td><tt>result_type</tt>     <td>@c void
+ *    <tr><td><tt>result_type</tt>     <td><tt>decltype(@em subtask)::result_type)</tt>
  *  </table>
  * Note that repeat task, as all compound tasks, is not associated with any
  * runner and uses @c detail::default_runner_type as a filler type.
  *
  * The following are the requirements for the @em subtask:
  *  - <tt>std::is_same<decltype(subtask)::input_type, std::size_t>::value</tt> must yield @c true
- *  - <tt>std::is_same<decltype(subtask)::result_type, void>::value</tt> must yield @c true
+ *  - <tt>decltype(subtask)::result_type</tt> most be default constructible or @c void
  *
  * <b>Exception Handling</b>@n
  *
@@ -427,7 +528,8 @@ struct tag
  * its own exception. The @em subtask will not be scheduled to run again regardless
  * of the state of the internal iteration counter.
  *
- * <br>@b Example<br>
+ * <b>Example</b>@n
+ *
  * @code
  *   #include <cool/ng/async.h>
  *   using cool::ng::async::runner;
@@ -656,7 +758,6 @@ struct factory;
  *  - @em sequential
  *  - @em parallel
  *  - @em conditional
- *  - @em oneof
  *  - @em loop
  *  - @em repeat
  *  - @em intercept
@@ -962,21 +1063,65 @@ struct factory {
       tag::repeat
     , detail::default_runner_type
     , std::size_t
-    , void
+    , typename TaskT::result_type
   > repeat( const TaskT t_)
   {
-    using result_type = void;
+    using result_type = typename TaskT::result_type;
     using input_type = std::size_t;
     using task_type = task<tag::repeat, detail::default_runner_type, input_type, result_type>;
 
     static_assert(
         std::is_same<typename TaskT::input_type, std::size_t>::value
       , "The task to be repeated must have input_type std::size_t.");
-    static_assert(
-        std::is_same<typename TaskT::result_type, void>::value
-      , "The task to be repeated must have result_type void.");
     return task_type(std::make_shared<typename task_type::impl_type>(t_.m_impl));
   }
+
+  template <typename PredicateT, typename BodyT>
+  inline static task<
+      tag::loop
+    , detail::default_runner_type
+    , typename PredicateT::input_type
+    , typename BodyT::result_type
+  > loop(const PredicateT& p_, const BodyT& body_)
+  {
+    static_assert(
+        std::is_same<typename PredicateT::result_type, bool>::value
+      , "The predicate task must return bool value");
+    static_assert(
+        std::is_same<typename PredicateT::input_type, typename BodyT::input_type>::value
+      , "The predicate and body tasks must accept parameter of the same type.");
+    static_assert(
+        detail::traits::is_same<typename PredicateT::input_type, typename BodyT::result_type>::value
+      , "The return value type of body task must match input parameter of predicate.");
+    using result_type = typename BodyT::result_type;
+    using input_type = typename PredicateT::input_type;
+    using task_type = task<tag::loop, detail::default_runner_type, input_type, result_type>;
+
+    return task_type(std::make_shared<typename task_type::impl_type>(p_.m_impl, body_.m_impl));
+  }
+
+  template <typename PredicateT>
+  inline static task<
+      tag::loop
+    , detail::default_runner_type
+    , void
+    , void
+  > loop(const PredicateT& p_)
+  {
+    static_assert(
+        std::is_same<typename PredicateT::result_type, bool>::value
+      , "The predicate task must return bool value");
+    static_assert(
+        std::is_same<typename PredicateT::input_type, void>::value
+      , "The predicate cannot have input parameter.");
+
+    using result_type = void;
+    using input_type = void;
+    using task_type = task<tag::loop, detail::default_runner_type, input_type, result_type>;
+
+    return task_type(std::make_shared<typename task_type::impl_type>(p_.m_impl));
+  }
+
 };
 
 

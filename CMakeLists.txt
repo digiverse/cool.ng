@@ -95,7 +95,8 @@ if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
   set( BUILD_TARGET OSX_TARGET)
   set( OSX true)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
-  add_definitions("-DCOOL_ASYNC_PLATFORM_GCD")
+  add_definitions( "-DOS_OBJECT_USE_OBJC=0" )
+  add_definitions( "-DCOOL_ASYNC_PLATFORM_GCD" )
 
 elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
 
@@ -185,6 +186,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/intercept_impl.h
     include/cool/ng/impl/async/conditional_impl.h
     include/cool/ng/impl/async/repeat_impl.h
+    include/cool/ng/impl/async/loop_impl.h
 )
 
 # ### ##################################################
@@ -323,6 +325,7 @@ set( API_UNIT_TESTS
   intercept_task
   conditional_task
   repeat_task
+  loop_task
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
@@ -333,6 +336,7 @@ set( sequential_task_SRCS tests/unit/task/sequential_task.cpp )
 set( intercept_task_SRCS tests/unit/task/intercept_task.cpp )
 set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
 set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
+set( loop_task_SRCS tests/unit/task/loop_task.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )

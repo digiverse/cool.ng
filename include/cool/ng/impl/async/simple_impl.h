@@ -27,6 +27,10 @@
 // ----
 // ---- -----------------------------------------------------------------------
 
+#if !defined(__COOL_INCLUDE_TASK_IMPL_FILES__)
+#error "This header file cannot be directly included in the application code."
+#endif
+
 template <typename RunnerT, typename InputT, typename ResultT>
 class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
 {

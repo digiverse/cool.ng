@@ -277,12 +277,18 @@ public:
 private:
   std::stack<context*> m_stack;
 };
-  
+
+#define __COOL_INCLUDE_TASK_IMPL_FILES__
+
 #include "simple_impl.h"
 #include "sequential_impl.h"
 #include "intercept_impl.h"
 #include "conditional_impl.h"
 #include "repeat_impl.h"
+#include "loop_impl.h"
+
+#undef __COOL_INCLUDE_TASK_IMPL_FILES__
+
 
 } } } }
 
