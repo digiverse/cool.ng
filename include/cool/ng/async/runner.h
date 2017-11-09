@@ -35,7 +35,7 @@ namespace cool { namespace ng { namespace async {
 namespace impl { class executor; }
 
 /**
- * Task scheduling policies for @ref runner.
+ * Task scheduling policies for @ref cool::ng::async::runner "runner".
  *
  * A @ref runner can use either sequential or cuncurrent task scheduling policy.
  * The sequential policy instructs the runner to schedule the @ref task "tasks"
@@ -93,10 +93,6 @@ enum class RunPolicy {
  */
 class runner
 {
- public:
-  using ptr = std::shared_ptr<runner>;
-  using weak_ptr = std::weak_ptr<runner>;
-
  public:
   runner(runner&&) = delete;
   runner& operator=(runner&&) = delete;

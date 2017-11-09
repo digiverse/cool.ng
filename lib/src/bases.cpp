@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#if defined(WIN32_TARGET)
-#define WIN32_COOL_BUILD
+#if defined(WINDOWS_TARGET)
+# include <Windows.h>
 #endif
 
 #include "cool/ng/bases.h"

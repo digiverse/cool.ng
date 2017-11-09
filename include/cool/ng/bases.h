@@ -25,10 +25,10 @@
 #define      cool_ng_6c2a783d_18a0_4a18_abe5_908c1f127780
 
 #include <functional>
-#include <exception>
-#include <atomic>
 #include <memory>
 #include <string>
+#include <atomic>
+#include <utility>
 
 #include "impl/platform.h"
 
@@ -208,22 +208,28 @@ template <typename T>
 class self_aware
 {
  public:
+   using ptr      = std::shared_ptr<T>;
+   using weak_ptr = std::weak_ptr<T>;
 
-  void self(const std::shared_ptr<T>& s_) { m_self = s_;   }
-  void self(const std::weak_ptr<T>& s_)   { m_self = s_;   }
-  const std::weak_ptr<T>& self() const    { return m_self; }
+ public:
+  void self(const ptr& s_) { m_self = s_;   }
+  void self(const weak_ptr& s_)   { m_self = s_;   }
+  const weak_ptr& self() const    { return m_self; }
 
  private:
-  std::weak_ptr<T> m_self;
+  weak_ptr m_self;
 };
 
 template <typename T, typename... Args>
 std::shared_ptr<T> shared_new(Args&&... args_)
 {
-  auto ret = std::make_shared<T>(std::forward(args_)...);
+  std::shared_ptr<T> ret(new T(std::forward<Args>(args_)...));
   ret->self(ret);
   return ret;
 }
+
+#define befriend_shared_new \
+    template <typename _C, typename... _Args> friend std::shared_ptr<_C> cool::ng::util::shared_new(_Args&&...)
 
 
 } } } // namespace

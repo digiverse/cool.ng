@@ -52,51 +52,6 @@ namespace tag
 
 } // namespace
 
-// ---- exceptions used internally
-// exceptions generated internaly by async runtime
-namespace exception {
-
-class internal : public cool::ng::exception::runtime_exception
-{
- public:
-  internal(const std::string& msg_) : runtime_exception(msg_)
-  { /* noop */ }
-};
-
-class bad_runner_cast : public internal
-{
- public:
-  bad_runner_cast()
-  : internal("dynamic_pointer_cast to RunnerT type unexpectedly failed")
-  { /* noop */ }
-};
-
-class runner_not_available : public internal
-{
- public:
-  runner_not_available()
-  : internal("the destination runner not available")
-  { /* noop */ }
-};
-
-class no_context : public internal
-{
- public:
-  no_context()
-  : internal("the task context is not available")
-  { /* noop */ }
-};
-
-class nothing_to_run : public internal
-{
- public:
-  nothing_to_run()
-  : internal("task will not run owing to predicate resolution")
-  { /* noop */ }
-};
-  
-} // namspace exception
-
 using default_runner_type = cool::ng::async::runner;
 
 // ---- ----

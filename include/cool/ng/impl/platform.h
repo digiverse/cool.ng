@@ -21,28 +21,12 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(cool_ng_f36a3cb0_dda1_4ce1_b25a_912f5951523a)
-#define      cool_ng_f36a3cb0_dda1_4ce1_b25a_912f5951523a
+#if !defined(cool_ng_f36a3cb0_dda1_4de1_b25a_912f5951523a)
+#define      cool_ng_f36a3cb0_dda1_4de1_b25a_912f5951523a
 
-#if !defined(COOL_NG_WINDOWS_TARGET)
-#  if defined(_MSC_VER)
-#    define COOL_NG_WINDOWS_TARGET
-#  endif
-#endif
 
-#if !defined(COOL_NG_OSX_TARGET)
-#  if defined(__APPLE__)
-#    define COOL_NG_OSX_TARGET
-#  endif
-#endif
 
-#if !defined(COOL_NG_LINUX_TARGET)
-#  if defined(__linux)
-#    define COOL_NG_LINUX_TARGET
-#  endif
-#endif
-
-#if defined(COOL_NG_WINDOWS_TARGET) && !defined(COOL_NG_STATIC_LIBRARY)
+#if defined(WINDOWS_TARGET) && !defined(COOL_NG_STATIC_LIBRARY)
 #  if defined(COOL_NG_BUILD)
 #    define dlldecl __declspec( dllexport )
 #  else
@@ -51,5 +35,28 @@
 #else
 #  define dlldecl
 #endif
+
+#if defined(WINDOWS_TARGET)
+
+// MS compilers don't allow explicit virtual conversion operators!!!
+#define EXPLICIT_
+// Visual Studio 2013 does not support c++11 specifiers noexcept
+// and constexpr
+# if _MSC_VER == 1800
+#  define NOEXCEPT_
+#  define CONSTEXPR_
+# else
+#  define NOEXCEPT_ noexcept
+#  define CONSTEXPR_ constexpr
+# endif
+
+#else
+
+#define EXPLICIT_  explicit
+#define NOEXCEPT_  noexcept
+#define CONSTEXPR_ constexpr
+
+#endif
+
 
 #endif

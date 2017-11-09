@@ -26,16 +26,22 @@
 
 
 #include <string>
+#include <vector>
 #include <exception>
 #include <stdexcept>
-
+#include <system_error>
+#include <cstdint>
 
 #include "impl/platform.h"
 
 namespace cool { namespace ng {
 
 /**
- * This namespace defines exception objects used by the rest of Cool.NG library.
+ * This namespace defines exception generic objects that help the applications
+ * in building their own exception hierarcy.
+ *
+ * TODO:
+ * used by the rest of Cool.NG library.
  * They are designed as a general purpose classes and the applications are
  * free to use them for own purposes. It is recommended that the semantics of
  * their use reflect the intended semantics as described in the associated
@@ -44,21 +50,74 @@ namespace cool { namespace ng {
 
 namespace exception {
 
+const std::size_t default_bt_depth = 40;
+
+using stack_address = void*;
+const stack_address null_address = nullptr;
+
 /**
- * Base class for all exceptions thrown by the Cool.NG library objects.
+ *
  */
-class base : public std::exception
+class backtrace
 {
  public:
-  dlldecl base(const std::string& msg) : m_what(msg) { /* noop */ }
-#if defined(COOL_NG_WINDOWS_TARGET)
-  dlldecl virtual const char* what() const override { return m_what.c_str(); }
-#else
-  dlldecl virtual const char* what() const noexcept override { return m_what.c_str(); }
-#endif
+  dlldecl const std::vector<stack_address>& traces() const NOEXCEPT_;
+  dlldecl std::vector<std::string> symbols() const NOEXCEPT_;
+
+ protected:
+  dlldecl backtrace(std::size_t depth_) NOEXCEPT_;
+
+ private:
+  std::vector<stack_address> m_traces;
+};
+
+/**
+ * Exception class capturing platform dependent error codes at the moment of
+ * its construction and presenting them in the C++ standard manner.
+ */
+class system_error : public std::exception
+                   , public backtrace
+{
+ public:
+  dlldecl system_error(std::size_t depth_ = default_bt_depth);
+  dlldecl virtual const char* what() const NOEXCEPT_ override;
+};
+
+/**
+ * Base class for all exceptions thrown by the Cool.NG library.
+ */
+class runtime_fault : public std::exception
+                    , public backtrace
+{
+ public:
+  runtime_fault(const std::string& msg, std::size_t depth_ = default_bt_depth)
+    : backtrace(depth_), m_what(msg)
+  { /* noop */ }
+
+  virtual const char* what() const NOEXCEPT_ override
+  { return m_what.c_str(); }
+
  private:
   std::string m_what;
 };
+
+
+/**
+ * Base class for all exceptions thrown by the Cool.NG library.
+ */
+class cool_base : public std::exception
+                , public backtrace
+{
+ public:
+  dlldecl cool_base(const std::string& msg, std::size_t depth_ = default_bt_depth);
+  virtual const char* what() const NOEXCEPT_ override
+  { return m_what.c_str(); }
+
+ private:
+  std::string m_what;
+};
+
+
 /**
  * An exception class representing a logical fault within the program
  *
@@ -67,22 +126,61 @@ class base : public std::exception
  * program. Examples of such faults are insertion of new elements into
  * containers that are already filled to their capacity, an array index that
  * is out of the array range, entering the method on the object that is in
- * a wrong state to perform it, and similar.
+ * a wrong state to perform it, and similar. In general these kind of
+ * errors represent a fault in the code that uses the library.
  */
-class logic_fault : public base
+class cool_logic_fault : public cool_base
 {
  public:
-  dlldecl logic_fault(const std::string& msg) : base(msg) { /* noop */ }
+  cool_logic_fault(const std::string& msg) : cool_base(msg) { /* noop */ }
 };
-/**
- * Denotes a condition in which an object, or a system, has been asked to perform
- * a task that cannot be performed in its current state.
- */
-class illegal_state : public logic_fault
+
+class runner_not_available : public cool_logic_fault
 {
  public:
-  dlldecl illegal_state(const std::string& msg) : logic_fault(msg) { /* noop */ }
+  runner_not_available()
+    : cool_logic_fault("the destination runner not available")
+  { /* noop */ }
 };
+
+class cool_internal_fault : public cool_base
+{
+ public:
+  cool_internal_fault(const std::string& msg) : cool_base(msg) { /* noop */ }
+};
+
+class bad_runner_cast : public cool_internal_fault
+{
+ public:
+  bad_runner_cast()
+    : cool_internal_fault("dynamic_pointer_cast to RunnerT type unexpectedly failed")
+  { /* noop */ }
+};
+
+
+class no_context : public cool_internal_fault
+{
+ public:
+  no_context()
+    : cool_internal_fault("the task context is not available")
+  { /* noop */ }
+};
+
+class nothing_to_run : public cool_internal_fault
+{
+ public:
+  nothing_to_run()
+    : cool_internal_fault("task will not run owing to predicate resolution")
+  { /* noop */ }
+};
+
+
+
+
+
+
+
+#if 0
 /**
  * Denotes a condition in which an object, or a system, has been asked to change
  * state into another state, but such transition cannot be done.
@@ -91,15 +189,6 @@ class illegal_transition : public logic_fault
 {
  public:
   dlldecl illegal_transition(const std::string& msg) : logic_fault(msg) { /* noop */ }
-};
-/**
- * Denotes a condition in which an object has, or has been asked to use, a
- * value that is out of its prescribed operational range.
- */
-class out_of_range : public logic_fault
-{
- public:
-  dlldecl out_of_range(const std::string& msg) : logic_fault(msg) { /* noop */ }
 };
 /**
  * Denotes a condition in which an item searched for was not found.
@@ -137,10 +226,10 @@ class broken_vow : public logic_fault
   dlldecl broken_vow(const std::string& msg) : logic_fault(msg) { /* noop */ }
 };
 
-class runtime_exception : public base
+class runtime_exception : public cool_base
 {
  public:
-  dlldecl runtime_exception(const std::string& msg) : base(msg) { /* noop */ }
+  dlldecl runtime_exception(const std::string& msg) : cool_base(msg) { /* noop */ }
 };
 
 class create_failure : public runtime_exception
@@ -149,36 +238,59 @@ class create_failure : public runtime_exception
   dlldecl create_failure(const std::string& msg) : runtime_exception(msg) { /* noop */ }
 };
 
-class illegal_argument : public runtime_exception
-{
- public:
-  dlldecl illegal_argument(const std::string& msg) : runtime_exception(msg) { /* noop */ }
-};
-
-class bad_conversion : public runtime_exception
-{
- public:
-  dlldecl bad_conversion(const std::string& msg) : runtime_exception(msg) { /* noop */ }
-};
-
-
-class unsupported_operation : public runtime_exception
-{
- public:
-  dlldecl unsupported_operation(const std::string& msg) : runtime_exception(msg) { /* noop */ }
-};
 
 class call_failed : public runtime_exception
 {
  public:
   dlldecl call_failed(const std::string& msg) : runtime_exception(msg) { /* noop */ }
 };
+#endif
 
-class operation_failed : public runtime_exception
+
+class operation_failed : public runtime_fault
 {
  public:
-  dlldecl operation_failed(const std::string& msg) : runtime_exception(msg) { /* noop */ }
+  operation_failed(const std::string& msg) : runtime_fault(msg) { /* noop */ }
 };
+
+/**
+ * Denotes a condition in which an object has, or has been asked to use, a
+ * value that is out of its prescribed operational range.
+ */
+class out_of_range : public runtime_fault
+{
+ public:
+  out_of_range(const std::string& msg) : runtime_fault(msg) { /* noop */ }
+};
+
+class illegal_argument : public runtime_fault
+{
+ public:
+  dlldecl illegal_argument(const std::string& msg) : runtime_fault(msg) { /* noop */ }
+};
+
+/**
+ * Denotes a condition in which an object, or a system, has been asked to perform
+ * a task that cannot be performed in its current state.
+ */
+class illegal_state : public runtime_fault
+{
+ public:
+  dlldecl illegal_state(const std::string& msg) : runtime_fault(msg) { /* noop */ }
+};
+
+class bad_conversion : public runtime_fault
+{
+ public:
+  dlldecl bad_conversion(const std::string& msg) : runtime_fault(msg) { /* noop */ }
+};
+
+class unsupported_operation : public runtime_fault
+{
+ public:
+  dlldecl unsupported_operation(const std::string& msg) : runtime_fault(msg) { /* noop */ }
+};
+
 
 } } } // namespace
 

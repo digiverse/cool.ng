@@ -30,6 +30,7 @@ cmake_minimum_required(VERSION 3.5)
 # ###
 # ### ##################################################
 
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # --- top of source tree
 if( NOT DEFINED COOL_NG_HOME )
@@ -95,6 +96,7 @@ if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
   set( BUILD_TARGET OSX_TARGET)
   set( OSX true)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
+  set( CMAKE_EXE_LINKER_FLAGS "-w" )
   add_definitions( "-DOS_OBJECT_USE_OBJC=0" )
   add_definitions( "-DCOOL_ASYNC_PLATFORM_GCD" )
 
@@ -122,6 +124,7 @@ elseif (MSVC)
 
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 /MTd -D_SCL_SECURE_NO_WARNINGS")
   add_definitions("-DCOOL_ASYNC_PLATFORM_WINCP")
+  set( COOL_NG_PLATFORM_LIBRARIES DbgHelp.dll)
 
   if( ${MSVC_VERSION} MATCHES "1800")
     set( COOL_MSVC "12" )
@@ -172,12 +175,16 @@ set( COOL_NG_API_HEADERS
     include/cool/ng/exception.h
     include/cool/ng/traits.h
     include/cool/ng/bases.h
+    include/cool/ng/ip_address.h
+    include/cool/ng/binary.h
     include/cool/ng/async/task.h
     include/cool/ng/async/runner.h
+#    include/cool/ng/async/event_sources.h
 )
 
 set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/platform.h
+    include/cool/ng/impl/ip_address.h
     include/cool/ng/impl/async/task_traits.h
     include/cool/ng/impl/async/context.h
     include/cool/ng/impl/async/task.h
@@ -187,6 +194,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/conditional_impl.h
     include/cool/ng/impl/async/repeat_impl.h
     include/cool/ng/impl/async/loop_impl.h
+#    include/cool/ng/impl/async/event_sources.h
 )
 
 # ### ##################################################
@@ -201,6 +209,8 @@ set( COOL_NG_LIB_HEADERS
 
 set( COOL_NG_LIB_SRCS
   lib/src/bases.cpp
+  lib/src/exception.cpp
+  lib/src/ip_address.cpp
   lib/src/async/runner.cpp
 )
 
@@ -222,6 +232,7 @@ set( COOL_NG_GCD_IMPL_HEADERS
 
 set( COOL_NG_GCD_IMPL_SRCS
   ${COOL_NG_GCD_EXECUTOR_SRCS}
+#  lib/src/async/gcd/event_sources.cpp
 )
 
 set( COOL_NG_WINCP_IMPL_HEADERS
@@ -265,11 +276,13 @@ else()
     OUTPUT_NAME "${COOL_NG_LIB_DYNAMIC_DEV}"
     RUNTIME_OUTPUT_DIRECTORY "${COOL_NG_BIN_DIR}"
   )
+  target_link_libraries( cool.ng-dyn-dev ${COOL_NG_PLATFORM_LIBRARIES} )
   set_target_properties( cool.ng-dev PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "${COOL_NG_LIB_STATIC_DEV}"
     ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
   )
+  target_link_libraries( cool.ng-dev ${COOL_NG_PLATFORM_LIBRARIES} )
 endif()
 
 # ### ##################################################
@@ -326,7 +339,11 @@ set( API_UNIT_TESTS
   conditional_task
   repeat_task
   loop_task
+  ip_address
+#  es_reader
 )
+
+#set_target_properties(${HEADER_ONLY_UNIT_TESTS} PROPERTIES FOLDER nameOfTheFolder)
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
 set( task-traits_SRCS tests/unit/traits/task_traits.cpp )
@@ -337,16 +354,24 @@ set( intercept_task_SRCS tests/unit/task/intercept_task.cpp )
 set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
 set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
 set( loop_task_SRCS tests/unit/task/loop_task.cpp )
+set( ip_address_SRCS tests/unit/net/ip_address.cpp )
+#set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp
+#     tests/unit/event_sources/test_server.cpp
+#     tests/unit/event_sources/test_server.h
+#)
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
-  if( NOT WINDOWS )
+  if( WINDOWS )
+    target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
+  else()
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
   set_target_properties( ${TestName}-test PROPERTIES
       COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
       RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+      FOLDER "Unit Tests/Header"
   )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
@@ -355,7 +380,9 @@ macro(internal_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
   target_link_libraries(${TestName}-test cool.ng-dev)
 
-  if( NOT WINDOWS )
+  if( WINDOWS )
+    target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
+  else()
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
@@ -363,6 +390,7 @@ macro(internal_unit_test TestName)
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    FOLDER "Unit Tests/Internal"
   )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
@@ -371,7 +399,9 @@ macro(api_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
   target_link_libraries(${TestName}-test cool.ng-dyn-dev)
 
-  if( NOT WINDOWS )
+  if( WINDOWS )
+    target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
+  else()
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
@@ -379,6 +409,7 @@ macro(api_unit_test TestName)
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    FOLDER "Unit Tests/API"
   )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()

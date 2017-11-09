@@ -60,7 +60,7 @@ BOOST_AUTO_TEST_CASE(basic_void)
   std::mutex m;
   std::condition_variable cv;
   std::atomic<int> counter;
-  int result;
+  std::size_t result;
   counter = 0;
 
   auto t1 = cool::ng::async::factory::create(
@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE(basic_non_void)
     , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, std::size_t value) -> int
       {
         ++counter;
-        return value;
+        return static_cast<int>(value);
       }
   );
 

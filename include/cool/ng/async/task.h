@@ -28,27 +28,16 @@
 #include <functional>
 #include <iostream>
 
+#include "cool/ng/impl/platform.h"
 #include "cool/ng/exception.h"
 #include "cool/ng/traits.h"
-#include "cool/ng/impl/platform.h"
+#include "cool/ng/async/runner.h"
 #include "cool/ng/impl/async/task.h"
 
 namespace cool { namespace ng {
 
-/**
- * Namespace doc.
- */
 namespace async {
 
-namespace exception
-{
-
-using detail::exception::internal;
-using detail::exception::bad_runner_cast;
-using detail::exception::runner_not_available;
-using detail::exception::no_context;
-
-}
 /**
  * Tags marking the task kinds.
  */
@@ -98,7 +87,7 @@ struct tag
  *
  *  <table><tr><th>Member type <th>Declared as
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
- *    <tr><td><tt>runner_type</tt>     <td><tt>decltype(@em runner)::element_type</tt>
+ *    <tr><td><tt>runner_type</tt>     <td><tt>decltype(@em runner)::%element_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::simple</tt>
  *    <tr><td><tt>input_type</tt>      <td>type of the second arg to @em callable, @c void if none
  *    <tr><td><tt>result_type</tt>     <td>return type of @em callable
@@ -187,8 +176,8 @@ struct tag
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
  *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::sequential</tt>
- *    <tr><td><tt>input_type</tt>      <td>decltype(@em task_1)::input_type
- *    <tr><td><tt>result_type</tt>     <td>decltype(@em task_n)::result_type
+ *    <tr><td><tt>input_type</tt>      <td>decltype(@em task_1)::%input_type
+ *    <tr><td><tt>result_type</tt>     <td>decltype(@em task_n)::%result_type
  *  </table>
  * Note that sequential task, as all compound tasks, is not associated with any
  * runner and uses @c detail::default_runner_type as a filler type.
@@ -196,7 +185,7 @@ struct tag
  * The following requirements are imposed on the subtasks of the sequential task:
  *  - sequential task must have at least two subtasks
  *  - for every @em i in range 1&ndash;(<i>n</i>-1):
- *    <tt>std::is_same<decltype(task_<i>i</i>)::result_type, decltype(task_<i>(i+1)</i>)::input_type>::value</tt> must yield @c true
+ *    <tt>std::is_same<decltype(task_<i>i</i>)::%result_type, decltype(task_<i>(i+1)</i>)::%input_type>::%value</tt> must yield @c true
  *
  * <b>Exception Handling</b>@n
  *
@@ -310,8 +299,8 @@ struct tag
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
  *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::conditional</tt>
- *    <tr><td><tt>input_type</tt>      <td><tt>decltype(@em predicate)::input_type</tt>
- *    <tr><td><tt>result_type</tt>     <td>if (1): @c void<br>if (2): <tt>decltype(if_task)::result_type</tt>
+ *    <tr><td><tt>input_type</tt>      <td><tt>decltype(@em predicate)::&input_type</tt>
+ *    <tr><td><tt>result_type</tt>     <td>if (1): @c void<br>if (2): <tt>decltype(if_task)::%result_type</tt>
  *  </table>
  * Note that sequential task, as all compound tasks, is not associated with any
  * runner and uses @c detail::default_runner_type as a filler type.
@@ -387,7 +376,7 @@ struct tag
  *
  * The loop task is a compound task that consits of the predicate task and an
  * optional body task and iterativelly schedules them for the execution
- * until the predicate task returns @false. When run, the loop task will first
+ * until the predicate task returns @c false. When run, the loop task will first
  * schedule the predicate task, wait for its completion and evaluate the result
  * of the predicate task. If @c true, and if the body task is present,
  * it will schedule the body task for execution, wait for its completion and
@@ -420,8 +409,8 @@ struct tag
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
  *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::loop</tt>
- *    <tr><td><tt>input_type</tt>      <td>if (1): @c void<br>if (2):<tt>decltype(@em predicate)::input_type</tt>
- *    <tr><td><tt>result_type</tt>     <td>if (1): @c void<br>if (2):<tt>decltype(@em body_task)::result_type</tt>
+ *    <tr><td><tt>input_type</tt>      <td>if (1): @c void<br>if (2):<tt>decltype(<i>predicate</i>)::%input_type</tt>
+ *    <tr><td><tt>result_type</tt>     <td>if (1): @c void<br>if (2):<tt>decltype(<i>body_task</i>)::%result_type</tt>
  *  </table>
  * Note that loop task, as all compound tasks, is not associated with any
  * runner and uses @c detail::default_runner_type as a filler type.
@@ -512,14 +501,14 @@ struct tag
  *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::repeat</tt>
  *    <tr><td><tt>input_type</tt>      <td><tt>std::size_t</tt>
- *    <tr><td><tt>result_type</tt>     <td><tt>decltype(@em subtask)::result_type)</tt>
+ *    <tr><td><tt>result_type</tt>     <td><tt>decltype(@em subtask)::%result_type)</tt>
  *  </table>
  * Note that repeat task, as all compound tasks, is not associated with any
  * runner and uses @c detail::default_runner_type as a filler type.
  *
  * The following are the requirements for the @em subtask:
  *  - <tt>std::is_same<decltype(subtask)::input_type, std::size_t>::value</tt> must yield @c true
- *  - <tt>decltype(subtask)::result_type</tt> most be default constructible or @c void
+ *  - <tt>decltype(subtask)::%result_type</tt> most be default constructible or @c void
  *
  * <b>Exception Handling</b>@n
  *
@@ -605,17 +594,17 @@ struct tag
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
  *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
  *    <tr><td><tt>tag</tt>             <td><tt>tag::intercept</tt>
- *    <tr><td><tt>input_type</tt>      <td><tt>decltype(@em try)::input_type</tt>
- *    <tr><td><tt>result_type</tt>     <td><tt>decltype(@em try)::result_type</tt>
+ *    <tr><td><tt>input_type</tt>      <td><tt>decltype(@em try)::%input_type</tt>
+ *    <tr><td><tt>result_type</tt>     <td><tt>decltype(@em try)::%result_type</tt>
  *  </table>
  * Note that intercept task, as all compound tasks, is not associated with any
  * runner and uses @c detail::default_runner_type as a filler type.
  *
  * The following are the requirements for the subtasks of the intercept task:
- *  - for each @em i in range 1&ndash;<i>n</i>: <tt>std::is_same<decltype(try)::result_type, std::is_same<decltype(catch_<i>i</i>)::result_type>::value</tt> must yield @c true
- *  - <tt>std::is_same<decltype(try)::result_type, std::is_same<decltype(catch_all)::result_type>::value</tt> must yield @c true
- *  - for each @em i in range 1&ndash;<i>n</i>: <tt>std::is_same<decltype(catch_<i>i</i>)::input_type, void>::value</tt> must yield @c false
- *  - <tt>std::is_same<decltype(catch_all)::input_type, std::exception_ptr>::value</tt> must yield @c true
+ *  - for each @em i in range 1&ndash;<i>n</i>: <tt>std::is_same<decltype(try)::%result_type, std::is_same<decltype(catch_<i>i</i>)::%result_type>::%value</tt> must yield @c true
+ *  - <tt>std::is_same<decltype(try)::%result_type, std::is_same<decltype(catch_all)::%result_type>::%value</tt> must yield @c true
+ *  - for each @em i in range 1&ndash;<i>n</i>: <tt>std::is_same<decltype(catch_<i>i</i>)::%input_type, void>::%value</tt> must yield @c false
+ *  - <tt>std::is_same<decltype(catch_all)::%input_type, std::exception_ptr>::%value</tt> must yield @c true
  *
  * <b>Exception Handling</b>@n
  *
@@ -782,12 +771,18 @@ class task
     , typename std::decay<TaskT>::type::impl_type...>;
 
  public:
+ /**
+  * Schedule task for execution.
+  */
   template <typename T = InputT>
   void run(const typename std::enable_if<!std::is_same<T, void>::value, T>::type& arg_)
   {
     m_impl->run(m_impl, arg_);
   }
 
+ /**
+  * Schedule task for execution.
+  */
   template <typename T = InputT>
   typename std::enable_if<std::is_same<T, void>::value, void>::type run()
   {

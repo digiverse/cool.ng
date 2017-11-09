@@ -21,59 +21,49 @@
  * IN THE SOFTWARE.
  */
 
-#if defined(WINDOWS_TARGET)
-# include <Windows.h>
-#endif
+#if !defined(cool_ng_d2aa94ac_15ec_4A48_9d69_a7d096d1b861)
+#define      cool_ng_d2aa94ac_15ec_4A48_9d69_a7d096d1b861
 
-#include "cool/ng/async/runner.h"
+#include <initializer_list>
 #include "cool/ng/exception.h"
-#include "cool/ng/impl/async/context.h"
-#include "cool/ng/impl/async/task.h"
-#include "lib/async/executor.h"
+#include "cool/ng/binary.h"
+#include <cstring>
 
-namespace cool { namespace ng { namespace async {
+namespace cool { namespace ng { namespace net {
 
-runner::runner(RunPolicy policy_)
-{
-  m_impl = std::make_shared<impl::executor>(policy_);
-}
-
-runner::~runner()
-{ /* noop */ }
-
-const std::string& runner::name() const
-{
-  return m_impl->name();
-}
-
-const std::shared_ptr<impl::executor>& runner::impl() const
-{
-  return m_impl;
-}
-
-void runner::start()
-{
-  m_impl->start();
-}
-
-void runner::stop()
-{
-  m_impl->stop();
-}
+enum class style;
 
 namespace detail {
 
-void kickstart(context_stack* ctx_)
+
+template <std::size_t Size>
+cool::ng::util::binary<Size> calculate_mask(std::size_t length)
 {
-  if (!ctx_)
-    throw exception::no_context();
+  cool::ng::util::binary<Size> result;
 
-  auto aux = ctx_->top()->get_runner().lock();
-  if (!aux)
-    throw exception::runner_not_available();
+  if (length > Size * 8)
+    throw exception::illegal_argument("Network mask length exceeds data size");
 
-  aux->impl()->run(ctx_);
+  std::size_t limit = length >> 3;
+  for (std::size_t i = 0; i < limit; ++i)
+    result[i] = 0xff;
+
+  std::size_t limit2 = length & 0x07;
+  if (limit2 > 0)
+  {
+    uint8_t aux = 0x80;
+    for (int i = 1; i < limit2; ++i)
+    {
+      aux >>= 1;
+      aux |= 0x80;
+    }
+    result[limit] = aux;
+  }
+  return result;
 }
 
-}
+} // namespace details
+
 } } } // namespace
+
+#endif

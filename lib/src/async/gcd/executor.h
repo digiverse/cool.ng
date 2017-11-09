@@ -42,7 +42,8 @@ class executor : public ::cool::ng::util::named
   void start();
   void stop();
   void run(detail::context_stack*);
-
+  dispatch_queue_t queue() const { return m_queue; }
+  
  private:
   static void task_executor(void*);
 

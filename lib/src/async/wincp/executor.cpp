@@ -20,14 +20,15 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
-#include <mutex>
+#include "executor.h"
 
+#include <mutex>
 #include "cool/ng/async/runner.h"
 #include "cool/ng/exception.h"
-#include "executor.h"
+
 namespace cool { namespace ng { namespace async { namespace impl {
 
-/*constexpr*/ const int TASK = 1;
+CONSTEXPR_ const int TASK = 1;
 
 
 class poolmgr
