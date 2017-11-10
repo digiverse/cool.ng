@@ -29,6 +29,10 @@
 # pragma comment(lib, "Ws2_32.lib")
 #endif
 
+namespace cool { namespace ng { namespace net {
+
+namespace ip {
+
 std::istream& operator >>(std::istream& is, cool::ng::net::ip::address& val)
 {
   switch (val.version())
@@ -44,58 +48,13 @@ std::istream& operator >>(std::istream& is, cool::ng::net::ip::address& val)
   return is;
 }
 
-
-namespace cool { namespace ng { namespace net {
-
-
-namespace ipv4 {
-
-  // Assigned numbers
-
-  const host loopback = { 127, 0, 0, 1 };
-  const host any;
-  const host broadcast = { 255, 255, 255, 255 };
-
-  const network rfc_broadcast = { 8, { } };   // 0.0.0.0/8
-  const network rfc_private_24 = { 24, { 10 } };
-  const network rfc_private_20 = { 20, { 172, 16 } };
-  const network rfc_private_16 = { 16, { 192, 168 } };
-  const network rfc_carrier_nat = { 10, { 100, 64 } };
-  const network rfc_loopback = { 8, { 127 } };
-  const network rfc_unset = { 16, { 169, 254 } };
-  const network rfc_iana_private = { 24, { 192 } };
-  const network rfc_test = { 24, { 192, 0, 2 } };
-  const network rfc_test_2 = { 24, { 198, 51, 100 } };
-  const network rfc_test_3 = { 24, { 203, 0, 113 } };
-  const network rfc_6to4_anycast = { 24, { 192, 88, 99 } };
-  const network rfc_test_comm = { 15, { 198, 18 } };
-  const network rfc_mcast = { 4, { 224 } };
-  const network rfc_test_mcast = { 24, { 233, 252 } };
-  const network rfc_future = { 4, { 240 } };
-
-} // namespace ipv4
-
-namespace ipv6 {
-  // Assigned numbers
-
-  const host loopback = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
-  const host unspecified;
-  const network rfc_ipv4map = { 96, { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff } };
-  const network rfc_discard = { 64, { 0x01 } };
-  const network rfc_ipv4translate = { 96, { 0x00, 0x64, 0xff, 0x9b } };
-  const network rfc_teredo = { 8, { 0x20, 0x01 } };
-  const network rfc_doc = { 32, { 0x20, 0x01, 0xdb, 0x80 } };
-  const network rfc_local = { 7, { 0xfc } };
-  const network rfc_link = { 10, { 0xfe, 0x80 } };
-  const network rfc_mcast = { 0, { 0xff } };
-
-} // namespace ipv6
+} // namespace ip
 
 namespace detail {
 
 template <typename T> class refwrap
 {
-public:
+ public:
   typedef const T& value_t;
 
   refwrap(const T& arg) : m_ref(arg) { /* noop */ }
@@ -246,9 +205,12 @@ void parse(std::istream& is, cool::ng::net::ipv4::network& val)
     if (mask > 32)
       throw exception::illegal_argument("Network mask width cannot exceed 32 bits");
   }
-  else if (!is.eof())
-    is.unget();
-
+  else
+  {
+    mask = val.mask();
+    if (!is.eof())
+      is.unget();
+  }
   val = cool::ng::net::ipv4::network(mask, addr);
 }
 
@@ -566,11 +528,11 @@ cool::ng::net::ipv6::binary_t _parse(std::istream& is)
           ipv4::parse(ss, addr);
           if (post_compress)
           {
-            post_compress_value.set(post_compress_index, addr, 4);
+            post_compress_value.set(post_compress_index, static_cast<uint8_t*>(addr), 4);
             post_compress_index+= 4;
           }
           else
-            result.set(12, addr, 4);
+            result.set(12, static_cast<uint8_t*>(addr), 4);
           loop = false;
           break;
         }
@@ -603,7 +565,8 @@ cool::ng::net::ipv6::binary_t _parse(std::istream& is)
         break;
     }
   }
-  result.set(static_cast<int>(result.size()) - post_compress_index, post_compress_value);
+  if (post_compress_index > 0)
+    result.set(static_cast<int>(result.size()) - post_compress_index, post_compress_value);
   return result;
 }
 
@@ -625,8 +588,12 @@ void parse(std::istream& is, cool::ng::net::ipv6::network& val)
     if (mask > 128)
       throw exception::illegal_argument("Network mask width cannot exceed 128 bits");
   }
-  else if (!is.eof())
-    is.unget();
+  else
+  {
+    mask = val.mask();
+    if (!is.eof())
+      is.unget();
+  }
 
   val =  cool::ng::net::ipv6::network(mask, addr);
 }
@@ -752,6 +719,10 @@ void host::visualize(std::ostream& os, Style style) const
   {
     case Canonical:
       visualize(os);
+      break;
+
+    case StrictCanonical:
+      detail::ipv6::str_canonical(m_data, ':',  os, 16);
       break;
 
     case Expanded:
@@ -935,17 +906,10 @@ ip::address& network::operator =(const in6_addr& data)
 ip::address& network::operator =(const std::string& arg)
 {
   std::stringstream ss(arg);
-  auto aux = *this;
-
-  try { ss >> *this; }
-  catch (...) { *this = aux; throw; }
-
-  if (m_length > size() * 8)
-  {
-    *this = aux;
-    throw exception::illegal_argument("Network mask cannot exceed 128 bits");
-  }
-
+  network aux(this->mask());
+  ss >> aux;
+  
+  *this = aux;
   return *this;
 }
 
@@ -1245,17 +1209,10 @@ network::operator struct in_addr() const
 ip::address& network::operator =(const std::string& arg)
 {
   std::stringstream ss(arg);
-  auto aux = *this;
+  network aux(this->mask());
+  ss >> aux;
 
-  try { ss >> *this; }
-  catch (...) { *this = aux; throw; }
-
-  if (m_length > size() * 8)
-  {
-    *this = aux;
-    throw exception::illegal_argument("Network mask cannot exceed 32 bits");
-  }
-
+  *this = aux;
   return *this;
 }
 

@@ -579,7 +579,6 @@ class host : public ip::host
   binary_t m_data;
 };
 
-
 class network : public ip::network
 {
  public:
@@ -713,11 +712,11 @@ class network : public ip::network
 /**
  * Constant representing IPv6 loopback address.
  */
-extern const host loopback;
+const host loopback = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };;
 /**
  * Constant representing IPv6 unspecified address.
  */
-extern const host unspecified;
+const host unspecified;
 /**
  * Reserved IPv6 address range ::%ffff:0:0/96.
  *
@@ -726,20 +725,20 @@ extern const host unspecified;
  * mechanism, as specified in RFC 4291. Addresses within this range should
  * not appear on the public Internet.
  */
-extern const network rfc_ipv4map;
+const network rfc_ipv4map= { 96, { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff } };
 /**
  * Reserved IPv6 address range 100::/64.
  *
  * This is Discard Prefix, as specified in RFC 6666.
  */
-extern const network rfc_discard;
+const network rfc_discard = { 64, { 0x01 } };
 /**
  * Reserved IPv6 address range 64:ff9b::/96.
  *
  * This block is Well-known Prefix used for IPv4/Ipv6 address translation,
  * as specified in RFC 6052.
  */
-extern const network rfc_ipv4translate;
+const network rfc_ipv4translate = { 96, { 0x00, 0x64, 0xff, 0x9b } };
 /**
  * Reserved IPv6 address range 2001::/32.
  *
@@ -749,33 +748,33 @@ extern const network rfc_ipv4translate;
  * more IPv4 Network Address Translations (NATs) to obtain IPv6
  * connectivity by tunneling packets over UDP.
  */
-extern const network rfc_teredo;
+const network rfc_teredo = { 8, { 0x20, 0x01 } };
 /**
  * Reserved IPv6 address range 2001:db8::/32.
  *
  * This block is is used for addresses used in documentation,
  * as specified in RFC 5737.
  */
-extern const network rfc_doc;
+const network rfc_doc = { 32, { 0x20, 0x01, 0xdb, 0x80 } };
 /**
  * Reserved IPv6 address range fc00::/7.
  *
  * This block is is used for unique local addresses,
  * as specified in RFC 4193.
  */
-extern const network rfc_local;
+const network rfc_local = { 7, { 0xfc } };
 /**
  * Reserved IPv6 address range fe80::/10.
  *
  * This block is is reserved for link local addresses. The actual allocation
  * range for link local addresses is fe80::/64.
  */
-extern const network rfc_link;
+const network rfc_link = { 10, { 0xfe, 0x80 } };
 /**
  * Reserved IPv6 address range ff00::/8.
  *
  * This block is is reserved for multicast addresses. */
-extern const network rfc_mcast;
+const network rfc_mcast = { 0, { 0xff } };
 
 } // namespace ipv6
 
@@ -801,19 +800,22 @@ class host : public ip::host
  public:
   ip::address& operator =(const ip::address& rhs) override
   {
-    assign(rhs); return *this;
+    assign(rhs);
+    return *this;
   }
   /**
    * Construct a host address object with unspecified address
    */
-  explicit host() { /* noop */ }
+  explicit host()
+  { /* noop */ }
   /**
    * Construct a host address object with address from byte array.
    *
    * @warning The ctor uses the first 4 bytes of the array. Providing the byte
    *   array of less than 4 elements results in undefined behavior.
    */
-  explicit host(uint8_t const data[]) : m_data(data) { /* noop */ }
+  explicit host(uint8_t const data[]) : m_data(data)
+  { /* noop */ }
   /**
    * Construct a host address object with address from initializer list.
    *
@@ -824,7 +826,8 @@ class host : public ip::host
    * If the list contains fewer than 4 values the remaining values are
    * set to 0.
    */
-  host(std::initializer_list<uint8_t> data) : m_data(data) { /* noop */ }
+  host(std::initializer_list<uint8_t> data) : m_data(data)
+  { /* noop */ }
   /**
    * Construct a host address object from IPv4 address structure.
    */
@@ -845,7 +848,7 @@ class host : public ip::host
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
    */
-  explicit host(const in6_addr& data);
+  dlldecl explicit host(const in6_addr& data);
   /**
    * Construct a host address object from textual presentation of address.
    *
@@ -853,7 +856,7 @@ class host : public ip::host
    * @exception exception::illegal_argument The textual presentation contains
    *   invalid characters.
    */
-  explicit host(const std::string& data);
+  dlldecl explicit host(const std::string& data);
   /**
    * Construct host address from another address object.
    *
@@ -867,31 +870,49 @@ class host : public ip::host
    * @exception exception:: illegal_argument Thrown if argument address object
    *   is not valid.
    */
-  explicit host(const ip::address& data);
+  dlldecl explicit host(const ip::address& data);
 
-  explicit host(uint32_t addr);
+  dlldecl explicit host(uint32_t addr);
 
   // address interface
-  virtual bool equals(const ip::address& other) const override;
-  virtual void visualize(std::ostream& os) const override;
-  virtual ip::Kind kind() const override { return ip::HostAddress; }
-  virtual ip::Version version() const override { return ip::IPv4;  }
-  virtual operator const uint8_t * () const override { return m_data; }
-  virtual operator uint8_t * () override { return m_data; }
-  virtual operator struct in_addr() const override;
-  virtual operator struct in6_addr() const override;
-  virtual operator std::string () const override;
-  virtual std::size_t size() const override { return m_data.size(); };
-  virtual ip::address& operator =(uint8_t const data[]) override
-  { m_data = data; return *this; }
-  virtual ip::address& operator =(const in_addr&) override;
-  virtual ip::address& operator =(const in6_addr&) override;
-  virtual ip::address& operator =(const std::string&) override;
-  virtual bool in(const ip::network& net) const override;
-  virtual bool is(ip::Attribute) const override;
+  dlldecl  bool equals(const ip::address& other) const override;
+  dlldecl  void visualize(std::ostream& os) const override;
+  ip::Kind kind() const override
+  {
+    return ip::HostAddress;
+  }
+  ip::Version version() const override
+  {
+    return ip::IPv4;
+  }
+  EXPLICIT_ operator const uint8_t * () const override
+  {
+    return m_data;
+  }
+  EXPLICIT_ operator uint8_t * () override
+  {
+    return m_data;
+  }
+  dlldecl EXPLICIT_ operator struct in_addr() const override;
+  dlldecl EXPLICIT_ operator struct in6_addr() const override;
+  dlldecl EXPLICIT_ operator std::string() const override;
+  std::size_t size() const override
+  {
+    return m_data.size();
+  };
+  ip::address& operator =(uint8_t const data[]) override
+  {
+    m_data = data;
+    return *this;
+  }
+  dlldecl ip::address& operator =(const in_addr&) override;
+  dlldecl ip::address& operator =(const in6_addr&) override;
+  dlldecl ip::address& operator =(const std::string&) override;
+  dlldecl bool in(const ip::network& net) const override;
+  dlldecl bool is(ip::Attribute) const override;
 
  private:
-  void assign(const ip::address& other) override;
+  dlldecl void assign(const ip::address& other) override;
 
  private:
   binary_t m_data;
@@ -924,7 +945,7 @@ class network : public ip::network
    * @warning The ctor uses the first 4 bytes of the array. Providing the byte
    *   array of less than 4 elements results in undefined behavior.
    */
-  explicit network(std::size_t mask_size, uint8_t const data[]);
+  dlldecl explicit network(std::size_t mask_size, uint8_t const data[]);
   /**
    * Construct a host address object with address from initializer list.
    *
@@ -940,7 +961,7 @@ class network : public ip::network
    * set to 0. The first number (24 in above example) is the network mask size,
    * in bits.
    */
-  network(std::size_t mask_size, std::initializer_list<uint8_t> data);
+  dlldecl network(std::size_t mask_size, std::initializer_list<uint8_t> data);
   /**
    * Construct a host address object from IPv4 address structure.
    *
@@ -948,7 +969,7 @@ class network : public ip::network
    * @param data      IPv4 structure with network address.
    * @exception exception::illegal_argument Thrown if mask size exceeds 32 bits.
    */
-  explicit network(std::size_t mask_size, const in_addr& data);
+  dlldecl explicit network(std::size_t mask_size, const in_addr& data);
   /**
    * Construct a network address object from textual presentation of address.
    *
@@ -956,7 +977,7 @@ class network : public ip::network
    * @exception exception::illegal_argument The textual presentation contains
    *   invalid characters.
    */
-  explicit network(const std::string& data);
+  dlldecl explicit network(const std::string& data);
   /**
    * Construct network address from another address object.
    *
@@ -964,31 +985,52 @@ class network : public ip::network
    * @exception exception:: illegal_argument Thrown if another address object
    *   is not IPv4 network address object
    */
-  explicit network(const ip::address& data);
+  dlldecl explicit network(const ip::address& data);
 
   // address interface
-  virtual bool equals(const ip::address& other) const override;
-  virtual void visualize(std::ostream &os) const override;
-  virtual ip::Kind kind() const override { return ip::NetworkAddress; }
-  virtual ip::Version version() const override { return ip::IPv4; }
-  virtual operator const uint8_t * () const override { return m_data; }
-  virtual operator uint8_t * () override { return m_data; }
-  virtual operator struct in_addr() const override;
-  virtual operator std::string () const override;
-  virtual std::size_t size() const override { return m_data.size(); };
-  virtual ip::address& operator =(uint8_t const data[]) override
-  { m_data = data; return *this; }
-  virtual ip::address& operator =(const in_addr&) override;
-  virtual ip::address& operator =(const std::string&) override;
-  virtual bool in(const ip::network& net) const override;
-  virtual bool is(ip::Attribute) const override;
+  dlldecl bool equals(const ip::address& other) const override;
+  dlldecl void visualize(std::ostream &os) const override;
+  ip::Kind kind() const override
+  {
+    return ip::NetworkAddress;
+  }
+  ip::Version version() const override
+  {
+    return ip::IPv4;
+  }
+  EXPLICIT_ operator const uint8_t * () const override
+  {
+    return m_data;
+  }
+  EXPLICIT_ operator uint8_t * () override
+  {
+    return m_data;
+  }
+  dlldecl EXPLICIT_ operator struct in_addr() const override;
+  dlldecl EXPLICIT_ operator std::string () const override;
+  std::size_t size() const override
+  {
+    return m_data.size();
+  };
+  ip::address& operator =(uint8_t const data[]) override
+  {
+    m_data = data;
+    return *this;
+  }
+  dlldecl ip::address& operator =(const in_addr&) override;
+  dlldecl ip::address& operator =(const std::string&) override;
+  dlldecl bool in(const ip::network& net) const override;
+  dlldecl bool is(ip::Attribute) const override;
 
   // network interface
-  virtual bool has(const ip::address& other) const override;
-  virtual std::size_t mask() const override { return m_length; }
+  dlldecl bool has(const ip::address& other) const override;
+  std::size_t mask() const override
+  {
+    return m_length;
+  }
 
  private:
-  void assign(const ip::address& other) override;
+  dlldecl void assign(const ip::address& other) override;
 
  private:
   binary_t m_data;
@@ -998,50 +1040,52 @@ class network : public ip::network
 /**
  * Constant representing IPv4 loopback address.
  */
-extern const host loopback;
+const host loopback = { 127, 0, 0, 1 };
 /**
  * Constant representing IPv4 INADDR_ANY address.
  */
-extern const host any;
+const host any;
+
+const host broadcast = { 255, 255, 255, 255 };
 /**
  * Reserved IPv4 address range 0.0.0.0/8.
  *
  * Local broadcast source address as specified by RFC 1700.
  */
-extern const network rfc_broadcast_source;
+const network rfc_broadcast = { 8, { 0, 0, 0, 0} };  // TODO:
 /**
  * Reserved IPv4 address range 10.0.0.0/24.
  *
  * 24-bit block private network (former class A) as specified by RFC 1918.
  */
-extern const network rfc_private_24;
+const network rfc_private_24 = { 24, { 10 } };
 /**
  * Reserved IPv4 address range 172.16.0.0/20.
  *
  * 20-bit block private network (formerly 16 class B private networks)
  * as specified by RFC 1918.
  */
-extern const network rfc_private_20;
+const network rfc_private_20 = { 20, { 172, 16 } };
 /**
  * Reserved IPv4 address range 192.168.0.0/16.
  *
  * 16-bit block private network (formerly 256 class C private networks)
  * as specified by RFC 1918.
  */
-extern const network rfc_private_16;
+const network rfc_private_16 = { 16, { 192, 168 } };
 /**
  * Reserved IPv4 address range 100.64.0.0/10.
  *
  * Reserved for use with Carrier-grade NAT, as specified by RFC 6598.
  */
-extern const network rfc_carrier_nat;
+const network rfc_carrier_nat = { 10, { 100, 64 } };
 /**
  * Reserved IPv4 address range 127.0.0.0/8.
  *
  * Reserved for loopback addresses to the local host, as specified by
  * RFC 990.
  */
-extern const network rfc_loopback;
+const network rfc_loopback = { 8, { 127 } };
 /**
  * Reserved IPv4 address range 169.254.0.0/16.
  *
@@ -1049,86 +1093,88 @@ extern const network rfc_loopback;
  * where stable IP address cannot be obtained by other means, as specified by
  * RFC 3927.
  */
-extern const network rfc_unset;
+const network rfc_unset = { 16, { 169, 254 } };
 /**
  * Reserved IPv4 address range 192.0.0.0/24.
  *
  * Reserved for IANA IPv4 Special Purpose Address Registry, as specified by
  * RFC 5736.
  */
-extern const network rfc_iana_private;
+const network rfc_iana_private = { 24, { 192 } };
 /**
  * Reserved IPv4 address range 192.0.2.0/24.
  *
  * Reserved as TEST-NET for use solely in documentation and example source
  * code, as specified by RFC 5737.
  */
-extern const network rfc_test;
+const network rfc_test = { 24, { 192, 0, 2 } };
 /**
  * Reserved IPv4 address range 198.51.100.0/24.
  *
  * Reserved as TEST-NET-2 for use solely in documentation and example source
  * code, as specified by RFC 5737.
  */
-extern const network rfc_test_2;
+const network rfc_test_2 = { 24, { 198, 51, 100 } };
 /**
  * Reserved IPv4 address range 203.0.113.0/24.
  *
  * Reserved as TEST-NET-3 for use solely in documentation and example source
  * code, as specified by RFC 5737.
  */
-extern const network rfc_test_3;
+const network rfc_test_3 = { 24, { 203, 0, 113 } };
 /**
  * Reserved IPv4 address range 192.88.99.0/24.
  *
  * Used by 6to4 anycast relays, as specified by RFC 3068.
  */
-extern const network rfc_6to4_anycast;
+const network rfc_6to4_anycast = { 24, { 192, 88, 99 } };
 /**
  * Reserved IPv4 address range 198.18.0.0/15.
  *
  * Used for testing inter-network communication between two separate
  * subnets, as specified by RFC 2544.
  */
-extern const network rfc_test_comm;
+const network rfc_test_comm = { 15, { 198, 18 } };
 /**
  * Reserved IPv4 address range 224.0.0.0/4.
  *
  * Reserved as MCAST-TEST-NET for use solely in documentation and example source
  * code, as specified by RFC 5771.
  */
-extern const network rfc_mcast;
+const network rfc_mcast = { 4, { 224 } };
 /**
  * Reserved IPv4 address range 233.252.0.0/24.
  *
  * Reserved as MCAST-TEST-NET for use solely in documentation and example source
  * code, as specified by RFC 5771.
  */
-extern const network rfc_test_mcast;
+const network rfc_test_mcast = { 24, { 233, 252 } };
 /**
  * Reserved IPv4 address range 240.0.0.0/4.
  *
  * Reserved for future use, as specified by RFC 5771.
  */
-extern const network rfc_future;
+const network rfc_future = { 4, { 240 } };
 
 } // namespace ipv4
 
 namespace detail {
+
 namespace ipv6 {
 extern void parse(std::istream&, cool::ng::net::ipv6::host&);
 extern void parse(std::istream&, cool::ng::net::ipv6::network&);
 extern void parse(std::istream&, cool::ng::net::ip::address&);
 }
+
 namespace ipv4 {
 extern void parse(std::istream&, cool::ng::net::ipv4::host&);
 extern void parse(std::istream&, cool::ng::net::ipv4::network&);
 extern void parse(std::istream&, cool::ng::net::ip::address&);
 }
+
 }
 
-} } } // namespaces cool::ng::net
-
+namespace ip {
 /**
  * @ingroup net-global
  * Binary compare two IP addresses.
@@ -1136,7 +1182,7 @@ extern void parse(std::istream&, cool::ng::net::ip::address&);
  * @return true if two addresses are binary equal
  * @return false if two addresses are binary different
  */
-inline bool operator ==(const cool::ng::net::ip::address& lhs, const cool::ng::net::ip::address& rhs)
+inline bool operator ==(const address& lhs, const address& rhs)
 {
   return lhs.equals(rhs);
 }
@@ -1147,7 +1193,7 @@ inline bool operator ==(const cool::ng::net::ip::address& lhs, const cool::ng::n
  * @return false if two addresses are binary equal
  * @return true if two addresses are binary different
  */
-inline bool operator !=(const cool::ng::net::ip::address& lhs, const cool::ng::net::ip::address& rhs)
+inline bool operator !=(const address& lhs, const address& rhs)
 {
   return !lhs.equals(rhs);
 }
@@ -1160,7 +1206,7 @@ inline bool operator !=(const cool::ng::net::ip::address& lhs, const cool::ng::n
  *
  * @see @ref cool::ng::net::ip::address::visualize() "address::visualize()" for more details.
  */
-inline std::ostream& operator <<(std::ostream& os, const cool::ng::net::ip::address& val)
+inline std::ostream& operator <<(std::ostream& os, const address& val)
 {
   val.visualize(os);
   return os;
@@ -1194,6 +1240,12 @@ inline std::ostream& operator <<(std::ostream& os, const cool::ng::net::ip::addr
  * @exception cool::exception::illegal_state Thrown if the address cannot
  *   be parsed.
  */
-dlldecl std::istream& operator >>(std::istream& is, cool::ng::net::ip::address& val);
+dlldecl std::istream& operator >>(std::istream& is, address& val);
+
+} // namespace ip
+
+
+} } } // namespaces cool::ng::net
+
 
 #endif

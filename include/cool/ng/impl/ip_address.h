@@ -62,7 +62,7 @@ cool::ng::util::binary<Size> calculate_mask(std::size_t length)
   return result;
 }
 
-} // namespace details
+} // namespace detail
 
 } } } // namespace
 
