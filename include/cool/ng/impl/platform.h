@@ -40,6 +40,8 @@
 
 // MS compilers don't allow explicit virtual conversion operators!!!
 #define EXPLICIT_
+
+#define INETADDR_STORAGE_
 // Visual Studio 2013 does not support c++11 specifiers noexcept
 // and constexpr
 # if _MSC_VER == 1800

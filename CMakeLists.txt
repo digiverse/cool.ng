@@ -124,7 +124,7 @@ elseif (MSVC)
 
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 /MTd -D_SCL_SECURE_NO_WARNINGS")
   add_definitions("-DCOOL_ASYNC_PLATFORM_WINCP")
-  set( COOL_NG_PLATFORM_LIBRARIES DbgHelp.dll)
+  set( COOL_NG_PLATFORM_LIBRARIES DbgHelp.dll Ws2_32.dll)
 
   if( ${MSVC_VERSION} MATCHES "1800")
     set( COOL_MSVC "12" )
@@ -179,7 +179,7 @@ set( COOL_NG_API_HEADERS
     include/cool/ng/binary.h
     include/cool/ng/async/task.h
     include/cool/ng/async/runner.h
-#    include/cool/ng/async/event_sources.h
+    include/cool/ng/async/event_sources.h
 )
 
 set( COOL_NG_IMPL_HEADERS
@@ -194,7 +194,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/conditional_impl.h
     include/cool/ng/impl/async/repeat_impl.h
     include/cool/ng/impl/async/loop_impl.h
-#    include/cool/ng/impl/async/event_sources.h
+    include/cool/ng/impl/async/event_sources.h
 )
 
 # ### ##################################################
@@ -215,31 +215,41 @@ set( COOL_NG_LIB_SRCS
 )
 
 # --- executor sources
-set (COOL_NG_GCD_EXECUTOR_SRCS      lib/src/async/gcd/executor.cpp )
-set (COOL_NG_GCD_EXECUTOR_HEADERS   lib/src/async/gcd/executor.h )
-set (COOL_NG_WINCP_EXECUTOR_SRCS    lib/src/async/wincp/executor.cpp)
-set (COOL_NG_WINCP_EXECUTOR_HEADERS lib/src/async/wincp/executor.h)
+set (COOL_NG_GCD_EVENT_SOURCES_SRCS    lib/src/async/gcd/event_sources.cpp )
+set (COOL_NG_GCD_EVENT_SOURCES_HEADERS lib/src/async/gcd/event_sources.h )
+set (COOL_NG_GCD_EXECUTOR_SRCS         lib/src/async/gcd/executor.cpp )
+set (COOL_NG_GCD_EXECUTOR_HEADERS      lib/src/async/gcd/executor.h )
+
+set (COOL_NG_WINCP_EVENT_SOURCES_SRCS    lib/src/async/wincp/event_sources.cpp )
+set (COOL_NG_WINCP_EVENT_SOURCES_HEADERS lib/src/async/wincp/event_sources.h )
+set (COOL_NG_WINCP_EXECUTOR_SRCS         lib/src/async/wincp/executor.cpp)
+set (COOL_NG_WINCP_EXECUTOR_HEADERS      lib/src/async/wincp/executor.h)
 
 if ( NOT WINDOWS )
   set (COOL_NG_EXECUTOR_FILES ${COOL_NG_GCD_EXECUTOR_SRCS} ${COOL_NG_GCD_EXECUTOR_HEADERS})
+  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_GCD_EVENT_SOURCES_SRCS} ${COOL_NG_GCD_EVENT_SOURCES_HEADERS})
 else()
   set (COOL_NG_EXECUTOR_FILES ${COOL_NG_WINCP_EXECUTOR_SRCS} ${COOL_NG_WINCP_EXECUTOR_HEADERS})
+  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_WINCP_EVENT_SOURCES_SRCS} ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS})
 endif()
 
 set( COOL_NG_GCD_IMPL_HEADERS
   ${COOL_NG_GCD_EXECUTOR_HEADERS}
+  ${COOL_NG_GCD_EVENT_SOURCES_HEADERS}
 )
 
 set( COOL_NG_GCD_IMPL_SRCS
   ${COOL_NG_GCD_EXECUTOR_SRCS}
-#  lib/src/async/gcd/event_sources.cpp
+  ${COOL_NG_GCD_EVENT_SOURCES_SRCS}
 )
 
 set( COOL_NG_WINCP_IMPL_HEADERS
   ${COOL_NG_WINCP_EXECUTOR_HEADERS}
+  ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS}
 )
 set( COOL_NG_WINCP_IMPL_SRCS
   ${COOL_NG_WINCP_EXECUTOR_SRCS}
+  ${COOL_NG_WINCP_EVENT_SOURCES_SRCS}
 )
 
 # -- cool library sources
@@ -340,10 +350,8 @@ set( API_UNIT_TESTS
   repeat_task
   loop_task
   ip_address
-#  es_reader
+  es_reader
 )
-
-#set_target_properties(${HEADER_ONLY_UNIT_TESTS} PROPERTIES FOLDER nameOfTheFolder)
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
 set( task-traits_SRCS tests/unit/traits/task_traits.cpp )
@@ -355,10 +363,7 @@ set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
 set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
 set( loop_task_SRCS tests/unit/task/loop_task.cpp )
 set( ip_address_SRCS tests/unit/net/ip_address.cpp )
-#set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp
-#     tests/unit/event_sources/test_server.cpp
-#     tests/unit/event_sources/test_server.h
-#)
+set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
@@ -405,7 +410,6 @@ macro(api_unit_test TestName)
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   endif()
-  target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
   set_target_properties( ${TestName}-test PROPERTIES
     COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}

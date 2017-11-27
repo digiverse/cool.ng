@@ -35,7 +35,6 @@
 
 namespace cool { namespace ng { namespace async { namespace impl {
 
-class poolmgr;
 
 class critical_section
 {
@@ -75,6 +74,26 @@ private:
   CRITICAL_SECTION m_cs;
 };
 
+class poolmgr
+{
+ public:
+  using ptr      = std::shared_ptr<poolmgr>;
+  using weak_ptr = std::weak_ptr<poolmgr>;
+
+ public:
+  poolmgr();
+  ~poolmgr();
+  PTP_CALLBACK_ENVIRON get_environ() { return &m_environ; }
+  static ptr get_poolmgr();
+
+ private:
+  PTP_POOL                        m_pool;
+  TP_CALLBACK_ENVIRON             m_environ;
+  static weak_ptr                 m_self;
+  static critical_section         m_cs;
+};
+
+
 class executor : public ::cool::ng::util::named
 {
   using queue_type = HANDLE;
@@ -85,25 +104,20 @@ class executor : public ::cool::ng::util::named
 
   void start();
   void stop();
-  void run(detail::context_stack*);
+  void run(detail::work*);
   bool is_system() const { return false; }
 
  private:
   static VOID CALLBACK task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
   void task_executor();
   void start_work();
-  void check_create_thread_pool();
-  void check_delete_thread_pool();
 
  private:
   PTP_WORK          m_work;
   queue_type        m_fifo;
+  poolmgr::ptr      m_pool;
+
   std::atomic<bool> m_work_in_progress;
-
-  static unsigned int             m_refcnt;
-  static std::unique_ptr<poolmgr> m_pool;
-  static critical_section         m_cs;
-
   std::atomic<bool> m_active;
 };
 

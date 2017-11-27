@@ -30,74 +30,68 @@ namespace cool { namespace ng { namespace async { namespace impl {
 
 CONSTEXPR_ const int TASK = 1;
 
+poolmgr::weak_ptr poolmgr::m_self;
+critical_section  poolmgr::m_cs;
 
-class poolmgr
+poolmgr::poolmgr() : m_pool(nullptr)
 {
- public:
-  poolmgr()
-    : m_pool(nullptr)
+  InitializeThreadpoolEnvironment(&m_environ);
+  m_pool = CreateThreadpool(nullptr);
+  if (m_pool == nullptr)
+    throw exception::operation_failed("failed to create thread pool");
+
+  // Associate the callback environment with our thread pool.
+  SetThreadpoolCallbackPool(&m_environ, m_pool);
+}
+
+poolmgr::~poolmgr()
+{
+  if (m_pool != nullptr)
+    CloseThreadpool(m_pool);
+
+  DestroyThreadpoolEnvironment(&m_environ);
+}
+
+// Use critical section to safely create thread pool - these are expected to be
+// pretty infrequent calls and critical section is okay for that
+// The deletion of the thread pool is handled via shared pointers owned by thread
+// pool users and is thus inherently thread safe
+poolmgr::ptr poolmgr::get_poolmgr()
+{
+  std::unique_lock<critical_section> l(m_cs);
+  auto ret = m_self.lock();
+
+  if (!ret)
   {
-    InitializeThreadpoolEnvironment(&m_environ);
-    m_pool = CreateThreadpool(nullptr);
-    if (m_pool == nullptr)
-      throw exception::operation_failed("failed to create thread pool");
-
-    // Associate the callback environment with our thread pool.
-    SetThreadpoolCallbackPool(&m_environ, m_pool);
+    ret = std::make_shared<poolmgr>();
+    m_self = ret;
   }
+  return ret;
+}
 
-  ~poolmgr()
-  {
-    if (m_pool != nullptr)
-      CloseThreadpool(m_pool);
-
-    DestroyThreadpoolEnvironment(&m_environ);
-  }
-
-  PTP_CALLBACK_ENVIRON get_environ()
-  {
-    return &m_environ;
-  }
-
-private:
-  PTP_POOL            m_pool;
-  TP_CALLBACK_ENVIRON m_environ;
-};
-
-std::unique_ptr<poolmgr> executor::m_pool;;
-unsigned int             executor::m_refcnt(0);
-critical_section         executor::m_cs;
 
 executor::executor(RunPolicy policy_)
     : named("si.digiverse.ng.cool.runner")
-    , m_work(NULL)
-    , m_fifo(NULL)
+    , m_work(nullptr)
+    , m_fifo(nullptr)
+    , m_pool(poolmgr::get_poolmgr())
     , m_work_in_progress(false)
     , m_active(true)
 {
-  check_create_thread_pool();
+  m_fifo = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1000);
+  if (m_fifo == NULL)
+    throw exception::operation_failed("failed to create i/o completion port");
 
   try
   {
-    m_fifo = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1000);
-    if (m_fifo == NULL)
-      throw exception::operation_failed("failed to create i/o completion port");
-
-    try
-    {
-      // Create work with the callback environment.
-      m_work = CreateThreadpoolWork(task_executor, this, m_pool->get_environ());
-      if (m_work == NULL)
-        throw exception::operation_failed("failed to create work");
-    }
-    catch (...)
-    {
-      CloseHandle(m_fifo);
-      throw;
-    }
+    // Create work with the callback environment.
+    m_work = CreateThreadpoolWork(task_executor, this, m_pool->get_environ());
+    if (m_work == NULL)
+      throw exception::operation_failed("failed to create work");
   }
-  catch (...) {
-    check_delete_thread_pool();
+  catch (...)
+  {
+    CloseHandle(m_fifo);
     throw;
   }
 }
@@ -127,29 +121,6 @@ executor::~executor()
   if  (m_work != NULL)
     CloseThreadpoolWork(m_work);
 
-  check_delete_thread_pool();
-}
-
-// use critical section to safely create and delete thread pool - these are
-// expected to be pretty infrequent calls and critical section is okay for that
-void executor::check_create_thread_pool()
-{
-  std::unique_lock<critical_section> l(m_cs);
-
-  if (m_refcnt++ == 0)
-  {
-    m_pool.reset(new poolmgr());
-  }
-}
-
-void executor::check_delete_thread_pool()
-{
-  std::unique_lock<critical_section> l(m_cs);
-
-  if (--m_refcnt == 0)
-  {
-    m_pool.reset();
-  }
 }
 
 void executor::start()
@@ -182,40 +153,64 @@ void executor::task_executor()
     return;
   }
 
-  auto stack = static_cast<cool::ng::async::detail::context_stack*>(static_cast<void*>(aux));
-  auto context = stack->top();
-  auto r = context->get_runner().lock();
-
-  if (r)
+  auto work = static_cast<cool::ng::async::detail::work*>(static_cast<void*>(aux));
+  switch (work->type())
   {
-    // call into task
-    try
+    case cool::ng::async::detail::work_type::event_work:
     {
-      context->entry_point(r, context);
-    }
-    catch(...)
-    {
-      /* noop */
+      auto event = static_cast<cool::ng::async::detail::event_context*>(static_cast<void*>(aux));
+      try
+      {
+        event->entry_point();
+      }
+      catch (...)
+      { /* noop */ }
+
+      delete event;
+      break;
     }
 
-    if (stack->empty())
+    case cool::ng::async::detail::work_type::task_work:
     {
-      delete stack;
+      auto stack = static_cast<cool::ng::async::detail::context_stack*>(static_cast<void*>(aux));
+      auto context = stack->top();
+      auto r = context->get_runner().lock();
+
+      if (r)
+      {
+        // call into task
+        try
+        {
+          context->entry_point(r, context);
+        }
+        catch(...)
+        {
+          /* noop */
+        }
+
+        if (stack->empty())
+        {
+          delete stack;
+        }
+        else
+        {
+          r->impl()->run(stack);
+        }
+      }
+      else
+      {
+        delete stack;
+      }
+
+      break;
     }
-    else
-    {
-      r->impl()->run(stack);
-    }
-  }
-  else
-  {
-    delete stack;
   }
 
   start_work();
+
 }
 
-void executor::run(cool::ng::async::detail::context_stack* ctx_)
+void executor::run(cool::ng::async::detail::work* ctx_)
 {
   bool do_start = false;
 

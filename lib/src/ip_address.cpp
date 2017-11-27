@@ -37,16 +37,94 @@ std::istream& operator >>(std::istream& is, cool::ng::net::ip::address& val)
 {
   switch (val.version())
   {
-    case cool::ng::net::ip::IPv4:
+    case version::ipv4:
       cool::ng::net::detail::ipv4::parse(is, val);
       break;
 
-    case cool::ng::net::ip::IPv6:
+    case version::ipv6:
       cool::ng::net::detail::ipv6::parse(is, val);
       break;
   }
   return is;
 }
+
+host_container::host_container() : m_value(&ipv6::unspecified)
+{ /* noop */ }
+
+host_container::host_container(const host_container& addr_)
+  : host_container(*static_cast<const address*>(addr_))
+{ /* noop */ }
+
+host_container::host_container(const address& addr_)
+{
+  *this = addr_;
+}
+
+host_container::host_container(const in_addr& addr_)
+{
+  *this = addr_;
+}
+
+host_container::host_container(const in6_addr& addr_)
+{
+  *this = addr_;
+}
+
+host_container::host_container(const sockaddr_storage& addr_)
+{
+  *this = addr_;
+}
+
+const host_container& host_container::operator =(const address& addr_)
+{
+  switch (addr_.version())
+  {
+    case version::ipv4:
+      m_v4 = addr_;
+      m_value = &m_v4;
+      break;
+
+    case version::ipv6:
+      m_v6 = addr_;
+      m_value = &m_v6;
+      break;
+  }
+  return *this;
+}
+
+const host_container& host_container::operator =(const host_container& addr_)
+{
+  *this = *static_cast<const address*>(addr_);
+  return *this;
+}
+
+const host_container& host_container::operator =(const in_addr& addr_)
+{
+  *this = ipv4::host(addr_);
+  return *this;
+}
+
+const host_container& host_container::operator =(const in6_addr& addr_)
+{
+  *this = ipv6::host(addr_);
+  return *this;
+}
+
+const host_container& host_container::operator =(const sockaddr_storage& addr_)
+{
+  switch (addr_.ss_family)
+  {
+    case AF_INET:
+      *this = reinterpret_cast<const sockaddr_in*>(&addr_)->sin_addr;
+      break;
+
+    case AF_INET6:
+      *this = reinterpret_cast<const sockaddr_in6*>(&addr_)->sin6_addr;
+      break;
+  }
+  return *this;
+}
+
 
 } // namespace ip
 
@@ -118,12 +196,12 @@ bool is_assigned(list_t const list[], std::size_t size, const ip::address& addr)
   {
     switch (static_cast<list_t::value_t>(list[i]).kind())
     {
-      case ip::HostAddress:
+      case ip::kind::host:
         if (list[i] == addr)
           return true;
         break;
 
-      case ip::NetworkAddress:
+      case ip::kind::network:
         if (addr.in(dynamic_cast<const ip::network&>(static_cast<list_t::value_t>(list[i]))))
           return true;
         break;
@@ -207,7 +285,7 @@ void parse(std::istream& is, cool::ng::net::ipv4::network& val)
   }
   else
   {
-    mask = val.mask();
+    mask = static_cast<int>(val.mask());
     if (!is.eof())
       is.unget();
   }
@@ -216,7 +294,7 @@ void parse(std::istream& is, cool::ng::net::ipv4::network& val)
 
 void parse(std::istream& is, ip::address& val)
 {
-  if (val.kind() == ip::HostAddress)
+  if (val.kind() == ip::kind::host)
     parse(is, dynamic_cast<cool::ng::net::ipv4::host&>(val));
   else
     parse(is, dynamic_cast<cool::ng::net::ipv4::network&>(val));
@@ -590,7 +668,7 @@ void parse(std::istream& is, cool::ng::net::ipv6::network& val)
   }
   else
   {
-    mask = val.mask();
+    mask = static_cast<int>(val.mask());
     if (!is.eof())
       is.unget();
   }
@@ -600,7 +678,7 @@ void parse(std::istream& is, cool::ng::net::ipv6::network& val)
 
 void parse(std::istream& is, ip::address& val)
 {
-  if (val.kind() == ip::HostAddress)
+  if (val.kind() == ip::kind::host)
     parse(is, dynamic_cast<cool::ng::net::ipv6::host&>(val));
   else
     parse(is, dynamic_cast<cool::ng::net::ipv6::network&>(val));
@@ -667,7 +745,7 @@ bool host::equals(const ip::address &other) const
     return m_data == static_cast<const uint8_t*>(other);
 
   // special treatment for IPv4 mapped addresses
-  if (kind() == ip::HostAddress)
+  if (kind() == ip::kind::host)
   {
     if (in(rfc_ipv4map) || in(rfc_ipv4translate))
       return ::memcmp(&m_data[12], static_cast<const uint8_t*>(other), 4) == 0;
@@ -764,11 +842,11 @@ void host::assign(const ip::address& val)
     throw exception::illegal_argument("Can't assign network address to host");
   switch (val.version())
   {
-    case ip::IPv6:
+    case ip::version::ipv6:
       m_data = static_cast<const uint8_t*>(val);
       break;
 
-    case ip::IPv4:
+    case ip::version::ipv4:
       m_data = static_cast<const uint8_t*>(rfc_ipv4map);
       ::memcpy(&m_data[size() - val.size()], static_cast<const uint8_t*>(val), val.size());
       break;
@@ -786,17 +864,17 @@ ip::address& host::operator =(const std::string& arg)
   return *this;
 }
 
-bool host::is(ip::Attribute a) const
+bool host::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::Loopback:
+    case ip::attribute::loopback:
       return *this == loopback;
-    case ip::Unspecified:
+    case ip::attribute::unspecified:
       return *this == unspecified;
-    case ip::Ipv4Mapped:
+    case ip::attribute::ipv4mapped:
       return in(rfc_ipv4map) || in(rfc_ipv4translate);
-    case ip::Assigned:
+    case ip::attribute::assigned:
       return detail::is_assigned(detail::ipv6::assigned_list,
                                    detail::ipv6::assigned_list_size,
                                    *this);
@@ -908,22 +986,22 @@ ip::address& network::operator =(const std::string& arg)
   std::stringstream ss(arg);
   network aux(this->mask());
   ss >> aux;
-  
+
   *this = aux;
   return *this;
 }
 
-bool network::is(ip::Attribute a) const
+bool network::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::Loopback:
+    case ip::attribute::loopback:
       return false;
-    case ip::Unspecified:
+    case ip::attribute::unspecified:
       return false;
-    case ip::Ipv4Mapped:
+    case ip::attribute::ipv4mapped:
       return false;
-    case ip::Assigned:
+    case ip::attribute::assigned:
       return detail::is_assigned(detail::ipv6::assigned_list,
                                    detail::ipv6::assigned_list_size,
                                    *this);
@@ -988,7 +1066,7 @@ host::host(const ip::address& other)
 {
   if (kind() != other.kind())
     throw exception::illegal_argument("argument is not host address");
-  if (other.version() == ip::IPv6)
+  if (other.version() == ip::version::ipv6)
   {
     if (!(other.in(ipv6::rfc_ipv4map) || other.in(ipv6::rfc_ipv4translate)))
       throw exception::illegal_argument("argument is not an IPv4 mapped address");
@@ -1013,7 +1091,7 @@ bool host::equals(const ip::address &other) const
     return m_data == static_cast<const uint8_t*>(other);
 
   // special treatment for IPv4 mapped addresses
-  if (kind() == ip::HostAddress)
+  if (kind() == ip::kind::host)
   {
     if (other.in(ipv6::rfc_ipv4map) || other.in(ipv6::rfc_ipv4translate))
       return ::memcmp(m_data, static_cast<const uint8_t*>(other) + 12, 4) == 0;
@@ -1085,11 +1163,11 @@ void host::assign(const ip::address& val)
     throw exception::illegal_argument("Cannot assign network address to host");
   switch (val.version())
   {
-    case ip::IPv4:
+    case ip::version::ipv4:
       m_data = static_cast<const uint8_t*>(val);
       break;
 
-    case ip::IPv6:
+    case ip::version::ipv6:
       if (!(val.in(ipv6::rfc_ipv4map) || val.in(ipv6::rfc_ipv4translate)))
         throw exception::illegal_argument("Cannot assign IPv6 host address");
       m_data = static_cast<const uint8_t*>(val) + (val.size() - size());
@@ -1097,17 +1175,17 @@ void host::assign(const ip::address& val)
   }
 }
 
-bool host::is(ip::Attribute a) const
+bool host::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::Loopback:
+    case ip::attribute::loopback:
       return *this == loopback;
-    case ip::Unspecified:
+    case ip::attribute::unspecified:
       return *this == any;
-    case ip::Ipv4Mapped:
+    case ip::attribute::ipv4mapped:
       return false;
-    case ip::Assigned:
+    case ip::attribute::assigned:
       return detail::is_assigned(detail::ipv4::assigned_list,
                                    detail::ipv4::assigned_list_size,
                                    *this);
@@ -1216,17 +1294,17 @@ ip::address& network::operator =(const std::string& arg)
   return *this;
 }
 
-bool network::is(ip::Attribute a) const
+bool network::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::Loopback:
+    case ip::attribute::loopback:
       return false;
-    case ip::Unspecified:
+    case ip::attribute::unspecified:
       return false;
-    case ip::Ipv4Mapped:
+    case ip::attribute::ipv4mapped:
       return false;
-    case ip::Assigned:
+    case ip::attribute::assigned:
       return detail::is_assigned(detail::ipv4::assigned_list,
                                    detail::ipv4::assigned_list_size,
                                    *this);

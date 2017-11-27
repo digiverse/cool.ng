@@ -35,6 +35,26 @@ class runner;
 
 namespace detail {
 
+enum class work_type {
+  task_work, event_work
+};
+
+class work
+{
+ public:
+  virtual ~work() { /* noop */ }
+  virtual work_type type() const = 0;
+};
+
+class event_context : public work
+{
+ public:
+  work_type type() const override
+  {
+    return work_type::event_work;
+  }
+  virtual void entry_point() = 0;
+};
 // ---- execution context interface
 class context
 {
@@ -62,9 +82,13 @@ public:
 // ---- execution context stack interface
 // ---- each run() call creates a new execution context stack which is then
 // ---- (re)submitted to task queues as long as there are unfinished contexts
-class context_stack
+class context_stack : public  work
 {
  public:
+  work_type type() const override
+  {
+    return work_type::task_work;
+  }
   virtual ~context_stack() { /* noop */ }
   // pushes new context to the top of the stack
   virtual void push(context*) = 0;

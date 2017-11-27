@@ -36,6 +36,7 @@
 # include <netinet/in.h>
 #endif
 
+#include "cool/ng/impl/platform.h"
 #include "cool/ng/exception.h"
 #include "cool/ng/binary.h"
 #include "impl/ip_address.h"
@@ -43,6 +44,19 @@
 namespace cool { namespace ng {
 
 namespace net {
+
+#if defined(WINDOWS_TARGET)
+
+using handle = SOCKET;
+const handle invalid_handle = INVALID_SOCKET;
+
+#else
+
+using handle = int;
+const handle invalid_handle = -1;
+
+#endif
+
 /**
  * @defgroup net-global Global Operator Overloads
  */
@@ -60,28 +74,34 @@ namespace ip {
 /**
  * Enumeration determining the version of the IP protocol.
  */
-enum Version {
-  IPv4,  //!< IP address is 32-bit IPv4 address
-  IPv6   //!< IP address is 128-bit IPv6 address
+enum class version {
+  ipv4,  //!< IP address is 32-bit IPv4 address
+  ipv6   //!< IP address is 128-bit IPv6 address
 };
 
 /**
  * Enumeration determining the kind of the IP address.
  */
-enum Kind {
-  HostAddress,   //!< The address is the host address
-  NetworkAddress //!< The address is the network address
+enum class kind {
+  host,   //!< The address is the host address
+  network //!< The address is the network address
 };
 
 /**
  * Enumeration listing possible attributes of IP address.
  */
-enum Attribute
+enum class attribute
 {
-  Loopback,     //!< IP address is a loopback address of device
-  Unspecified,  //!< IP address is not specified (includes IPv4 INADDR_ANY)
-  Ipv4Mapped,   //!< IP address is IPv6 address mapped from IPv4 space
-  Assigned      //!< IP address is reserved number by one or more RFCs
+  loopback,     //!< IP address is a loopback address of device
+  unspecified,  //!< IP address is not specified (includes IPv4 INADDR_ANY)
+  ipv4mapped,   //!< IP address is IPv6 address mapped from IPv4 space
+  assigned      //!< IP address is reserved number by one or more RFCs
+};
+
+enum class protocol
+{
+  tcp,
+  udp
 };
 
 class network;
@@ -103,7 +123,7 @@ class address
    *  - it is possible to assign address contained in @ref ipv6::host "IPv6 host"
    *    address object to the @ref ipv4::host "IPv4 host" address object if the
    *    provided IPV6 host address is mapped or translated
-   *    @ref cool::ng::net::ip::IPv4 "IPv4" host address.
+   *    @ref cool::ng::net::ip::version::ipv4 "IPv4" host address.
    *
    * @param rhs the IP address to be assigned to this address object
    *
@@ -129,17 +149,17 @@ class address
    * @note In general, two addresses that differ in kind() or version() do
    *   not compare equal. However, the @ref cool::ng::net::ipv6::host "IPv6 host" addresses
    *   that represent the @ref ipv4::host "IPv4 host" addresses mapped into
-   *   @ref cool::ng::net::ip::IPv6 "IPv6" address space with either
+   *   @ref cool::ng::net::ip::version::ipv6 "IPv6" address space with either
    *   @ref ipv6::rfc_ipv4map or @ref ipv6::rfc_ipv4translate network prefix
-   *   will compare equal to the corresponding @ref cool::ng::net::ip::IPv4 "IPv4" addresses.
+   *   will compare equal to the corresponding @ref cool::ng::net::ip::version::ipv4 "IPv4" addresses.
    *
    * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
-   * @see @ref operator ==(const cool::ng::net::ip::address&, const cool::ng::net::ip::address&)
-   *   "global == operator" overload
-   * @see @ref operator !=(const cool::ng::net::ip::address&, const cool::ng::net::ip::address&)
+   * @see @ref cool::ng::net::ip::operator ==(const cool::ng::net::ip::address&, const cool::ng::net::ip::address&)
+   *   "== operator" overload
+   * @see @ref cool::ng::net::ip::operator !=(const cool::ng::net::ip::address&, const cool::ng::net::ip::address&)
    *   "global != operator" overload
    */
   virtual bool equals(const address& other) const = 0;
@@ -157,8 +177,8 @@ class address
    *
    * @param os Output stream to write the visual presentation to
    *
-   * @see @ref operator <<(std::ostream& os, const cool::ng::net::ip::address& val)
-   *   "global << operator" overload
+   * @see @ref cool::ng::net::ip::operator <<(std::ostream& os, const cool::ng::net::ip::address& val)
+   *   "<< operator" overload
    * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
@@ -171,14 +191,14 @@ class address
    * @return IPv4 This address object represents IPv4 address
    * @return IPV6 This address object represents IPV6 address
    */
-  virtual Version version() const = 0;
+  virtual ip::version version() const = 0;
   /**
    * Return the kind of the IP address.
    *
    * @return HostAddress This address object represents host address.
    * @return NetworkAddress This address object represents network address.
    */
-  virtual Kind kind() const = 0;
+  virtual ip::kind kind() const = 0;
   /**
    * Type conversion operator.
    *
@@ -318,7 +338,7 @@ class address
    *
    * @param attr Attribute to check.
    */
-  virtual bool is(Attribute attr) const = 0;
+  virtual bool is(attribute attr) const = 0;
 
  protected:
   virtual void assign(const address&) = 0;
@@ -355,7 +375,7 @@ class host : public address
    *   addresses
    */
   address& operator =(const address& rhs) override = 0;
-  virtual Kind kind() const override { return HostAddress; }
+  virtual ip::kind kind() const override { return ip::kind::host; }
 };
 
 class network : public address
@@ -366,7 +386,7 @@ class network : public address
    *
    * Assigns the IP address contained in another address object to this
    * address object. The assignment will fail if the other address object is
-   * not network address of the same @ref cool::ng::net::ip::Version "IP version".
+   * not network address of the same @ref cool::ng::net::ip::version "IP version".
    *
    * @param rhs the IP address to be assigned to this address object
    *
@@ -384,7 +404,7 @@ class network : public address
    * @note IPv6 network does not contain IPv4 hosts or sub-networks, and vice versa.
    */
   virtual bool has(const address& address) const = 0;
-  virtual Kind kind() const override { return NetworkAddress; }
+  virtual ip::kind kind() const override { return ip::kind::network; }
   virtual std::size_t mask() const = 0;
 };
 
@@ -522,13 +542,13 @@ class host : public ip::host
   // address interface
   dlldecl bool equals(const ip::address& other) const override;
   dlldecl void visualize(std::ostream& os) const override;
-  ip::Kind kind() const override
+  ip::kind kind() const override
   {
-    return ip::HostAddress;
+    return ip::kind::host;
   }
-  ip::Version version() const override
+  ip::version version() const override
   {
-    return ip::IPv6;
+    return ip::version::ipv6;
 
   }
   EXPLICIT_ operator const uint8_t * () const override
@@ -556,7 +576,7 @@ class host : public ip::host
   dlldecl ip::address& operator =(const in6_addr&) override;
   dlldecl ip::address& operator =(const std::string&) override;
   dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::Attribute) const override;
+  dlldecl bool is(ip::attribute) const override;
 
   // ipv6::host specific
   /**
@@ -661,14 +681,14 @@ class network : public ip::network
   // address interface
   dlldecl bool equals(const ip::address& other) const override;
   dlldecl void visualize(std::ostream &os) const override;
-  ip::Kind kind() const override
+  ip::kind kind() const override
   {
-    return ip::NetworkAddress;
+    return ip::kind::network;
 
   }
-  ip::Version version() const override
+  ip::version version() const override
   {
-    return ip::IPv6;
+    return ip::version::ipv6;
   }
   EXPLICIT_ operator const uint8_t * () const override
   {
@@ -692,7 +712,7 @@ class network : public ip::network
   dlldecl ip::address& operator =(const in6_addr&) override;
   dlldecl ip::address& operator =(const std::string&) override;
   dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::Attribute) const override;
+  dlldecl bool is(ip::attribute) const override;
 
   // network interface
   dlldecl bool has(const ip::address& other) const override;
@@ -712,11 +732,15 @@ class network : public ip::network
 /**
  * Constant representing IPv6 loopback address.
  */
-const host loopback = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };;
+const host loopback = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
 /**
  * Constant representing IPv6 unspecified address.
  */
 const host unspecified;
+/**
+ * Naming convenience - IPv6 equivalent of ipv4::any for bind.
+ */
+const host any;
 /**
  * Reserved IPv6 address range ::%ffff:0:0/96.
  *
@@ -877,13 +901,13 @@ class host : public ip::host
   // address interface
   dlldecl  bool equals(const ip::address& other) const override;
   dlldecl  void visualize(std::ostream& os) const override;
-  ip::Kind kind() const override
+  ip::kind kind() const override
   {
-    return ip::HostAddress;
+    return ip::kind::host;
   }
-  ip::Version version() const override
+  ip::version version() const override
   {
-    return ip::IPv4;
+    return ip::version::ipv4;
   }
   EXPLICIT_ operator const uint8_t * () const override
   {
@@ -909,7 +933,7 @@ class host : public ip::host
   dlldecl ip::address& operator =(const in6_addr&) override;
   dlldecl ip::address& operator =(const std::string&) override;
   dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::Attribute) const override;
+  dlldecl bool is(ip::attribute) const override;
 
  private:
   dlldecl void assign(const ip::address& other) override;
@@ -990,13 +1014,13 @@ class network : public ip::network
   // address interface
   dlldecl bool equals(const ip::address& other) const override;
   dlldecl void visualize(std::ostream &os) const override;
-  ip::Kind kind() const override
+  ip::kind kind() const override
   {
-    return ip::NetworkAddress;
+    return ip::kind::network;
   }
-  ip::Version version() const override
+  ip::version version() const override
   {
-    return ip::IPv4;
+    return ip::version::ipv4;
   }
   EXPLICIT_ operator const uint8_t * () const override
   {
@@ -1020,7 +1044,7 @@ class network : public ip::network
   dlldecl ip::address& operator =(const in_addr&) override;
   dlldecl ip::address& operator =(const std::string&) override;
   dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::Attribute) const override;
+  dlldecl bool is(ip::attribute) const override;
 
   // network interface
   dlldecl bool has(const ip::address& other) const override;
@@ -1216,18 +1240,18 @@ inline std::ostream& operator <<(std::ostream& os, const address& val)
  * Read an IPv6 host address from the character stream.
  *
  * Parses the textual presentation of the IP address from the input stream. The
- * recognized presentation styles depend on the @ref cool::ng::net::ip::Version "version"
- * and the @ref cool::ng::net::ip::Kind "kind" of the provided
+ * recognized presentation styles depend on the @ref cool::ng::net::ip::version "version"
+ * and the @ref cool::ng::net::ip::kind "kind" of the provided
  * @ref cool::ng::net::ip::address "address" parameter as follows:
- *  - the @ref cool::ng::net::ip::IPv4 "IPv4" addresses are recognized in the
+ *  - the @ref cool::ng::net::ip::version::ipv4 "IPv4" addresses are recognized in the
  *    usual dotted format, e.g. <tt>198.18.3.65</tt>
- *  - the @ref cool::ng::net::ip::IPv6 "IPv6" addresses are recognized in all styles
+ *  - the @ref cool::ng::net::ip::version::ipv6 "IPv6" addresses are recognized in all styles
  *    as listed in @ref cool::ng::net::ipv6::Style "Style" enumeration. In addition,
  *    the IPv6 @ref cool::ng::net::ip::host "host" address may be enclosed in square
  *    brackets (<tt>[</tt> ... <tt>]</tt>), which are ignored.
  *
  * For @ref cool::ng::net::ip::network "network" addresses of any
- * @ref cool::ng::net::ip::Version "version" the network mask width can be specified
+ * @ref cool::ng::net::ip::version "version" the network mask width can be specified
  * by appending a <tt>/</tt> character followed by an integer number to the
  * address, e.g. <tt>::%ffff:0:0/96</tt>.
  *
@@ -1241,6 +1265,29 @@ inline std::ostream& operator <<(std::ostream& os, const address& val)
  *   be parsed.
  */
 dlldecl std::istream& operator >>(std::istream& is, address& val);
+
+class host_container
+{
+ public:
+  dlldecl host_container();
+  dlldecl host_container(const host_container&);
+  dlldecl host_container(const address&);
+  dlldecl host_container(const in_addr&);
+  dlldecl host_container(const in6_addr&);
+  dlldecl host_container(const sockaddr_storage&);
+  dlldecl const host_container& operator =(const host_container&);
+  dlldecl const host_container& operator =(const address&);
+  dlldecl const host_container& operator =(const in_addr&);
+  dlldecl const host_container& operator =(const in6_addr&);
+  dlldecl const host_container& operator =(const sockaddr_storage&);
+  operator const address&() const { return *m_value; }
+  explicit operator const address*() const { return m_value; }
+
+ private:
+  const address* m_value;
+  ipv4::host m_v4;
+  ipv6::host m_v6;
+};
 
 } // namespace ip
 
