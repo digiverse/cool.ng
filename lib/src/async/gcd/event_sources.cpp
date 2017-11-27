@@ -396,13 +396,18 @@ void stream::cancel_read_source()
 
 void stream::disconnect()
 {
-
+  cancel_read_source();
+  cancel_write_source();
+  m_state = state::disconnected;
 }
 
 void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
 {
   cool::ng::net::handle handle = cool::ng::net::invalid_handle;
 
+  if (m_state == state::connected)
+    throw exc::invalid_state();
+    
   try
   {
 #if defined(LINUX_TARGET)

@@ -308,6 +308,11 @@ class stream
     m_impl->connect(addr_, port_);
   }
 
+  void disconnect()
+  {
+    m_impl->disconnect();
+  }
+  
  private:
   std::shared_ptr<async::detail::connected_writable> m_impl;
 };
