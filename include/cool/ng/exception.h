@@ -135,6 +135,14 @@ class cool_logic_fault : public cool_base
   cool_logic_fault(const std::string& msg) : cool_base(msg) { /* noop */ }
 };
 
+class invalid_state : public cool_logic_fault
+{
+ public:
+  invalid_state()
+    : cool_logic_fault("the object is in the wrong state")
+  { /* noop */ }
+};
+
 class runner_not_available : public cool_logic_fault
 {
  public:

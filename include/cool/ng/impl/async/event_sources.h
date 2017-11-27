@@ -63,6 +63,13 @@ class writable : public event_source
   virtual void write(const void* data, std::size_t sz) = 0;
 };
 
+class connected_writable : public writable
+{
+ public:
+  virtual void connect(const cool::ng::net::ip::address&, uint16_t) = 0;
+  virtual void disconnect() = 0;
+
+};
 } // namespace detail
 
 namespace net {
@@ -102,16 +109,21 @@ dlldecl detail::startable* create_server(
   , int port_
   , const cb::server::weak_ptr& cb_);
 
-dlldecl std::shared_ptr<async::detail::writable> create_stream(
+dlldecl std::shared_ptr<async::detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& runner_
   , const cool::ng::net::ip::address& addr_
   , int port_
   , const cb::stream::weak_ptr& cb_
   , void* buf_
   , std::size_t bufsz_);
-dlldecl std::shared_ptr<async::detail::writable> create_stream(
+dlldecl std::shared_ptr<async::detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& runner_
   , cool::ng::net::handle h_
+  , const cb::stream::weak_ptr& cb_
+  , void* buf_
+  , std::size_t bufsz_);
+dlldecl std::shared_ptr<async::detail::connected_writable> create_stream(
+    const std::shared_ptr<runner>& runner_
   , const cb::stream::weak_ptr& cb_
   , void* buf_
   , std::size_t bufsz_);
@@ -177,7 +189,7 @@ class server : public async::detail::event_source
 };
 
 template <typename RunnerT>
-class stream : public async::detail::writable
+class stream : public async::detail::connected_writable
              , public cb::stream
              , public cool::ng::util::self_aware<stream<RunnerT>>
 {
@@ -198,7 +210,6 @@ class stream : public async::detail::writable
     auto r = m_runner.lock();
     if (r)
     {
-      m_addr = addr_;
       m_impl = impl::create_stream(r, addr_, port_, this->self(), buf_, bufsz_);
     }
     else
@@ -210,6 +221,16 @@ class stream : public async::detail::writable
     if (r)
     {
       m_impl = impl::create_stream(r, h_, this->self(), buf_, bufsz_);
+    }
+    else
+      throw cool::ng::exception::runner_not_available();
+  }
+  void initialize(void* buf_, std::size_t bufsz_)
+  {
+    auto r = m_runner.lock();
+    if (r)
+    {
+      m_impl = impl::create_stream(r, this->self(), buf_, bufsz_);
     }
     else
       throw cool::ng::exception::runner_not_available();
@@ -226,12 +247,19 @@ class stream : public async::detail::writable
   void shutdown() override  { m_impl->stop();     }
   const std::string& name() const override { return m_impl->name(); }
 
-  // writable interface
-  void write(const void* data, std::size_t size) override
+  // connected_writable interface
+  inline void write(const void* data, std::size_t size) override
   {
     m_impl->write(data, size);
   }
-
+  inline void connect(const cool::ng::net::ip::address& addr_, uint16_t port_) override
+  {
+    m_impl->connect(addr_, port_);
+  }
+  inline void disconnect() override
+  {
+    m_impl->disconnect();
+  }
   // cb_stream interface
   void on_read(void*& buf_, std::size_t& size_) override
   {
@@ -250,9 +278,8 @@ class stream : public async::detail::writable
   }
 
  private:
-  std::shared_ptr<async::detail::writable> m_impl;
+  std::shared_ptr<async::detail::connected_writable> m_impl;
   std::weak_ptr<RunnerT>            m_runner;
-  cool::ng::net::ip::host_container m_addr;
   rd_handler                        m_rhandler;
   wr_handler                        m_whandler;
   event_handler                     m_oob;

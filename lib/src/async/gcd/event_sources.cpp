@@ -64,7 +64,7 @@ cool::ng::async::detail::startable* create_server(
   return new server(r_->impl(), addr_, port_, cb_);
 }
 
-std::shared_ptr<async::detail::writable> create_stream(
+std::shared_ptr<async::detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& r_
   , const cool::ng::net::ip::address& addr_
   , int port_
@@ -77,7 +77,7 @@ std::shared_ptr<async::detail::writable> create_stream(
   return ret;
 }
 
-std::shared_ptr<async::detail::writable> create_stream(
+std::shared_ptr<async::detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& r_
   , cool::ng::net::handle h_
   , const cb::stream::weak_ptr& cb_
@@ -88,6 +88,16 @@ std::shared_ptr<async::detail::writable> create_stream(
   ret->initialize(h_, buf_, bufsz_);
   return ret;
 }
+std::shared_ptr<async::detail::connected_writable> create_stream(
+    const std::shared_ptr<runner>& r_
+  , const cb::stream::weak_ptr& cb_
+  , void* buf_
+  , std::size_t bufsz_)
+{
+  auto ret = cool::ng::util::shared_new<stream>(r_->impl(), cb_);
+  ret->initialize(buf_, bufsz_);
+  return ret;
+}
 
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -95,7 +105,7 @@ std::shared_ptr<async::detail::writable> create_stream(
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // -----
-// ----- Server class
+// ----- server class implementation
 // -----
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -107,7 +117,7 @@ server::server(const std::shared_ptr<async::impl::executor>& ex_
              , const cool::ng::net::ip::address& addr_
              , int port_
              , const cb::server::weak_ptr& cb_)
-  : named("cool.ng.async.et.server"), m_active(false), m_handler(cb_)
+  : named("cool.ng.async.net.server"), m_handler(cb_)
 {
   switch (addr_.version())
   {
@@ -121,9 +131,9 @@ server::server(const std::shared_ptr<async::impl::executor>& ex_
   }
 
   m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_handle, 0 , ex_->queue());
-  ::dispatch_source_set_cancel_handler_f(m_source, on_cancel);
-  ::dispatch_source_set_event_handler_f(m_source, on_event);
-  ::dispatch_set_context(m_source, this);
+  m_source.cancel_handler(on_cancel);
+  m_source.event_handler(on_event);
+  m_source.context(this);
 }
 
 void server::init_ipv6(const cool::ng::net::ip::address& addr_, int port_)
@@ -180,26 +190,18 @@ void server::init_ipv4(const cool::ng::net::ip::address& addr_, int port_)
 
 void server::start()
 {
-  if (!m_active)
-  {
-    ::dispatch_resume(m_source);
-    m_active = true;
-  }
+  m_source.resume();
 }
 
 void server::stop()
 {
-  if (m_active)
-  {
-    m_active = false;
-    ::dispatch_suspend(m_source);
-  }
+  m_source.suspend();
 }
 
 void server::on_cancel(void* ctx)
 {
   auto self = static_cast<server*>(ctx);
-  ::dispatch_release(self->m_source);
+  self->m_source.release();
   ::close(self->m_handle);
 
   delete self;
@@ -209,7 +211,7 @@ void server::on_event(void* ctx)
 {
   auto self = static_cast<server*>(ctx);
   auto cb = self->m_handler.lock();
-  std::size_t size = ::dispatch_source_get_data(self->m_source);
+  std::size_t size = self->m_source.get_data();
 
   for (std::size_t i = 0; i < size; ++i)
   {
@@ -251,7 +253,7 @@ void server::on_event(void* ctx)
 void server::shutdown()
 {
   start();
-  ::dispatch_source_cancel(m_source);
+  m_source.cancel();
 }
 
 // --------------------------------------------------------------------------
@@ -260,7 +262,7 @@ void server::shutdown()
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // -----
-// ----- Stream class
+// ----- stream class  implementation
 // -----
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -274,16 +276,13 @@ stream::stream(const std::weak_ptr<async::impl::executor>& ex_
     , m_state(state::disconnected)
     , m_executor(ex_)
     , m_handler(cb_)
-    , m_active(true)
     , m_reader(nullptr)
     , m_writer(nullptr)
     , m_wr_busy(false)
 { /* noop */ }
 
 stream::~stream()
-{
-  std::cout << "stream destroyed\n";
-}
+{ /* noop */ }
 
 void stream::initialize(const cool::ng::net::ip::address& addr_
                       , uint16_t port_
@@ -292,7 +291,7 @@ void stream::initialize(const cool::ng::net::ip::address& addr_
 {
   m_size = bufsz_;
   m_buf = buf_;
-  
+
   m_state = state::starting;
   connect(addr_, port_);
 }
@@ -317,6 +316,11 @@ void stream::initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_
   create_read_source(rh, buf_, bufsz_);
 }
 
+void stream::initialize(void* buf_, std::size_t bufsz_)
+{
+  m_state = state::disconnected;
+}
+
 void stream::create_write_source(cool::ng::net::handle h_, bool  start_)
 {
   auto ex_ = m_executor.lock();
@@ -331,13 +335,13 @@ void stream::create_write_source(cool::ng::net::handle h_, bool  start_)
 
   // prepare write event source
   m_writer->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_WRITE, m_writer->m_handle, 0 , ex_->queue());
-  ::dispatch_source_set_cancel_handler_f(m_writer->m_source, on_wr_cancel);
-  ::dispatch_source_set_event_handler_f(m_writer->m_source, on_wr_event);
-  ::dispatch_set_context(m_writer->m_source, m_writer);
+  m_writer->m_source.cancel_handler(on_wr_cancel);
+  m_writer->m_source.event_handler(on_wr_event);
+  m_writer->m_source.context(m_writer);
 
   // if stream is not yet connected start the source to cover connect event
   if (start_)
-    ::dispatch_resume(m_writer->m_source);
+    m_writer->m_source.resume();
 }
 
 void stream::create_read_source(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_)
@@ -349,16 +353,8 @@ void stream::create_read_source(cool::ng::net::handle h_, void* buf_, std::size_
     throw exc::illegal_argument("invalid file descriptor");
 
   m_reader = new rd_context;
-  m_reader->m_handle = h_;
-  m_reader->m_stream = self().lock();
 
-  // prepare read event source
-  m_reader->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_reader->m_handle, 0 , ex_->queue());
-  ::dispatch_source_set_cancel_handler_f(m_reader->m_source, on_rd_cancel);
-  ::dispatch_source_set_event_handler_f(m_reader->m_source, on_rd_event);
-  ::dispatch_set_context(m_reader->m_source, m_reader);
-  ::dispatch_resume(m_reader->m_source);
-
+  // prepare read buffer
   m_reader->m_rd_data = buf_;
   m_reader->m_rd_size = bufsz_;
   m_reader->m_rd_is_mine = false;
@@ -367,6 +363,17 @@ void stream::create_read_source(cool::ng::net::handle h_, void* buf_, std::size_
     m_reader->m_rd_data = new uint8_t[bufsz_];  // TODO: check for null
     m_reader->m_rd_is_mine = true;
   }
+
+  m_reader->m_handle = h_;
+  m_reader->m_stream = self().lock();
+
+  // prepare read event source
+  m_reader->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_reader->m_handle, 0 , ex_->queue());
+  m_reader->m_source.cancel_handler(on_rd_cancel);
+  m_reader->m_source.event_handler(on_rd_event);
+  m_reader->m_source.context(m_reader);
+
+  m_reader->m_source.resume();
 }
 
 void stream::cancel_write_source()
@@ -374,11 +381,8 @@ void stream::cancel_write_source()
   if (m_writer == nullptr)
     return;
 
-  bool expect = false;
-
-  ::dispatch_source_cancel(m_writer->m_source);
-  if (m_wr_busy.compare_exchange_strong(expect, true))
-    ::dispatch_resume(m_writer->m_source);
+  m_writer->m_source.resume();
+  m_writer->m_source.cancel();
 }
 
 void stream::cancel_read_source()
@@ -386,8 +390,13 @@ void stream::cancel_read_source()
   if (m_reader == nullptr)
     return;
 
-  ::dispatch_source_cancel(m_reader->m_source);
-  start();
+  m_reader->m_source.resume();
+  m_reader->m_source.cancel();
+}
+
+void stream::disconnect()
+{
+
 }
 
 void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
@@ -435,26 +444,21 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
       size = sizeof(addr6);
     }
 
+    // Linux may sometimes do immediate connect with connect returning 0.
+    // Nevertheless, we will consider this as async connect and let the
+    // on_write event handler handle this in an usual way.
+    m_state = state::connecting;
     if (::connect(handle, p, size) == -1)
     {
-      auto err = errno;
-      std::cout << "Error, errno = " << err << ", EINPROGRESS = " <<  EINPROGRESS << "\n";
-      if (err != EINPROGRESS)
+      if (errno != EINPROGRESS)
         throw exc::operation_failed("connect failed");
-
-      m_state = state::connecting;
     }
-    else
-    {
-       std::cout << "Connected\n"; // TODO: can it complete immediatelly?
-    }
-
   }
   catch (...)
   {
     if (m_writer != nullptr)
     {
-      ::dispatch_source_cancel(m_writer->m_source);
+      m_writer->m_source.cancel();
     }
     else
     {
@@ -470,8 +474,7 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
 void stream::on_wr_cancel(void* ctx)
 {
   auto self = static_cast<context*>(ctx);
-  std::cout << "cancel event on write source\n";
-  ::dispatch_release(self->m_source);
+  self->m_source.release();
   ::close(self->m_handle);
 
   self->m_stream->m_writer = nullptr;
@@ -481,8 +484,7 @@ void stream::on_wr_cancel(void* ctx)
 void stream::on_rd_cancel(void* ctx)
 {
   auto self = static_cast<rd_context*>(ctx);
-  std::cout << "cancel event on read source\n";
-  ::dispatch_release(self->m_source);
+  self->m_source.release();
   ::close(self->m_handle);
 
   if (self->m_rd_is_mine)
@@ -495,7 +497,7 @@ void stream::on_rd_cancel(void* ctx)
 void stream::on_rd_event(void* ctx)
 {
   auto self = static_cast<rd_context*>(ctx);
-  std::size_t size = ::dispatch_source_get_data(self->m_source);
+  std::size_t size = self->m_source.get_data();
 
   if (size == 0)   // indicates disconnect of peer
   {
@@ -530,15 +532,17 @@ void stream::on_rd_event(void* ctx)
 void stream::on_wr_event(void* ctx)
 {
   auto self = static_cast<context*>(ctx);
+  auto size = self->m_source.get_data();
+
   switch (static_cast<state>(self->m_stream->m_state))
   {
     case state::starting:
     case state::connecting:
-      self->m_stream->process_connect_event(::dispatch_source_get_data(self->m_source));
+      self->m_stream->process_connect_event(size);
       break;
 
     case state::connected:
-      self->m_stream->process_write_event(::dispatch_source_get_data(self->m_source));
+      self->m_stream->process_write_event(size);
       break;
 
     case state::disconnected:
@@ -550,14 +554,15 @@ void stream::write(const void* data, std::size_t size)
 {
   if (m_state != state::connected)
     throw exc::illegal_state("not connected");
+
   bool expected = false;
   if (!m_wr_busy.compare_exchange_strong(expected, true))
     throw exc::illegal_state("writer busy");
 
   m_wr_data = static_cast<const uint8_t*>(data);
-  m_wr_size  = size;
+  m_wr_size = size;
   m_wr_pos = 0;
-  ::dispatch_resume(m_writer->m_source);
+  m_writer->m_source.resume();
 }
 
 void stream::process_write_event(std::size_t size)
@@ -567,7 +572,7 @@ void stream::process_write_event(std::size_t size)
 
   if (m_wr_pos >= m_wr_size)
   {
-    ::dispatch_suspend(m_writer->m_source);
+    m_writer->m_source.suspend();
     m_wr_busy = false;
     auto aux = m_handler.lock();
     if (aux)
@@ -605,8 +610,7 @@ void stream::process_write_event(std::size_t size)
 // -    data to determine the outcome of connect
 void stream::process_connect_event(std::size_t size)
 {
-  std::cout << "connect event, size " << size << "\n";
-  ::dispatch_suspend(m_writer->m_source);
+  m_writer->m_source.suspend();
 
 #if defined(LINUX_TARGET)
   if (size != 0)
@@ -614,7 +618,6 @@ void stream::process_connect_event(std::size_t size)
   if (size <= 2048)
 #endif
   {
-    std::cout << "connect failed\n";
     m_state = state::disconnected;
     auto aux = m_handler.lock();
     if (aux)
@@ -647,111 +650,20 @@ void stream::process_disconnect_event()
 
 void stream::start()
 {
-  if (!m_active)
-  {
-//    ::dispatch_resume(m_source);
-    m_active = true;
-  }
+  m_reader->m_source.resume();
 }
 
 void stream::stop()
 {
-  if (m_active)
-  {
-    m_active = false;
-//    ::dispatch_suspend(m_source);
-  }
+  m_reader->m_source.suspend();
 }
 
 void stream::shutdown()
 {
-  // TODO: check if sources suspended!!!!
-  start();
-  if (m_reader != nullptr)
-    ::dispatch_source_cancel(m_reader->m_source);
-
   cancel_read_source();
   cancel_write_source();
 }
 
 } } } } }
 
-#if 0
-namespace cool { namespace ng { namespace async { namespace detail {
 
-void event_context::shutdown()
-{
-  if (!m_active)
-  {
-    ::dispatch_resume(m_source);
-  }
-  ::dispatch_source_cancel(m_source);
-}
-
-event_source::event_source(
-    dispatch_source_type_t type_
-  , cool::ng::io::handle h_
-  , unsigned long mask_
-  , const std::shared_ptr<runner>& r_)
-{
-  m_context = new event_context;
-  m_context->m_handle = h_;
-  m_context->m_source = ::dispatch_source_create(type_, h_, mask_, r_->impl()->queue());
-  ::dispatch_source_set_cancel_handler_f(m_context->m_source, on_cancel);
-  ::dispatch_source_set_event_handler_f(m_context->m_source, on_event);
-  ::dispatch_set_context(m_context->m_source, m_context);
-}
-
-event_source::~event_source()
-{
-  m_context->shutdown();
-}
-
-void event_source::on_cancel(void *ctx)
-{
-  auto aux = static_cast<event_context*>(ctx);
-  ::dispatch_release(aux->m_source);
-
-  try
-  {
-    aux->m_handler(aux->m_handle);
-  }
-  catch (...)
-  { /* noop */ }
-
-  delete aux;
-}
-
-void event_source::on_event(void *ctx)
-{
-  auto aux = static_cast<event_context*>(ctx);
-  auto object = aux->m_impl.lock();
-  try
-  {
-    if (object)
-      object->handle_event(aux);
-  }
-  catch (...)
-  { /* noop */ }
-}
-
-void event_source::start()
-{
-  if (!m_context->m_active)
-  {
-    m_context->m_active = true;
-    ::dispatch_resume(m_context->m_source);
-  }
-}
-
-void event_source::stop()
-{
-  if (m_context->m_active)
-  {
-    m_context->m_active = false;
-    ::dispatch_suspend(m_context->m_source);
-  }
-}
-
-} } } } // namespace
-#endif

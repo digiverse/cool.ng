@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(cool_ng_f36defb0_aaa1_4ce1_b25a_943f5beef23a)
-#define      cool_ng_f36defb0_aaa1_4ce1_b25a_943f5beef23a
+#if !defined(cool_ng_f36defb0_abba_4ce1_b25a_943f5beef23a)
+#define      cool_ng_f36defb0_abba_4ce1_b25a_943f5beef23a
 
 #include <atomic>
 #include <memory>
@@ -39,6 +39,66 @@ namespace cool { namespace ng { namespace async {
 
 
 namespace net { namespace impl {
+
+// tiny wrapper around dispatch source libdispatch functions - also
+// prevents unbalanced resume/suspend calls
+class dispatch_source
+{
+ public:
+  dispatch_source(const dispatch_source&) = delete;
+  dispatch_source(dispatch_source&&) = delete;
+  void operator =(const dispatch_source&) = delete;
+  void operator =(dispatch_source&&) = delete;
+
+  dispatch_source() : m_active(false), m_source(nullptr)
+  { /* noop */ }
+  dispatch_source(::dispatch_source_t s_) : m_active(false), m_source(s_)
+  { /* noop */ }
+  dispatch_source& operator =(::dispatch_source_t s_)
+  {
+    m_source = s_;
+    return *this;
+  }
+  void context(void* context) const
+  {
+    ::dispatch_set_context(m_source, context);
+  }
+  void cancel_handler(::dispatch_function_t handler) const
+  {
+    ::dispatch_source_set_cancel_handler_f(m_source, handler);
+  }
+  void event_handler(::dispatch_function_t handler) const
+  {
+    ::dispatch_source_set_event_handler_f(m_source, handler);
+  }
+  unsigned long get_data() const
+  {
+    return ::dispatch_source_get_data(m_source);
+  }
+  void resume()
+  {
+    bool ex = false;
+    if (m_active.compare_exchange_strong(ex, true))
+      ::dispatch_resume(m_source);
+  }
+  void suspend()
+  {
+    bool ex = true;
+    if (m_active.compare_exchange_strong(ex, false))
+      ::dispatch_suspend(m_source);
+  }
+  void cancel()
+  {
+    ::dispatch_source_cancel(m_source);
+  }
+  void release()
+  {
+    ::dispatch_release(m_source);
+  }
+ private:
+  std::atomic<bool>   m_active;
+  ::dispatch_source_t m_source;
+};
 
 class server : public cool::ng::async::detail::startable
              , public cool::ng::util::named
@@ -61,9 +121,8 @@ class server : public cool::ng::async::detail::startable
   static void on_event(void *ctx);
 
  private:
-  dispatch_source_t       m_source;
+  dispatch_source         m_source;
   ::cool::ng::net::handle m_handle;
-  bool                    m_active;
   cb::server::weak_ptr    m_handler;
 };
 
@@ -76,7 +135,7 @@ class server : public cool::ng::async::detail::startable
  * source contexts - these will get deleted  through their cancel callbacks. So
  * in a sense they co-manage the life time of the stream implementation.
  */
-class stream : public cool::ng::async::detail::writable
+class stream : public cool::ng::async::detail::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {
@@ -85,7 +144,7 @@ class stream : public cool::ng::async::detail::writable
   struct context
   {
     ::cool::ng::net::handle m_handle;
-    dispatch_source_t       m_source;
+    dispatch_source         m_source;
     stream::ptr             m_stream;
   };
   struct rd_context : public context
@@ -105,6 +164,7 @@ class stream : public cool::ng::async::detail::writable
                 , void* buf_
                 , std::size_t bufsz_);
   void initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
+  void initialize(void* buf_, std::size_t bufsz_);
 
   void start() override;
   void stop() override;
@@ -112,7 +172,8 @@ class stream : public cool::ng::async::detail::writable
   const std::string& name() const override { return named::name(); }
 
   void write(const void* data, std::size_t size) override;
-  void connect(const cool::ng::net::ip::address& addr_, uint16_t port_);
+  void connect(const cool::ng::net::ip::address& addr_, uint16_t port_) override;
+  void disconnect() override;
 
  private:
   static void on_rd_cancel(void* ctx);
@@ -133,8 +194,6 @@ class stream : public cool::ng::async::detail::writable
   std::atomic<state>                   m_state;
   std::weak_ptr<async::impl::executor> m_executor; // to get the diapatch queue
   cb::stream::weak_ptr                 m_handler;  // handler for user events
-
-  bool                                 m_active;
 
   // reader part
   rd_context*       m_reader;

@@ -113,7 +113,6 @@ class stream
    *          oob_event::connect_failed | The stream failed to connect to network peer
    *          oob_event::disconnected   | The network peer closed the connection
    *
-   *
    * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
    *            schedule asynchronous notifications for execution.
    * @param hr_ read handler to be called from the scheduled task when data has
@@ -142,6 +141,14 @@ class stream
     using wr_handler = typename detail::stream<RunnerT>::wr_handler;
     using event_handler = typename detail::stream<RunnerT>::event_handler;
 
+    auto impl = cool::ng::util::shared_new<detail::stream<RunnerT>>(
+        r_
+      , static_cast<rd_handler>(hr_)
+      , static_cast<wr_handler>(hw_)
+      , static_cast<event_handler>(he_));
+
+    m_impl = impl;
+    impl->initialize(buf_, sz_);
   }
 
   /**
@@ -281,11 +288,28 @@ class stream
   }
 
   /**
-   * Connect.
+   * Connects the unconnected stream to the remote peer.
+   *
+   * This method initiates a connect request to the network peer at the
+   * address specified by the @a addr_ and @a port parameters. Note that
+   * the connect may not be completed upon the method completion and the
+   * user code must wait for the event reported to the event handler specified
+   * at the stream construction.
+   *
+   * @param addr_ IP address of the network peer to connect to. This may be an
+   *            @ref cool::ng::net::ipv4::host "IPv4" or an
+   *            @ref cool::ng::net::ipv4::host "IPv6" host address.
+   * @param port_ TCP port on the network peer to connect to.
+   *
+   * @throw cool::ng::exception::invalid state if the stream is already connected.
    */
-  void connect(const cool::ng::net::ip::address& addr_, uint16_t port_);
+  void connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
+  {
+    m_impl->connect(addr_, port_);
+  }
+
  private:
-  std::shared_ptr<async::detail::writable> m_impl;
+  std::shared_ptr<async::detail::connected_writable> m_impl;
 };
 
 /**
