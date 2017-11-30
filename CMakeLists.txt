@@ -172,6 +172,7 @@ endif()
 
 set( COOL_NG_API_HEADERS
     include/cool/ng/async.h
+    include/cool/ng/error.h
     include/cool/ng/exception.h
     include/cool/ng/traits.h
     include/cool/ng/bases.h
@@ -210,6 +211,7 @@ set( COOL_NG_LIB_HEADERS
 set( COOL_NG_LIB_SRCS
   lib/src/bases.cpp
   lib/src/exception.cpp
+  lib/src/error.cpp
   lib/src/ip_address.cpp
   lib/src/async/runner.cpp
 )

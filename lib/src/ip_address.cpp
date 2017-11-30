@@ -249,15 +249,15 @@ cool::ng::net::ipv4::binary_t _parse(std::istream& is)
     unsigned int aux;
     char c = parse_num(is, aux);
     if (aux > 255)
-      throw exception::illegal_argument("value of IPv4 address element cannot exceed 255");
+      throw exception::parsing_error();
     result[count] = aux;
 
     if (c != '.' && count < 3)
-      throw exception::illegal_argument("unparsable IPv4 address in input stream");
+      throw exception::parsing_error();
   }
 
   if (count < 4)
-    throw exception::illegal_argument("unparsable IPv4 address in input stream");
+    throw exception::parsing_error();
 
   if (!is.eof())   // push back the last character if not EOF
     is.unget();
@@ -281,7 +281,7 @@ void parse(std::istream& is, cool::ng::net::ipv4::network& val)
     if (!is.eof())
       is.unget();
     if (mask > 32)
-      throw exception::illegal_argument("Network mask width cannot exceed 32 bits");
+      throw exception::parsing_error();
   }
   else
   {
@@ -500,7 +500,7 @@ int parse_hexval(char c)
     return c - 'a' + 10;
   if (c >= 'A' && c <= 'F')
     return c - 'A' + 10;
-  throw exception::illegal_argument("character is not hex digit");
+  throw exception::parsing_error();
 }
 
 void parse_quad(std::istream& is, uint8_t* q_ptr)
@@ -548,7 +548,7 @@ cool::ng::net::ipv6::binary_t _parse(std::istream& is)
         if (first)
           brackets = true;
         else
-          throw exception::illegal_state("Unexpected '[' in input stream");
+          throw exception::parsing_error();
         break;
 
       case ':':
@@ -556,12 +556,12 @@ cool::ng::net::ipv6::binary_t _parse(std::istream& is)
         if (delim == '?')
           delim = c;
         else if (c != delim)
-          throw exception::illegal_state("Cannot mix ':' and '-' as quad delimiters");
+          throw exception::parsing_error();
         if (compress_begin)
         {
           compress_begin = false;
           if (post_compress)
-            throw exception::illegal_state("Cannot compress zero quads twice");
+            throw exception::parsing_error();
           post_compress = true;
         }
         else
@@ -618,7 +618,7 @@ cool::ng::net::ipv6::binary_t _parse(std::istream& is)
         if (brackets)
           loop = false;
         else
-          throw exception::illegal_state("unexpected ']' in input stream");
+          throw exception::parsing_error();
         break;
 
       default:
@@ -664,7 +664,7 @@ void parse(std::istream& is, cool::ng::net::ipv6::network& val)
     if (!is.eof())
       is.unget();
     if (mask > 128)
-      throw exception::illegal_argument("Network mask width cannot exceed 128 bits");
+      throw exception::parsing_error();
   }
   else
   {
@@ -692,22 +692,22 @@ namespace ip {
 
 address::operator struct in_addr() const
 {
-  throw exception::bad_conversion("Can't convert IPv6 address to struct in_addr");
+  throw exception::bad_conversion();
 }
 
 address::operator struct in6_addr() const
 {
-  throw exception::bad_conversion("Can't convert IPv4 address to struct in6_addr");
+  throw exception::bad_conversion();
 }
 
 address& address::operator =(const in_addr&)
 {
-  throw exception::bad_conversion("Can't assign struct in_addr to IPv6 address");
+  throw exception::bad_conversion();
 }
 
 address& address::operator =(const in6_addr&)
 {
-  throw exception::bad_conversion("Can't assign struct in6_addr to IPv4 address");
+  throw exception::bad_conversion();
 }
 
 } // namespace
@@ -732,7 +732,7 @@ host::host(const std::string& str)
 host::host(const ip::address& other)
 {
   if (kind() != other.kind() || version() != other.version())
-    throw exception::illegal_argument("input address is not an IPv6 host address");
+    throw exception::illegal_argument();
   m_data = static_cast<const uint8_t*>(other);
 }
 
@@ -770,7 +770,7 @@ host::operator struct in_addr() const
   if (in(rfc_ipv4map) || in(rfc_ipv4translate))
     ::memcpy(static_cast<void*>(&result), m_data+12, 4);
   else
-    throw exception::illegal_argument("Not an IPv4 mapped address");
+    throw exception::bad_conversion();
 
   ::memcpy(static_cast<void*>(&result), m_data+12, 4);
   return result;
@@ -839,7 +839,7 @@ ip::address& host::operator =(const in6_addr& data)
 void host::assign(const ip::address& val)
 {
   if (val.kind() != kind())
-    throw exception::illegal_argument("Can't assign network address to host");
+    throw exception::illegal_argument();
   switch (val.version())
   {
     case ip::version::ipv6:
@@ -897,7 +897,7 @@ network::network(std::size_t mask_size, uint8_t const data[])
     , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::illegal_argument("Network mask size cannot exceed 128 bits");
+    throw exception::out_of_range();
   // zero host part of the address
   m_data = m_data & detail::calculate_mask<16>(m_length);
 }
@@ -907,7 +907,7 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::illegal_argument("Network mask size cannot exceed 128 bits");
+    throw exception::out_of_range();
   // zero host part of the address
   m_data = m_data & detail::calculate_mask<16>(m_length);
 }
@@ -917,7 +917,7 @@ network::network(std::size_t mask_size, const in6_addr& data)
     , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::illegal_argument("Network mask size cannot exceed 128 bits");
+    throw exception::out_of_range();
   // zero host part of the address
   m_data = m_data & detail::calculate_mask<16>(m_length);
 }
@@ -934,7 +934,7 @@ network::network(const std::string& str) : m_length(0)
 network::network(const ip::address& data)
 {
   if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument("input address is not an IPv6 address");
+    throw exception::illegal_argument();
   m_data = static_cast<const uint8_t*>(data);
   m_length = dynamic_cast<const network&>(data).m_length;
 }
@@ -965,7 +965,7 @@ network::operator struct in6_addr() const
 void network::assign(const ip::address& data)
 {
   if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument("Can only assign ipv6::network object.");
+    throw exception::illegal_argument();
   m_data = static_cast<const uint8_t*>(data);
   m_length = dynamic_cast<const network&>(data).m_length;
 
@@ -1059,17 +1059,17 @@ host::host(const in6_addr& data)
       ::memcmp(&data, static_cast<const uint8_t*>(ipv6::rfc_ipv4translate), 12) == 0)
     m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data)) + 12;
   else
-    throw exception::illegal_argument("argument is not IPv4 mapped address");
+    throw exception::bad_conversion();
 }
 
 host::host(const ip::address& other)
 {
   if (kind() != other.kind())
-    throw exception::illegal_argument("argument is not host address");
+    throw exception::illegal_argument();
   if (other.version() == ip::version::ipv6)
   {
     if (!(other.in(ipv6::rfc_ipv4map) || other.in(ipv6::rfc_ipv4translate)))
-      throw exception::illegal_argument("argument is not an IPv4 mapped address");
+      throw exception::illegal_argument();
     m_data = static_cast<const uint8_t*>(other) + 12;
   }
   else
@@ -1116,7 +1116,7 @@ ip::address& host::operator =(const in6_addr& data)
   ipv6::host aux = ipv6::host(data);
 
   if (!(aux.in(ipv6::rfc_ipv4map) || aux.in(ipv6::rfc_ipv4translate)))
-    throw exception::illegal_argument("address is not IPv4 host address mapped to IPv6");
+    throw exception::bad_conversion();
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data)) + 12;
   return *this;
 }
@@ -1160,7 +1160,7 @@ ip::address& host::operator =(const std::string& arg)
 void host::assign(const ip::address& val)
 {
   if (kind() != val.kind())
-    throw exception::illegal_argument("Cannot assign network address to host");
+    throw exception::illegal_argument();
   switch (val.version())
   {
     case ip::version::ipv4:
@@ -1169,7 +1169,7 @@ void host::assign(const ip::address& val)
 
     case ip::version::ipv6:
       if (!(val.in(ipv6::rfc_ipv4map) || val.in(ipv6::rfc_ipv4translate)))
-        throw exception::illegal_argument("Cannot assign IPv6 host address");
+        throw exception::illegal_argument();
       m_data = static_cast<const uint8_t*>(val) + (val.size() - size());
       break;
   }
@@ -1209,7 +1209,7 @@ network::network(std::size_t mask_size, uint8_t const data[])
     , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::illegal_argument("Network mask size cannot exceed 32 bits");
+    throw exception::out_of_range();
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
 
@@ -1218,7 +1218,7 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::illegal_argument("Network mask size cannot exceed 32 bits");
+    throw exception::out_of_range();
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
 
@@ -1227,7 +1227,7 @@ network::network(std::size_t mask_size, const in_addr& data)
     , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::illegal_argument("Network mask size cannot exceed 32 bits");
+    throw exception::out_of_range();
   // zero host part of the address
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
@@ -1244,7 +1244,7 @@ network::network(const std::string& str) : m_length(0)
 network::network(const ip::address& data)
 {
   if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument("input address is not an IPv4 address");
+    throw exception::illegal_argument();
   m_data = static_cast<const uint8_t*>(data);
   m_length = dynamic_cast<const network&>(data).m_length;
 }
@@ -1316,7 +1316,7 @@ bool network::is(ip::attribute a) const
 void network::assign(const ip::address& data)
 {
   if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument("Can only assign ipv4::network object.");
+    throw exception::illegal_argument();
   m_data = static_cast<const uint8_t*>(data);
   m_length = dynamic_cast<const network&>(data).m_length;
 }

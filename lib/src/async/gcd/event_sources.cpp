@@ -30,11 +30,14 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
 #include "event_sources.h"
 
 namespace cool { namespace ng { namespace async {
+
+using cool::ng::error::no_error;
 
 // ==========================================================================
 // ======
@@ -140,12 +143,12 @@ void server::init_ipv6(const cool::ng::net::ip::address& addr_, int port_)
 {
   m_handle = ::socket(AF_INET6, SOCK_STREAM, 0);
   if (m_handle == ::cool::ng::net::invalid_handle)
-    throw exc::operation_failed("failed to allocate listen socket");
+    throw exc::socket_failure();
 
   {
     const int enable = 1;
     if (::setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) != 0)
-      throw exc::operation_failed("failed to setsockopt");
+      throw exc::socket_failure();
   }
   {
     sockaddr_in6 addr;
@@ -155,10 +158,10 @@ void server::init_ipv6(const cool::ng::net::ip::address& addr_, int port_)
     addr.sin6_port = htons(port_);
 
     if (::bind(m_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
-      throw exc::operation_failed("bind call failed");
+      throw exc::socket_failure();
 
     if (::listen(m_handle, 10) != 0)
-      throw exc::operation_failed("listen call failed");
+      throw exc::socket_failure();
   }
 }
 
@@ -166,12 +169,12 @@ void server::init_ipv4(const cool::ng::net::ip::address& addr_, int port_)
 {
   m_handle = ::socket(AF_INET, SOCK_STREAM, 0);
   if (m_handle == ::cool::ng::net::invalid_handle)
-    throw exc::operation_failed("failed to allocate listen socket");
+    throw exc::socket_failure();
 
   {
     const int enable = 1;
     if (::setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) != 0)
-      throw exc::operation_failed("failed to setsockopt");
+      throw exc::socket_failure();
   }
   {
     sockaddr_in addr;
@@ -181,10 +184,10 @@ void server::init_ipv4(const cool::ng::net::ip::address& addr_, int port_)
     addr.sin_port = htons(port_);
 
     if (::bind(m_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
-      throw exc::operation_failed("bind call failed");
+      throw exc::socket_failure();
 
     if (::listen(m_handle, 10) != 0)
-      throw exc::operation_failed("listen call failed");
+      throw exc::socket_failure();
   }
 }
 
@@ -292,7 +295,6 @@ void stream::initialize(const cool::ng::net::ip::address& addr_
   m_size = bufsz_;
   m_buf = buf_;
 
-  m_state = state::starting;
   connect(addr_, port_);
 }
 
@@ -305,12 +307,12 @@ void stream::initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_
   // on OSX accepted socket does not preserve non-blocking properties of listen socket
   int option = 1;
   if (ioctl(h_, FIONBIO, &option) != 0)
-    throw exc::operation_failed("ioctl call failed");
+    throw exc::socket_failure();
 #endif
 
   auto rh = ::dup(h_);
   if (rh == cool::ng::net::invalid_handle)
-    throw exc::operation_failed("failed to dup socket");
+    throw exc::socket_failure();
 
   create_write_source(h_, false);
   create_read_source(rh, buf_, bufsz_);
@@ -318,7 +320,8 @@ void stream::initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_
 
 void stream::initialize(void* buf_, std::size_t bufsz_)
 {
-  m_state = state::disconnected;
+  m_size = bufsz_;
+  m_buf = buf_;
 }
 
 void stream::create_write_source(cool::ng::net::handle h_, bool  start_)
@@ -326,22 +329,21 @@ void stream::create_write_source(cool::ng::net::handle h_, bool  start_)
   auto ex_ = m_executor.lock();
   if (!ex_)
     throw exc::runner_not_available();
-  if (h_ == cool::ng::net::invalid_handle)
-    throw exc::illegal_argument("invalid file descriptor");
 
-  m_writer = new context;
-  m_writer->m_handle = h_;
-  m_writer->m_stream = self().lock();
+  auto writer = new context;
+  writer->m_handle = h_;
+  writer->m_stream = self().lock();
 
   // prepare write event source
-  m_writer->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_WRITE, m_writer->m_handle, 0 , ex_->queue());
-  m_writer->m_source.cancel_handler(on_wr_cancel);
-  m_writer->m_source.event_handler(on_wr_event);
-  m_writer->m_source.context(m_writer);
+  writer->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_WRITE, writer->m_handle, 0 , ex_->queue());
+  writer->m_source.cancel_handler(on_wr_cancel);
+  writer->m_source.event_handler(on_wr_event);
+  writer->m_source.context(writer);
 
+  m_writer.store(writer);
   // if stream is not yet connected start the source to cover connect event
   if (start_)
-    m_writer->m_source.resume();
+    writer->m_source.resume();
 }
 
 void stream::create_read_source(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_)
@@ -349,55 +351,72 @@ void stream::create_read_source(cool::ng::net::handle h_, void* buf_, std::size_
   auto ex_ = m_executor.lock();
   if (!ex_)
     throw exc::runner_not_available();
-  if (h_ == cool::ng::net::invalid_handle)
-    throw exc::illegal_argument("invalid file descriptor");
 
-  m_reader = new rd_context;
+  auto reader = new rd_context;
 
   // prepare read buffer
-  m_reader->m_rd_data = buf_;
-  m_reader->m_rd_size = bufsz_;
-  m_reader->m_rd_is_mine = false;
+  reader->m_rd_data = buf_;
+  reader->m_rd_size = bufsz_;
+  reader->m_rd_is_mine = false;
   if (buf_ == nullptr)
   {
-    m_reader->m_rd_data = new uint8_t[bufsz_];  // TODO: check for null
-    m_reader->m_rd_is_mine = true;
+    reader->m_rd_data = new uint8_t[bufsz_];
+    reader->m_rd_is_mine = true;
   }
 
-  m_reader->m_handle = h_;
-  m_reader->m_stream = self().lock();
+  reader->m_handle = h_;
+  reader->m_stream = self().lock();
 
   // prepare read event source
-  m_reader->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_reader->m_handle, 0 , ex_->queue());
-  m_reader->m_source.cancel_handler(on_rd_cancel);
-  m_reader->m_source.event_handler(on_rd_event);
-  m_reader->m_source.context(m_reader);
+  reader->m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, reader->m_handle, 0 , ex_->queue());
+  reader->m_source.cancel_handler(on_rd_cancel);
+  reader->m_source.event_handler(on_rd_event);
+  reader->m_source.context(reader);
 
-  m_reader->m_source.resume();
+  m_reader.store(reader);
+  reader->m_source.resume();
 }
 
-void stream::cancel_write_source()
-{
-  if (m_writer == nullptr)
-    return;
 
-  m_writer->m_source.resume();
-  m_writer->m_source.cancel();
+bool stream::cancel_write_source(stream::context*& writer)
+{
+  writer = m_writer.load();
+  auto expect = writer;
+
+  if (!m_writer.compare_exchange_strong(expect, nullptr))
+    return false;  // somebody else is already meddling with this
+  if (writer == nullptr)
+    return true;
+
+  writer->m_source.resume();
+  writer->m_source.cancel();
+  return true;
 }
 
-void stream::cancel_read_source()
+bool stream::cancel_read_source(stream::rd_context*& reader)
 {
-  if (m_reader == nullptr)
-    return;
+  reader = m_reader.load();
+  auto expect = reader;
+  if (!m_reader.compare_exchange_strong(expect, nullptr))
+    return false;
+  if (reader == nullptr)
+    return true;
 
-  m_reader->m_source.resume();
-  m_reader->m_source.cancel();
+  reader->m_source.resume();
+  reader->m_source.cancel();
+  return true;
 }
 
 void stream::disconnect()
 {
-  cancel_read_source();
-  cancel_write_source();
+  {
+    rd_context* aux;
+    cancel_read_source(aux);
+  }
+  {
+    context* aux;
+  cancel_write_source(aux);
+  }
   m_state = state::disconnected;
 }
 
@@ -405,25 +424,25 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
 {
   cool::ng::net::handle handle = cool::ng::net::invalid_handle;
 
-  if (m_state == state::connected)
+  if (m_state != state::disconnected)
     throw exc::invalid_state();
     
   try
   {
 #if defined(LINUX_TARGET)
     handle = addr_.version() == ip::version::ipv6 ?
-        ::socket(AF_INET6, SOCK_STREAM, 0) : ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+        ::socket(AF_INET6, SOCK_STREAM, 0) : ::socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0);
 #else
     handle = addr_.version() == ip::version::ipv6 ?
         ::socket(AF_INET6, SOCK_STREAM, 0) : ::socket(AF_INET, SOCK_STREAM, 0);
 #endif
     if (handle == cool::ng::net::invalid_handle)
-      throw exc::operation_failed("failed to allocate socket");
+      throw exc::socket_failure();
 
 #if !defined(LINUX_TARGET)
     int option = 1;
     if (ioctl(handle, FIONBIO, &option) != 0)
-      throw exc::operation_failed("ioctl call failed");
+      throw exc::socket_failure();
 #endif
 
     create_write_source(handle);
@@ -456,20 +475,21 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
     if (::connect(handle, p, size) == -1)
     {
       if (errno != EINPROGRESS)
-        throw exc::operation_failed("connect failed");
+        throw exc::socket_failure();
     }
   }
   catch (...)
   {
-    if (m_writer != nullptr)
+    context* prev;
+    if (cancel_write_source(prev))
     {
-      m_writer->m_source.cancel();
+      if (prev == nullptr)
+      {
+        if (handle != cool::ng::net::invalid_handle)
+          ::close(handle);
+      }
     }
-    else
-    {
-      if (handle != cool::ng::net::invalid_handle)
-        ::close(handle);
-    }
+
     m_state = state::disconnected;
 
     throw;
@@ -541,16 +561,16 @@ void stream::on_wr_event(void* ctx)
 
   switch (static_cast<state>(self->m_stream->m_state))
   {
-    case state::starting:
     case state::connecting:
-      self->m_stream->process_connect_event(size);
+      self->m_stream->process_connect_event(self, size);
       break;
 
     case state::connected:
-      self->m_stream->process_write_event(size);
+      self->m_stream->process_write_event(self, size);
       break;
 
     case state::disconnected:
+    case state::disconnecting:
       break;
   }
 }
@@ -558,26 +578,26 @@ void stream::on_wr_event(void* ctx)
 void stream::write(const void* data, std::size_t size)
 {
   if (m_state != state::connected)
-    throw exc::illegal_state("not connected");
+    throw exc::invalid_state();
 
   bool expected = false;
   if (!m_wr_busy.compare_exchange_strong(expected, true))
-    throw exc::illegal_state("writer busy");
+    throw exc::operation_failed(cool::ng::error::errc::resource_busy);
 
   m_wr_data = static_cast<const uint8_t*>(data);
   m_wr_size = size;
   m_wr_pos = 0;
-  m_writer->m_source.resume();
+  m_writer.load()->m_source.resume();
 }
 
-void stream::process_write_event(std::size_t size)
+void stream::process_write_event(context* ctx, std::size_t size)
 {
-  std::size_t res = ::write(m_writer->m_handle, m_wr_data + m_wr_pos, m_wr_size - m_wr_pos);
+  std::size_t res = ::write(ctx->m_handle, m_wr_data + m_wr_pos, m_wr_size - m_wr_pos);
   m_wr_pos += res;
 
   if (m_wr_pos >= m_wr_size)
   {
-    m_writer->m_source.suspend();
+    ctx->m_source.suspend();
     m_wr_busy = false;
     auto aux = m_handler.lock();
     if (aux)
@@ -613,60 +633,96 @@ void stream::process_write_event(std::size_t size)
 // -    created event source is called first
 // -  o the implementation will only use write event source and will use size
 // -    data to determine the outcome of connect
-void stream::process_connect_event(std::size_t size)
+void stream::process_connect_event(context* ctx, std::size_t size)
 {
-  m_writer->m_source.suspend();
-
-#if defined(LINUX_TARGET)
-  if (size != 0)
-#else
-  if (size <= 2048)
-#endif
+  try
   {
-    m_state = state::disconnected;
+    ctx->m_source.suspend();
+
+  #if defined(LINUX_TARGET)
+    if (size != 0)
+  #else
+    if (size <= 2048)
+  #endif
+    {
+      throw exc::connection_failure();
+    }
+
+    // connect succeeded - create reader context and start reader
+    // !! must dup because Linux wouldn't have read/write on same fd
+    auto aux_h = ::dup(ctx->m_handle);
+    if (aux_h == cool::ng::net::invalid_handle)
+      throw exc::socket_failure();
+
+    create_read_source(aux_h, m_buf, m_size);
+    m_state = state::connected;
+
     auto aux = m_handler.lock();
     if (aux)
-      try { aux->on_event(cb::stream::event::connect_failed); } catch (...) { }
-    return;
+      try { aux->on_event(cb::stream::event::connected, no_error()); } catch (...) { }
   }
+  catch (const cool::ng::exception::base& e)
+  {
+    {
+      context* aux;
+      cancel_write_source(aux);
+    }
+    m_state = state::disconnected;
 
-  // connect succeeded - create reader context and start reader
-  // !! must dup because Linux wouldn't have read/write on same fd
-  create_read_source(::dup(m_writer->m_handle), m_buf, m_size);
-  //TODO: check for throw if dup failed
-  m_state = state::connected;
-
-  auto aux = m_handler.lock();
-  if (aux)
-    try { aux->on_event(cb::stream::event::connected); } catch (...) { }
+    auto aux = m_handler.lock();
+    if (aux)
+      try { aux->on_event(cb::stream::event::failure_detected, e.code()); } catch (...) { }
+  }
 }
 
 void stream::process_disconnect_event()
 {
-  m_state = state::disconnected;
-  // TODO: what to do with ongoing write?
-  cancel_write_source();
-  cancel_read_source();
+  state expect = state::connected;
+  if (!m_state.compare_exchange_strong(expect, state::disconnected))
+    return; // TODO: should we assert here?
+
+  {
+    context* aux;
+    cancel_write_source(aux);
+  }
+  {
+    rd_context*  aux;
+    cancel_read_source(aux);
+  }
 
   auto aux = m_handler.lock();
   if (aux)
-    try { aux->on_event(cb::stream::event::disconnected); } catch (...) { }
+    try { aux->on_event(cb::stream::event::disconnected, no_error()); } catch (...) { }
 }
 
 void stream::start()
 {
-  m_reader->m_source.resume();
+  if (m_state != state::connected)
+    return;
+  auto aux = m_reader.load();
+  if (aux != nullptr)
+    aux->m_source.resume();
 }
 
 void stream::stop()
 {
-  m_reader->m_source.suspend();
+  if (m_state != state::connected)
+    return;
+  auto aux = m_reader.load();
+  if (aux != nullptr)
+    aux->m_source.suspend();
 }
 
 void stream::shutdown()
 {
-  cancel_read_source();
-  cancel_write_source();
+  {
+    rd_context* aux;
+    cancel_read_source(aux);
+  }
+  {
+    context* aux;
+    cancel_write_source(aux);
+  }
 }
 
 } } } } }

@@ -99,7 +99,7 @@ void check_start_sockets()
 #endif
 }
 
-#if 1
+#if 0
 // Tests:
 //   - accept calls from the server
 //   - both client-side ctors of the stream
@@ -275,7 +275,7 @@ BOOST_AUTO_TEST_CASE(accept_test)
   BOOST_CHECK_EQUAL("::1", srv_addr[1]);
 }
 #endif
-#if 1
+#if 0
 BOOST_AUTO_TEST_CASE(read_write_test_1)
 {
   uint8_t buffer[2500000];
@@ -440,7 +440,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
 }
 #endif
 
-#if 1
+#if 0
 BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
 {
   check_start_sockets();
@@ -555,6 +555,59 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
   BOOST_CHECK_EQUAL(true, !!srv_stream);
 
   client.disconnect();
+}
+#endif
+
+BOOST_AUTO_TEST_CASE(ctor_failures)
+{
+  auto r = std::make_shared<test_runner>();
+  std::weak_ptr<test_runner> wr = r;
+
+// TODO: handle std::bad_alloc and test
+#if 0
+  BOOST_CHECK_THROW(
+      async::net::stream client(
+          std::weak_ptr<test_runner>(r)
+        , cool::ng::net::ipv6::loopback
+        , 12345
+        , [] (const std::shared_ptr<test_runner>&, void*&, std::size_t&)
+          { }
+        , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+          { }
+        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+          {}
+        , nullptr
+        , 50000000000
+      )
+    , std::exception
+  );
+#endif
+
+}
+
+#if 1
+BOOST_AUTO_TEST_CASE(failed_connect_ctor)
+{
+
+// linux loopback connect will fails immediatelly
+#if defined(LINUX_TARGET)
+  auto r = std::make_shared<test_runner>();
+  BOOST_CHECK_THROW(
+      async::net::stream client(
+          std::weak_ptr<test_runner>(r)
+        , cool::ng::net::ipv6::loopback
+        , 12345
+        , [] (const std::shared_ptr<test_runner>&, void*&, std::size_t&)
+          { }
+        , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+          { }
+        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+          {}
+      )
+    , cool::ng::exception::socket_failure
+  );
+#endif
+
 }
 #endif
 

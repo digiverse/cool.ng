@@ -21,49 +21,47 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(cool_ng_d2aa94ac_15ec_4A48_9d69_a7d096d1b861)
-#define      cool_ng_d2aa94ac_15ec_4A48_9d69_a7d096d1b861
+#if !defined(cool_ng_f26a3cb0_dba1_4ce1_b25a_913f5951523a)
+#define      cool_ng_f26a3cb0_dba1_4ce1_b25a_913f5951523a
 
-#include <initializer_list>
-#include "cool/ng/exception.h"
-#include "cool/ng/binary.h"
-#include <cstring>
+#include <string>
+#include <system_error>
+#include "cool/ng/impl/platform.h"
 
-namespace cool { namespace ng { namespace net {
+namespace cool { namespace ng { namespace error {
 
-enum class style;
-
-namespace detail {
-
-
-template <std::size_t Size>
-cool::ng::util::binary<Size> calculate_mask(std::size_t length)
+enum class errc
 {
-  cool::ng::util::binary<Size> result;
+  not_an_error = 0,
+  no_runner = 1,
+  bad_runner_cast = 2,
+  no_task_context = 3,
+  wrong_state = 4,
+  out_of_range = 5,
+  illegal_argument = 6,
+  bad_conversion = 7,
+  resource_busy = 8,
+  parsing_error = 9,
+};
 
-  if (length > Size * 8)
-    throw exception::out_of_range();
+struct library_category : std::error_category
+{
+  dlldecl const char* name() const NOEXCEPT_ override;
+  dlldecl std::string message(int ev) const override;
+//  std::error_condition default_error_condition() const NOEXCEPT_ override;
 
-  std::size_t limit = length >> 3;
-  for (std::size_t i = 0; i < limit; ++i)
-    result[i] = 0xff;
+};
 
-  std::size_t limit2 = length & 0x07;
-  if (limit2 > 0)
-  {
-    uint8_t aux = 0x80;
-    for (int i = 1; i < limit2; ++i)
-    {
-      aux >>= 1;
-      aux |= 0x80;
-    }
-    result[limit] = aux;
-  }
-  return result;
-}
-
-} // namespace detail
+dlldecl std::error_code make_error_code(errc);
+dlldecl std::error_code no_error();
 
 } } } // namespace
+
+namespace std {
+
+template <>
+struct is_error_code_enum<cool::ng::error::errc>  : true_type { };
+
+} // namespace
 
 #endif

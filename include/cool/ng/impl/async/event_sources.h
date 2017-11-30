@@ -90,13 +90,13 @@ class stream
 {
  public:
   using weak_ptr = std::weak_ptr<stream>;
-  enum class event { connected, connect_failed, disconnected };
+  enum class event { connected, failure_detected, disconnected };
 
  public:
   virtual ~stream() { /* noop */ }
   virtual void on_read(void*&, std::size_t&) = 0;
   virtual void on_write(const void*, std::size_t) = 0;
-  virtual void on_event(event) = 0;
+  virtual void on_event(event, const std::error_code&) = 0;
 };
 
 } // namespace cb
@@ -194,9 +194,9 @@ class stream : public async::detail::connected_writable
              , public cool::ng::util::self_aware<stream<RunnerT>>
 {
  public:
-  using wr_handler = std::function<void(const std::shared_ptr<RunnerT>&, const void*, std::size_t)>;
-  using rd_handler = std::function<void(const std::shared_ptr<RunnerT>&, void*&, std::size_t&)>;
-  using event_handler = std::function<void(const std::shared_ptr<RunnerT>&, cb::stream::event)>;
+  using wr_handler    = std::function<void(const std::shared_ptr<RunnerT>&, const void*, std::size_t)>;
+  using rd_handler    = std::function<void(const std::shared_ptr<RunnerT>&, void*&, std::size_t&)>;
+  using event_handler = std::function<void(const std::shared_ptr<RunnerT>&, cb::stream::event, const std::error_code&)>;
 
  public:
   stream(const std::weak_ptr<RunnerT>& runner_
@@ -238,7 +238,10 @@ class stream : public async::detail::connected_writable
 
   ~stream()
   {
-    m_impl->shutdown();
+    if (m_impl)
+    {
+      m_impl->shutdown();
+    }
   }
 
   // event_source interface
@@ -271,10 +274,10 @@ class stream : public async::detail::connected_writable
     if (m_whandler)
       try { m_whandler(m_runner.lock(), buf_, size_); } catch (...) { }
   }
-  void on_event(cb::stream::event evt) override
+  void on_event(cb::stream::event evt, const std::exception_ptr& e) override
   {
     if (m_oob)
-      try { m_oob(m_runner.lock(), evt); } catch (...) { }
+      try { m_oob(m_runner.lock(), evt, e); } catch (...) { }
   }
 
  private:
@@ -286,107 +289,6 @@ class stream : public async::detail::connected_writable
 };
 
 } } } } } // namespace
-#if 0
-namespace cool { namespace ng { namespace async { namespace detail {
-
-namespace io {
-
-using handle = ::cool::ng::io::handle;
-using cancel_handler = std::function<void(io::handle)>;
-
-}
-
-struct event_context;
-
-class event_source
-{
- public:
-  event_source(
-      dispatch_source_type_t type_
-    , io::handle h_
-    , unsigned long mask_
-    , const std::shared_ptr<runner>& r_);
-  virtual ~event_source();
-
-  virtual void start();
-  virtual void stop();
-
-  virtual void handle_event(event_context *) = 0;
-
- private:
-  static void on_event(void*);
-  static void on_cancel(void*);
-
- protected:
-  event_context *m_context;
-};
-
-struct event_context
-{
-  io::cancel_handler          m_handler;
-  io::handle      m_handle;
-  std::weak_ptr<event_source> m_impl;
-  dispatch_source_t           m_source;
-  bool                        m_active;
-
-  event_context() : m_active(false) {  /* noop */ }
-  void shutdown();
-};
-
-template <typename RunnerT> class reader : public event_source
-{
- public:
-  using event_handler  = std::function<void(const std::weak_ptr<RunnerT>&, io::handle, std::size_t)>;
-  using cancel_handler = std::function<void(const std::weak_ptr<RunnerT>&, io::handle)>;
-
- public:
-  reader(const std::shared_ptr<RunnerT> r_
-       , io::handle h_
-       , const event_handler& hr_)
-     : event_source(DISPATCH_SOURCE_TYPE_READ, h_, 0, r_)
-     , m_runner(r_)
-     , m_ehandler(hr_)
-  { /* noop */ }
-
- public:
-  static std::shared_ptr<reader> create(
-         const std::weak_ptr<RunnerT>& r_
-       , const io::handle h_
-       , const event_handler& hr_
-       , const cancel_handler& hc_)
-  {
-    auto runner = r_.lock();
-    if (!runner)
-      throw std::runtime_error("xxx"); //detail::exception::runner_not_available();
-
-    auto res = std::make_shared<reader>(runner, h_, hr_);
-    res->m_context->m_impl = res;
-    res->m_context->m_handler = std::bind(hc_, r_, std::placeholders::_1);
-    return res;
-  }
-
- private:
-  void handle_event(event_context* ctx) override
-  {
-    std::size_t size = ::dispatch_source_get_data(ctx->m_source);
-    try
-    {
-      m_ehandler(m_runner, ctx->m_handle, size);
-    }
-    catch (...)
-    { /* noop */ }
-  }
-
- private:
-  std::weak_ptr<RunnerT> m_runner;
-  event_handler          m_ehandler;
-};
-
-
-} } } } // namespace
-#endif
-
-
 
 #endif
 

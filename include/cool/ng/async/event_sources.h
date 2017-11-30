@@ -127,6 +127,8 @@ class stream
    * @param sz_ size of the user provided buffer or, if stream is to allocate
    *            buffer internally, the size of the buffer to allocate
    *
+   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw std::bad_alloc if the internal memory allocation failed
    * @sa connect()
    */
   template <typename RunnerT, typename ReadHandlerT, typename WriteHandlerT, typename EvtHandlerT>
@@ -185,6 +187,11 @@ class stream
    *            its own buffer internally
    * @param sz_ size of the user provided buffer or, if stream is to allocate
    *            buffer internally, the size of the buffer to allocate
+   *
+   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
+   *        "runner" specified via parameter @a r_ is no longer available
+   * @throw std::bad_alloc if the internal memory allocation failed
    */
   template <typename RunnerT, typename ReadHandlerT, typename WriteHandlerT, typename OobHandlerT>
   stream(const std::weak_ptr<RunnerT>& r_
@@ -247,6 +254,11 @@ class stream
    * @param sz_ size of the user provided buffer or, if stream is to allocate
    *            buffer internally, the size of the buffer to allocate
    *
+   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
+   *        "runner" specified via parameter @a r_ is no longer available
+   * @throw std::bad_alloc if the internal memory allocation failed
+   *
    * @note The primary use of this constructor is in the combination with the
    *  socket handle passed to the connect handler by @ref server instance when
    *  it accepts a connection from the remote client.
@@ -301,7 +313,12 @@ class stream
    *            @ref cool::ng::net::ipv4::host "IPv6" host address.
    * @param port_ TCP port on the network peer to connect to.
    *
-   * @throw cool::ng::exception::invalid state if the stream is already connected.
+   * @throw cool::ng::exception::invalid state if the stream is not disconnected.
+   * @throw cool::ng::exception::
+   * @throw cool::ng::exception::
+   * @throw cool::ng::exception::
+   * @throw cool::ng::exception::
+   * @throw cool::ng::exception::
    */
   void connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
   {

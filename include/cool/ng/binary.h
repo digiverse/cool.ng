@@ -110,7 +110,7 @@ template <std::size_t Size> class binary
   uint8_t& operator[](std::size_t index)
   {
     if (index > Size)
-      throw exception::out_of_range("Index out of range");
+      throw exception::out_of_range();
     return m_data[index];
   }
   /**
@@ -121,7 +121,7 @@ template <std::size_t Size> class binary
   const uint8_t& operator[](std::size_t index) const
   {
     if (index > Size)
-      throw exception::out_of_range("Index out of range");
+      throw exception::out_of_range();
     return m_data[index];
   }
   /**
@@ -306,7 +306,7 @@ template <std::size_t Size> class binary
   void set(int start, uint8_t const data[])
   {
     if (start >= Size)
-      throw exception::out_of_range("Copy request out of bounds");
+      throw exception::out_of_range();
     int n = Size - start;
     ::memcpy(&m_data[start], data, n);
   }
@@ -325,7 +325,7 @@ template <std::size_t Size> class binary
   void set(int start, uint8_t const data[], int size)
   {
     if (start >= Size)
-      throw exception::out_of_range("Copy request out of bounds");
+      throw exception::out_of_range();
 
     int n = Size - start;
     if (n > size)

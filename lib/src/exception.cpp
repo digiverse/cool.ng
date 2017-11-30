@@ -123,18 +123,9 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
 }
 
 // -------
-system_error::system_error(std::size_t depth_) : backtrace(depth_)
+system_error::system_error(std::size_t depth_) NOEXCEPT_
+    : base(std::error_code(errno, std::system_category()), depth_)
 { /* noop */ }
 
-const char* system_error::what() const NOEXCEPT_
-{
-  return "";
-}
-
-// --------
-cool_base::cool_base(const std::string& msg, std::size_t depth_)
-    : backtrace(depth_)
-    , m_what(msg)
-{ /* noop */ }
 
 } } } // namespace

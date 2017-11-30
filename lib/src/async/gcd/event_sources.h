@@ -95,6 +95,7 @@ class dispatch_source
   {
     ::dispatch_release(m_source);
   }
+  
  private:
   std::atomic<bool>   m_active;
   ::dispatch_source_t m_source;
@@ -139,7 +140,7 @@ class stream : public cool::ng::async::detail::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {
-  enum class state { starting, connecting, connected, disconnected };
+  enum class state { disconnected, connecting, connected, disconnecting  };
 
   struct context
   {
@@ -182,13 +183,13 @@ class stream : public cool::ng::async::detail::connected_writable
   static void on_wr_event(void* ctx);
 
   void create_write_source(cool::ng::net::handle h_, bool start_ = true);
-  void cancel_write_source();
-  void cancel_read_source();
+  bool cancel_write_source(context*&);
+  bool cancel_read_source(rd_context*&);
 
   void create_read_source(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
-  void process_connect_event(std::size_t size);
+  void process_connect_event(context* ctx, std::size_t size);
   void process_disconnect_event();
-  void process_write_event(std::size_t size);
+  void process_write_event(context* ctx, std::size_t size);
 
  private:
   std::atomic<state>                   m_state;
@@ -196,16 +197,16 @@ class stream : public cool::ng::async::detail::connected_writable
   cb::stream::weak_ptr                 m_handler;  // handler for user events
 
   // reader part
-  rd_context*       m_reader;
-  void*             m_buf;       // temp store for read buffer
-  std::size_t       m_size;      // temp store for read buffer size
+  std::atomic<rd_context*> m_reader;
+  void*                    m_buf;       // temp store for read buffer
+  std::size_t              m_size;      // temp store for read buffer size
 
   // writer part
-  context*          m_writer;
-  std::atomic<bool> m_wr_busy;
-  const uint8_t*    m_wr_data;
-  std::size_t       m_wr_size;
-  std::size_t       m_wr_pos;
+  std::atomic<context*> m_writer;
+  std::atomic<bool>     m_wr_busy;
+  const uint8_t*        m_wr_data;
+  std::size_t           m_wr_size;
+  std::size_t           m_wr_pos;
 
 };
 
