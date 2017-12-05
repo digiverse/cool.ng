@@ -136,10 +136,39 @@ class connection_failure : public system_error
   { /* noop */ }
 };
 
+#if defined(WINDOWS_TARGET)
+
+class socket_failure : public base
+{
+ public:
+  dlldecl socket_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_;
+};
+
+#else
+
 class socket_failure : public system_error
 {
  public:
   socket_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_
+      : system_error(depth_)
+  { /* noop */ }
+};
+
+#endif
+
+
+class threadpool_failure : public system_error
+{
+ public:
+  threadpool_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_
+      : system_error(depth_)
+  { /* noop */ }
+};
+
+class cp_failure : public system_error
+{
+ public:
+  cp_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_
       : system_error(depth_)
   { /* noop */ }
 };

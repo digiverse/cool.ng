@@ -124,8 +124,17 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
 
 // -------
 system_error::system_error(std::size_t depth_) NOEXCEPT_
+#if defined(WINDOWS_TARGET)
+    : base(std::error_code(GetLastError(), std::system_category()), depth_)
+#else
     : base(std::error_code(errno, std::system_category()), depth_)
+#endif
 { /* noop */ }
 
+#if defined(WINDOWS_TARGET)
+socket_failure::socket_failure(std::size_t depth_) NOEXCEPT_
+    : base(std::error_code(GetLastError(), std::system_category()), depth_)
+{ /* noop */ }
+#endif
 
 } } } // namespace

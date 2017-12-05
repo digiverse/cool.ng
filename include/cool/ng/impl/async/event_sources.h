@@ -215,6 +215,7 @@ class stream : public async::detail::connected_writable
     else
       throw cool::ng::exception::runner_not_available();
   }
+ 
   void initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_)
   {
     auto r = m_runner.lock();
@@ -225,6 +226,7 @@ class stream : public async::detail::connected_writable
     else
       throw cool::ng::exception::runner_not_available();
   }
+
   void initialize(void* buf_, std::size_t bufsz_)
   {
     auto r = m_runner.lock();
@@ -274,7 +276,7 @@ class stream : public async::detail::connected_writable
     if (m_whandler)
       try { m_whandler(m_runner.lock(), buf_, size_); } catch (...) { }
   }
-  void on_event(cb::stream::event evt, const std::exception_ptr& e) override
+  void on_event(cb::stream::event evt, const std::error_code& e) override
   {
     if (m_oob)
       try { m_oob(m_runner.lock(), evt, e); } catch (...) { }

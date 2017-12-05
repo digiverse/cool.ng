@@ -313,12 +313,7 @@ class stream
    *            @ref cool::ng::net::ipv4::host "IPv6" host address.
    * @param port_ TCP port on the network peer to connect to.
    *
-   * @throw cool::ng::exception::invalid state if the stream is not disconnected.
-   * @throw cool::ng::exception::
-   * @throw cool::ng::exception::
-   * @throw cool::ng::exception::
-   * @throw cool::ng::exception::
-   * @throw cool::ng::exception::
+   * @throw cool::ng::exception::invalid_state if the stream is not disconnected.
    */
   void connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
   {
@@ -363,6 +358,7 @@ class server
   }
 
   const std::string& name() const { return m_impl->name(); }
+
  private:
   std::shared_ptr<async::detail::event_source> m_impl;
 };

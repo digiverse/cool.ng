@@ -99,6 +99,7 @@ void check_start_sockets()
 #endif
 }
 
+
 #if 0
 // Tests:
 //   - accept calls from the server
@@ -110,10 +111,7 @@ BOOST_AUTO_TEST_CASE(accept_test)
   std::mutex m;
   std::condition_variable cv;
   int num_clients = 0;
-  bool client1_connected = false;
-  bool client2_connected = false;
-  std::array<std::shared_ptr<async::net::stream>, 10> srv_stream;
-  std::array<std::string, 10> srv_addr;
+  std::shared_ptr<async::net::stream> srv_stream;
 
   auto r = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
@@ -122,7 +120,7 @@ BOOST_AUTO_TEST_CASE(accept_test)
       std::weak_ptr<test_runner>(r)
     , ipv6::any
     , 22220
-    , [&m, &cv, &srv_stream, &r2, &num_clients, &srv_addr](const std::shared_ptr<test_runner>& r
+    , [&m, &cv, &srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r
                           , const net::handle h
                           , const ip::address& a
                           , int p)
@@ -132,14 +130,14 @@ BOOST_AUTO_TEST_CASE(accept_test)
 
         std::cout << "Connect from [" << static_cast<std::string>(a) << "]:" << p << "\n";
         std::unique_lock<std::mutex> l(m);
-        srv_stream[num_clients] = std::make_shared<async::net::stream>(
+        srv_stream = std::make_shared<async::net::stream>(
             std::weak_ptr<test_runner>(r2)
           , h
           , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
             { }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
-          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
             {
               if (r)
                 r->inc();
@@ -156,65 +154,108 @@ BOOST_AUTO_TEST_CASE(accept_test)
               }
             }
         );
-        srv_addr[num_clients] = static_cast<std::string>(a);
 
         ++num_clients;
         cv.notify_one();
+
+        std::this_thread::sleep_for(ms(1000));
+
+        if (num_clients % 2 == 1)
+          srv_stream.reset();
+        else
+          srv_stream->disconnect();
+        std::cout << "num clients: " << num_clients << "\n";
         return true;
       }
   );
 
   server.start();
 
+  while (true)
+    std::this_thread::sleep_for(ms(1000));
+
+}
+#endif
+#if 1
+// Tests:
+//   - accept calls from the server
+//   - both client-side ctors of the stream
+BOOST_AUTO_TEST_CASE(accept_test)
+{
+  check_start_sockets();
+
+  std::array<std::string, 2> srv_addr;
+  auto r = std::make_shared<test_runner>();
+  auto r2 = std::make_shared<test_runner>();
+
+
+  // local scope to help debugging
   {
-    auto client = std::make_shared<async::net::stream>(
-        std::weak_ptr<test_runner>(r2)
-      , ipv4::loopback
+    std::mutex m;
+    std::condition_variable cv;
+    int num_clients = 0;
+    bool client1_connected = false;
+    bool client2_connected = false;
+    std::array<std::shared_ptr<async::net::stream>, 2> srv_stream;
+
+    auto server = async::net::server(
+        std::weak_ptr<test_runner>(r)
+      , ipv6::any
       , 22220
-      , [] (const std::shared_ptr<test_runner>&, void*&, std::size_t&)
-        { }
-      , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-        { }
-      , [&m, &cv, &client1_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+      , [&m, &cv, &srv_stream, &r2, &num_clients, &srv_addr](const std::shared_ptr<test_runner>& r
+                            , const net::handle h
+                            , const ip::address& a
+                            , int p)
         {
           if (r)
             r->inc();
 
+          std::cout << "Connect from [" << static_cast<std::string>(a) << "]:" << p << "\n";
           std::unique_lock<std::mutex> l(m);
-          std::cout << "client received event " << static_cast<int>(evt) << "\n";
-          switch (evt)
-          {
-            case async::net::stream::oob_event::connected:
-              client1_connected = true;
-              cv.notify_one();
-              break;
+          srv_stream[num_clients] = std::make_shared<async::net::stream>(
+              std::weak_ptr<test_runner>(r2)
+            , h
+            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
+              { }
+            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+              { }
+            , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+              {
+                if (r)
+                  r->inc();
+                std::cout << "server received event " << static_cast<int>(evt) << "\n";
+                switch (evt)
+                {
+                  case async::net::stream::oob_event::disconnected:
+                    --num_clients;
+                    cv.notify_one();
+                    break;
 
-            case async::net::stream::oob_event::disconnected:
-              client1_connected = false;
-              cv.notify_one();
-              break;
+                  default:
+                    break;
+                }
+              }
+          );
+          srv_addr[num_clients] = static_cast<std::string>(a);
 
-            default:
-              break;
-          }
+          ++num_clients;
+          cv.notify_one();
+          return true;
         }
     );
 
-    std::unique_lock<std::mutex> l(m);
-    cv.wait_for(l, ms(500), [&client1_connected, &num_clients] () { return client1_connected && num_clients == 1; } );
-    BOOST_CHECK_EQUAL(1, num_clients);
-    BOOST_CHECK_EQUAL(true, client1_connected);
-    BOOST_CHECK_EQUAL(1, r->counter());
-    BOOST_CHECK_EQUAL(1, r2->counter());
+    server.start();
 
     {
-      auto client2 = std::make_shared<async::net::stream>(
+      auto client = std::make_shared<async::net::stream>(
           std::weak_ptr<test_runner>(r2)
+        , ipv4::loopback
+        , 22220
         , [] (const std::shared_ptr<test_runner>&, void*&, std::size_t&)
           { }
         , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
           { }
-        , [&m, &cv, &client2_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+        , [&m, &cv, &client1_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
           {
             if (r)
               r->inc();
@@ -224,57 +265,101 @@ BOOST_AUTO_TEST_CASE(accept_test)
             switch (evt)
             {
               case async::net::stream::oob_event::connected:
-                client2_connected = true;
+                client1_connected = true;
                 cv.notify_one();
                 break;
 
               case async::net::stream::oob_event::disconnected:
-                client2_connected = false;
+                client1_connected = false;
                 cv.notify_one();
                 break;
 
               default:
-                std::cout << "**** error reported for connect\n";
                 break;
             }
           }
       );
 
-      client2->connect(cool::ng::net::ipv6::loopback, 22220);
+      std::unique_lock<std::mutex> l(m);
+      cv.wait_for(l, ms(500), [&client1_connected, &num_clients] () { return client1_connected && num_clients == 1; } );
+      BOOST_CHECK_EQUAL(1, num_clients);
+      BOOST_CHECK_EQUAL(true, client1_connected);
+      BOOST_CHECK_EQUAL(1, r->counter());
+      BOOST_CHECK_EQUAL(1, r2->counter());
 
-      std::cout << "client 1 name: " << client->name() << "\n";
-      std::cout << "client 2 name: " << client2->name() << "\n";
+      {
+        auto client2 = std::make_shared<async::net::stream>(
+            std::weak_ptr<test_runner>(r2)
+          , [] (const std::shared_ptr<test_runner>&, void*&, std::size_t&)
+            { }
+          , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+            { }
+          , [&m, &cv, &client2_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+            {
+              if (r)
+                r->inc();
 
-      cv.wait_for(l, ms(500), [&client2_connected, &num_clients] () { return client2_connected && num_clients == 2; } );
-      BOOST_CHECK_EQUAL(2, num_clients);
-      BOOST_CHECK_EQUAL(true, client2_connected);
+              std::unique_lock<std::mutex> l(m);
+              std::cout << "client received event " << static_cast<int>(evt) << "\n";
+              switch (evt)
+              {
+                case async::net::stream::oob_event::connected:
+                  client2_connected = true;
+                  cv.notify_one();
+                  break;
+
+                case async::net::stream::oob_event::disconnected:
+                  client2_connected = false;
+                  cv.notify_one();
+                  break;
+
+                default:
+                  std::cout << "**** error reported for connect\n";
+                  break;
+              }
+            }
+        );
+
+        client2->connect(cool::ng::net::ipv6::loopback, 22220);
+
+        std::cout << "client 1 name: " << client->name() << "\n";
+        std::cout << "client 2 name: " << client2->name() << "\n";
+
+        cv.wait_for(l, ms(500), [&client2_connected, &num_clients] () { return client2_connected && num_clients == 2; } );
+        BOOST_CHECK_EQUAL(2, num_clients);
+        BOOST_CHECK_EQUAL(true, client2_connected);
+        BOOST_CHECK_EQUAL(2, r->counter());
+        BOOST_CHECK_EQUAL(2, r2->counter());
+
+        std::this_thread::sleep_for(ms(50));
+      }
+
+      cv.wait_for(l, ms(500), [&num_clients] () { return num_clients == 1; } );
+      BOOST_CHECK_EQUAL(1, num_clients);
       BOOST_CHECK_EQUAL(2, r->counter());
-      BOOST_CHECK_EQUAL(2, r2->counter());
+      BOOST_CHECK_EQUAL(3, r2->counter());
 
       std::this_thread::sleep_for(ms(50));
     }
 
-    cv.wait_for(l, ms(500), [&num_clients] () { return num_clients == 1; } );
-    BOOST_CHECK_EQUAL(1, num_clients);
+    std::unique_lock<std::mutex> l(m);
+    cv.wait_for(l, ms(500), [&num_clients] () { return num_clients == 0; } );
+
+    srv_stream[0].reset();
+    srv_stream[1].reset();
+
+    BOOST_CHECK_EQUAL(0, num_clients);
+    BOOST_CHECK_EQUAL(true, client2_connected);
+    BOOST_CHECK_EQUAL(true, client1_connected);
     BOOST_CHECK_EQUAL(2, r->counter());
-    BOOST_CHECK_EQUAL(3, r2->counter());
-
-    std::this_thread::sleep_for(ms(50));
-
+    BOOST_CHECK_EQUAL(4, r2->counter());
   }
-
-  std::unique_lock<std::mutex> l(m);
-  cv.wait_for(l, ms(500), [&num_clients] () { return num_clients == 0; } );
-  BOOST_CHECK_EQUAL(0, num_clients);
-  BOOST_CHECK_EQUAL(true, client2_connected);
-  BOOST_CHECK_EQUAL(true, client1_connected);
-  BOOST_CHECK_EQUAL(2, r->counter());
-  BOOST_CHECK_EQUAL(4, r2->counter());
 
   BOOST_CHECK_EQUAL("::ffff:127.0.0.1", srv_addr[0]);
   BOOST_CHECK_EQUAL("::1", srv_addr[1]);
 }
 #endif
+
 #if 0
 BOOST_AUTO_TEST_CASE(read_write_test_1)
 {
@@ -328,7 +413,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
               srv_written = true;
               cv.notify_one();
             }
-          , [&srv_connected, &m, &cv] (const std::shared_ptr<test_runner>&, async::net::stream::oob_event evt)
+          , [&srv_connected, &m, &cv] (const std::shared_ptr<test_runner>&, async::net::stream::oob_event evt, const std::error_code& e)
             {
               std::cout << "server received event " << static_cast<int>(evt) << "\n";
               switch (evt)
@@ -377,7 +462,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
             clt_written = true;;
             cv.notify_one();
         }
-      , [&m, &cv, &client_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+      , [&m, &cv, &client_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
         {
           if (r)
             r->inc();
@@ -472,7 +557,7 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
             { }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
-          , [ &m, &cv, &srv_connected, &srv_stream] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+          , [ &m, &cv, &srv_connected, &srv_stream] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
             {
               if (r)
                 r->inc();
@@ -505,7 +590,7 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
       { }
     , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
       { }
-    , [&m, &cv, &clt_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+    , [&m, &cv, &clt_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
       {
         if (r)
           r->inc();
@@ -574,7 +659,7 @@ BOOST_AUTO_TEST_CASE(ctor_failures)
           { }
         , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
           { }
-        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
           {}
         , nullptr
         , 50000000000
@@ -601,7 +686,7 @@ BOOST_AUTO_TEST_CASE(failed_connect_ctor)
           { }
         , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
           { }
-        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt)
+        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
           {}
       )
     , cool::ng::exception::socket_failure

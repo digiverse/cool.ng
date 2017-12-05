@@ -381,9 +381,8 @@ void stream::create_read_source(cool::ng::net::handle h_, void* buf_, std::size_
 bool stream::cancel_write_source(stream::context*& writer)
 {
   writer = m_writer.load();
-  auto expect = writer;
 
-  if (!m_writer.compare_exchange_strong(expect, nullptr))
+  if (!m_writer.compare_exchange_strong(writer, nullptr))
     return false;  // somebody else is already meddling with this
   if (writer == nullptr)
     return true;
@@ -396,8 +395,7 @@ bool stream::cancel_write_source(stream::context*& writer)
 bool stream::cancel_read_source(stream::rd_context*& reader)
 {
   reader = m_reader.load();
-  auto expect = reader;
-  if (!m_reader.compare_exchange_strong(expect, nullptr))
+  if (!m_reader.compare_exchange_strong(reader, nullptr))
     return false;
   if (reader == nullptr)
     return true;
@@ -409,15 +407,23 @@ bool stream::cancel_read_source(stream::rd_context*& reader)
 
 void stream::disconnect()
 {
+  state expect = state::connected;
+  if (!m_state.compare_exchange_strong(expect, state::disconnecting))
+    throw exc::invalid_state();
+
   {
     rd_context* aux;
-    cancel_read_source(aux);
+    if (!cancel_read_source(aux))
+      throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
   }
   {
     context* aux;
-  cancel_write_source(aux);
+    if (!cancel_write_source(aux))
+      throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
   }
-  m_state = state::disconnected;
+  expect = state::disconnecting;
+  if (!m_state.compare_exchange_strong(expect, state::disconnected))
+    throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
 }
 
 void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)

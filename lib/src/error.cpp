@@ -59,7 +59,8 @@ std::string library_category::message(int ev) const
     "the parameter value was not valid",
     "failed to convert provided value into the requested value"
     "the requested resource is busy and not available",
-    "parsing of textual input failed"
+    "parsing of textual input failed",
+    "an object that is not thread safe has encountered race condition",
   };
   static const char* const unknown = "unrecognized error";
 

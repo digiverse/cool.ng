@@ -42,6 +42,7 @@ enum class errc
   bad_conversion = 7,
   resource_busy = 8,
   parsing_error = 9,
+  concurrency_problem = 10,
 };
 
 struct library_category : std::error_category
