@@ -54,6 +54,10 @@ class dispatch_source
   { /* noop */ }
   dispatch_source(::dispatch_source_t s_) : m_active(false), m_source(s_)
   { /* noop */ }
+  ~dispatch_source()
+  {
+    destroy();
+  }
   dispatch_source& operator =(::dispatch_source_t s_)
   {
     m_source = s_;
@@ -61,15 +65,18 @@ class dispatch_source
   }
   void context(void* context) const
   {
-    ::dispatch_set_context(m_source, context);
+    if (m_source != nullptr)
+      ::dispatch_set_context(m_source, context);
   }
   void cancel_handler(::dispatch_function_t handler) const
   {
-    ::dispatch_source_set_cancel_handler_f(m_source, handler);
+    if (m_source != nullptr)
+      ::dispatch_source_set_cancel_handler_f(m_source, handler);
   }
   void event_handler(::dispatch_function_t handler) const
   {
-    ::dispatch_source_set_event_handler_f(m_source, handler);
+    if (m_source != nullptr)
+      ::dispatch_source_set_event_handler_f(m_source, handler);
   }
   unsigned long get_data() const
   {
@@ -77,25 +84,37 @@ class dispatch_source
   }
   void resume()
   {
+    if (m_source == nullptr)
+      return;
     bool ex = false;
     if (m_active.compare_exchange_strong(ex, true))
       ::dispatch_resume(m_source);
   }
   void suspend()
   {
+    if (m_source == nullptr)
+      return;
     bool ex = true;
     if (m_active.compare_exchange_strong(ex, false))
       ::dispatch_suspend(m_source);
   }
   void cancel()
   {
-    ::dispatch_source_cancel(m_source);
+    if (m_source != nullptr)
+      ::dispatch_source_cancel(m_source);
   }
   void release()
   {
-    ::dispatch_release(m_source);
+    if (m_source != nullptr)
+      ::dispatch_release(m_source);
+    m_source = nullptr;
   }
-  
+  void destroy()
+  {
+    cancel();
+    release();
+  }
+
  private:
   std::atomic<bool>   m_active;
   ::dispatch_source_t m_source;
@@ -103,28 +122,53 @@ class dispatch_source
 
 class server : public cool::ng::async::detail::startable
              , public cool::ng::util::named
+             , public cool::ng::util::self_aware<server>
 {
+  enum class state { stopped, starting, accepting, stopping, destroying, error };
+
+  struct context
+  {
+    context(const server::ptr& s_
+          , const std::shared_ptr<async::impl::executor>& ex_
+          , const cool::ng::net::ip::address& addr_
+          , uint16_t port_);
+
+    void start_accept();
+    void stop_accept();
+    void shutdown();
+
+    static void on_cancel(void *ctx);
+    static void on_event(void *ctx);
+
+    server::ptr             m_server;
+    dispatch_source         m_source;
+    ::cool::ng::net::handle m_handle;
+  };
+
  public:
   server(const std::shared_ptr<async::impl::executor>& ex_
-       , const cool::ng::net::ip::address& addr_
-       , int port_
        , const cb::server::weak_ptr& cb_);
+  ~server();
 
+  void initialize(const cool::ng::net::ip::address& addr_
+                , uint16_t port_);
+
+  // startable interface
   void start() override;
   void stop() override;
   void shutdown() override;
   const std::string& name() const override { return named::name(); }
 
  private:
-  void init_ipv4(const cool::ng::net::ip::address& addr_, int port_);
-  void init_ipv6(const cool::ng::net::ip::address& addr_, int port_);
-  static void on_cancel(void *ctx);
-  static void on_event(void *ctx);
+  void process_accept(cool::ng::net::handle h_
+                    , const cool::ng::net::ip::address& addr_
+                    , uint16_t port_);
 
  private:
-  dispatch_source         m_source;
-  ::cool::ng::net::handle m_handle;
-  cb::server::weak_ptr    m_handler;
+  std::atomic<state>   m_state;
+  context*             m_context;
+  cb::server::weak_ptr m_handler;
+  std::weak_ptr<async::impl::executor> m_exec;
 };
 
 /*
@@ -167,8 +211,6 @@ class stream : public cool::ng::async::detail::connected_writable
   void initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
   void initialize(void* buf_, std::size_t bufsz_);
 
-  void start() override;
-  void stop() override;
   void shutdown() override;
   const std::string& name() const override { return named::name(); }
 

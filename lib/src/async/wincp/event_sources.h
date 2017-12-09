@@ -43,54 +43,70 @@ namespace cool { namespace ng { namespace async { namespace net { namespace impl
 
 
 class server : public cool::ng::async::detail::startable
-             , public cool::ng::util::named {
-public:
-  server(const std::shared_ptr<async::impl::executor>& ex_
-       , const cool::ng::net::ip::address& addr_
-       , int port_
-       , const cb::server::weak_ptr& cb_);
+             , public cool::ng::util::named
+             , public cool::ng::util::self_aware<server>
+{
+  enum class state { stopped, starting, accepting, stopping, destroying, error };
 
+  struct context
+  {
+    context(const server::ptr& s_, const cool::ng::net::ip::address& addr_, uint16_t port_);
+    ~context();
+
+    void start_accept();
+    void stop_accept();
+    void shutdown();
+
+    static void CALLBACK on_accept(
+        PTP_CALLBACK_INSTANCE instance_
+      , PVOID context_
+      , PVOID overlapped_
+      , ULONG io_result_
+      , ULONG_PTR num_transferred_
+      , PTP_IO io_);
+    void process_accept();
+
+    server::ptr               m_server;
+    async::impl::poolmgr::ptr m_pool;
+    ::cool::ng::net::handle   m_handle;
+    int                       m_sock_type;
+    LPFN_ACCEPTEX             m_accept_ex;      // f. pointer to AcceptEx
+    LPFN_GETACCEPTEXSOCKADDRS m_get_sock_addrs; // f. pointer to GetAcceptExSockAddrs
+    PTP_IO                    m_tpio;
+    uint8_t                   m_buffer[2 * sizeof(SOCKADDR_STORAGE) + 32];
+    WSAOVERLAPPED             m_overlapped;
+    ::cool::ng::net::handle   m_client_handle;
+    DWORD                     m_filler;
+  };
+
+ public:
+  server(const std::shared_ptr<async::impl::executor>& ex_
+       , const cb::server::weak_ptr& cb_);
+  ~server();
+
+  void initialize(const cool::ng::net::ip::address& addr_, uint16_t port_);
   const std::string& name() const { return named::name(); }
   void start() override;
   void stop() override;
   void shutdown() override;
 
  private:
-  static void CALLBACK on_accept(
-      PTP_CALLBACK_INSTANCE instance_
-    , PVOID context_
-    , PVOID overlapped_
-    , ULONG io_result_
-    , ULONG_PTR num_transferred_
-    , PTP_IO io_);
-  void start_accept();
-  void process_accept();
-
+  void process_accept(const cool::ng::net::ip::address& addr_, uint16_t port_);
+  
  private:
+  std::atomic<state>   m_state;
   std::weak_ptr<async::impl::executor> m_executor;
-  async::impl::poolmgr::ptr m_pool;
-  ::cool::ng::net::handle   m_handle;
-  int                       m_sock_type;
-  bool                      m_active;
-  cb::server::weak_ptr      m_handler;
-
-  LPFN_ACCEPTEX             m_accept_ex;      // f. pointer to AcceptEx
-  LPFN_GETACCEPTEXSOCKADDRS m_get_sock_addrs; // f. pointer to GetAcceptExSockAddrs
-  PTP_IO                    m_tp_io;
-  uint8_t                   m_buffer[2 * sizeof(SOCKADDR_STORAGE) + 32];
-  WSAOVERLAPPED             m_overlapped;
-  ::cool::ng::net::handle   m_client_handle;
-  DWORD                     m_filler;
+  cb::server::weak_ptr m_handler;
+  context*             m_context;
 };
 
 /*
- * The stream implementation class is kept alive by three shared pointers:
+ * The stream implementation class is kept alive by two shared pointers:
  *   - shared pointer of its parent, detail::stream class template
- *   - shared pointers of contexts of dispatch queue read and write
- *     event sources
+ *   - shared pointers of event source context, known to ThreadpoolIo
  * Note that the stream implementation does not manage the life time of event
- * source contexts - these will get deleted  through their cancel callbacks. So
- * in a sense they co-manage the life time of the stream implementation.
+ * source context - it will get deleted  when ThreadpoolIo reports connection
+ * error.
  */
 class stream : public cool::ng::async::detail::connected_writable
              , public cool::ng::util::named
@@ -103,8 +119,14 @@ class stream : public cool::ng::async::detail::connected_writable
     context(const stream::ptr& s_, cool::ng::net::handle h_, void* buf, std::size_t sz_);
     ~context();
 
-    // entry point to process i/o events from executor
-    void on_event(PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_);
+    // threadpool callback from completion port
+    static void CALLBACK on_event(
+        PTP_CALLBACK_INSTANCE instance_
+      , PVOID context_
+      , PVOID overlapped_
+      , ULONG io_result_
+      , ULONG_PTR num_transferred_
+      , PTP_IO io_);
 
     stream::ptr          m_stream;
     cool::ng::net::handle m_handle;
@@ -125,6 +147,7 @@ class stream : public cool::ng::async::detail::connected_writable
     const uint8_t*    m_wr_data;
     std::size_t       m_wr_size;
     std::size_t       m_wr_pos;
+    DWORD             m_written_bytes;
   };
 
  public:
@@ -139,24 +162,24 @@ class stream : public cool::ng::async::detail::connected_writable
   void initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
   void initialize(void* buf_, std::size_t bufsz_);
 
-  void start() override;
-  void stop() override;
+  // event_source interface
   void shutdown() override;
   const std::string& name() const override { return named::name(); }
 
+  // connected writable interface
   void write(const void* data, std::size_t size) override;
   void connect(const cool::ng::net::ip::address& addr_, uint16_t port_) override;
   void disconnect() override;
-
-
 
  private:
   friend class exec_for_io;
 
   void start_read_source();
+  void start_write_source();
 
+  // entry point to process i/o events from executor
   void on_event(context* ctx, PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_);
-  void process_connect_event();
+  void process_connect_event(ULONG io_result_);
   void process_disconnect_event();
 
   void process_read_event(ULONG_PTR count_);
@@ -164,14 +187,6 @@ class stream : public cool::ng::async::detail::connected_writable
   void process_write_event(context* ctx, std::size_t size);
 
  private:
-  // threadpool callback from completion port
-  static void CALLBACK on_event(
-      PTP_CALLBACK_INSTANCE instance_
-    , PVOID context_
-    , PVOID overlapped_
-    , ULONG io_result_
-    , ULONG_PTR num_transferred_
-    , PTP_IO io_);
 
  private:
   std::atomic<state>                   m_state;

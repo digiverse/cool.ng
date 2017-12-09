@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(cool_ng_f36defb0_dda1_4ce1_b25a_943f5deed23a)
-#define      cool_ng_f36defb0_dda1_4ce1_b25a_943f5deed23a
+#if !defined(cool_ng_f36defb0_dda1_4ce1_b25a_943f5deed23b)
+#define      cool_ng_f36defb0_dda1_4ce1_b25a_943f5deed23b
 
 #include "cool/ng/impl/async/event_sources.h"
 
@@ -107,11 +107,11 @@ class stream
    *         Note that the third parameter will have meaning only if the event
    *         was caused by failure - otherwise it will be set to 0. The following
    *         is the list of possible events:
-   *          Value                     | Description
-   *          --------------------------|------------
-   *          oob_event::connected      | The stream successfully connected
-   *          oob_event::connect_failed | The stream failed to connect to network peer
-   *          oob_event::disconnected   | The network peer closed the connection
+   *          Value                       | Description
+   *          ----------------------------|------------
+   *          oob_event::connected        | The stream successfully connected
+   *          oob_event::failure_detected | The stream failed to connect to network peer
+   *          oob_event::disconnected     | The network peer closed the connection
    *
    * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
    *            schedule asynchronous notifications for execution.
@@ -281,23 +281,17 @@ class stream
       , static_cast<rd_handler>(hr_)
       , static_cast<wr_handler>(hw_)
       , static_cast<event_handler>(he_));
+
     m_impl = impl;
     impl->initialize(h_, buf_, sz_);
   }
 
-  const std::string& name() const
-  {
-    return m_impl->name();
-  }
-  void start();
-  void stop();
+  dlldecl const std::string& name() const;
+
   /**
    * Send data to the connected peer.
    */
-  void write(const void* data_, std::size_t size_)
-  {
-    m_impl->write(data_, size_);
-  }
+  dlldecl void write(const void* data_, std::size_t size_);
 
   /**
    * Connects the unconnected stream to the remote peer.
@@ -315,16 +309,10 @@ class stream
    *
    * @throw cool::ng::exception::invalid_state if the stream is not disconnected.
    */
-  void connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
-  {
-    m_impl->connect(addr_, port_);
-  }
+  dlldecl void connect(const cool::ng::net::ip::address& addr_, uint16_t port_);
 
-  void disconnect()
-  {
-    m_impl->disconnect();
-  }
-  
+  dlldecl void disconnect();
+
  private:
   std::shared_ptr<async::detail::connected_writable> m_impl;
 };
@@ -335,82 +323,86 @@ class stream
 class server
 {
  public:
+  /**
+   * Constructs new instance of server.
+   *
+   * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
+   *            schedule asynchronous notifications for execution.
+   * @param addr_ IP address of the network peer to connect to. This may be an
+   *            @ref cool::ng::net::ipv4::host "IPv4" or an
+   *            @ref cool::ng::net::ipv4::host "IPv6" host address.
+   * @param port_ TCP port on the network peer to connect to.
+   * @param hc_ read handler to be called from the scheduled task when data has
+   *            been read from the network connection
+   *
+   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
+   *        "runner" specified via parameter @a r_ is no longer available
+   * @throw std::bad_alloc if the internal memory allocation failed
+   */
   template <typename RunnerT, typename ConnectHandlerT>
   server(const std::weak_ptr<RunnerT>& runner_
        , const cool::ng::net::ip::address& addr_
-       , int port_
-       , const ConnectHandlerT& h_)
+       , uint16_t port_
+       , const ConnectHandlerT& hc_)
   {
     using connect_handler = typename detail::server<RunnerT>::connect_handler;
-    auto impl = cool::ng::util::shared_new<detail::server<RunnerT>>(runner_ , static_cast<connect_handler>(h_));
+    using error_handler = typename detail::server<RunnerT>::error_handler;
+
+    auto impl = cool::ng::util::shared_new<detail::server<RunnerT>>(
+        runner_
+      , static_cast<connect_handler>(hc_)
+      , error_handler());
+
+    m_impl = impl;
+    impl->initialize(addr_, port_);
+  }
+  /**
+   * Constructs new instance of server with error handler.
+   *
+   * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
+   *            schedule asynchronous notifications for execution.
+   * @param addr_ IP address of the network peer to connect to. This may be an
+   *            @ref cool::ng::net::ipv4::host "IPv4" or an
+   *            @ref cool::ng::net::ipv4::host "IPv6" host address.
+   * @param port_ TCP port on the network peer to connect to.
+   * @param hc_ read handler to be called from the scheduled task when data has
+   *            been read from the network connection
+   *
+   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
+   *        "runner" specified via parameter @a r_ is no longer available
+   * @throw std::bad_alloc if the internal memory allocation failed
+   */
+  template <typename RunnerT, typename ConnectHandlerT, typename ErrorHandlerT>
+  server(const std::weak_ptr<RunnerT>& runner_
+       , const cool::ng::net::ip::address& addr_
+       , uint16_t port_
+       , const ConnectHandlerT& hc_
+       , const ErrorHandlerT& he_)
+  {
+    using connect_handler = typename detail::server<RunnerT>::connect_handler;
+    using error_handler = typename detail::server<RunnerT>::error_handler;
+
+    auto impl = cool::ng::util::shared_new<detail::server<RunnerT>>(
+        runner_
+      , static_cast<connect_handler>(hc_)
+      , static_cast<error_handler>(he_));
+
     m_impl = impl;
     impl->initialize(addr_, port_);
   }
 
-  void start()
-  {
-    m_impl->start();
-  }
+  dlldecl void start();
 
-  void stop()
-  {
-    m_impl->stop();
-  }
+  dlldecl void stop();
 
-  const std::string& name() const { return m_impl->name(); }
+  dlldecl const std::string& name() const;
 
  private:
-  std::shared_ptr<async::detail::event_source> m_impl;
+  std::shared_ptr<async::detail::startable> m_impl;
 };
 
-}
-/**
- * Asynchronous reader.
- *
- * An asynchronous reader monitors the associated I/O resource handler and schedules
- * task invoking the user supplied callback with the associated runner each time
- * new data arrives and is ready to be read. The user supplied callback is executed
- * asynchronously from the task queue of the
- * associated runner.
- *
- * @note Upon object creation the reader is in the stopped state and must
- *   be started explicitly.
- * @note The I/O resource handle type is platform specific type.
- *
- * <b>Thread Safety</b><br>
- *
- * Instances of cool::gcd::async::reader class are not thread safe.
- */
-class reader
-{
-#if 0
- public:
-  template <typename RunnerT, typename EventHandlerT, typename CancelHandlerT>
-  reader(const std::weak_ptr<RunnerT>& r_
-       , ::cool::ng::io::handle h_
-       , const EventHandlerT& hr_
-       , const CancelHandlerT& hc_)
-  {
-    using event_handler = std::function<void(const std::weak_ptr<RunnerT>&, ::cool::ng::io::handle, std::size_t)>;
-    using cancel_handler = std::function<void(const std::weak_ptr<RunnerT>&, ::cool::ng::io::handle)>;
-
-    m_impl = detail::reader<RunnerT>::create(r_, h_, static_cast<event_handler>(hr_), static_cast<cancel_handler>(hc_));
-  }
-
-  void start()
-  {
-    m_impl->start();
-  }
-  void stop()
-  {
-    m_impl->stop();
-  }
-
- private:
-  std::shared_ptr<detail::event_source> m_impl;
-#endif
-};
-
-} } } // namespace
+} } } } // namespace
 
 #endif

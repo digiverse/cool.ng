@@ -40,29 +40,31 @@ namespace cool { namespace ng { namespace async {
 
 namespace detail {
 
-class startable {
-
+//--- interface for implementation of the event sourse
+class event_source
+{
  public:
-  virtual ~startable() { /* noop */ }
-
+  virtual ~event_source() { /* noop */ }
   virtual const std::string& name() const = 0;
-  virtual void start() = 0;
-  virtual void stop() = 0;
   virtual void shutdown() = 0;
 };
 
-class event_source : public startable
+//--- interface for implementation of the startable event sourse
+class startable: public event_source
 {
  public:
-
+  virtual void start() = 0;
+  virtual void stop() = 0;
 };
 
+//--- interface for implementation of the writable event sourse
 class writable : public event_source
 {
  public:
   virtual void write(const void* data, std::size_t sz) = 0;
 };
 
+//--- interface for implementation of the connectged writable event sourse
 class connected_writable : public writable
 {
  public:
@@ -76,20 +78,26 @@ namespace net {
 
 namespace cb {  // callback interfaces
 
+// --- callback interface required by the implementation of the TCP server
 class server
 {
  public:
   using weak_ptr = std::weak_ptr<server>;
+  using ptr = std::shared_ptr<server>;
 
  public:
   virtual ~server() { /* noop */ }
-  virtual bool on_connect(const cool::ng::net::handle, const cool::ng::net::ip::address&, int) = 0;
+  virtual bool on_connect(const cool::ng::net::handle, const cool::ng::net::ip::address&, uint16_t) = 0;
+  virtual void on_event(const std::error_code&) = 0;
 };
 
+// --- callback interface required by the implementation of the TCP stream
 class stream
 {
  public:
   using weak_ptr = std::weak_ptr<stream>;
+  using ptr = std::shared_ptr<stream>;
+
   enum class event { connected, failure_detected, disconnected };
 
  public:
@@ -103,16 +111,18 @@ class stream
 
 namespace impl {
 
-dlldecl detail::startable* create_server(
+// factory methods for implementation classes
+
+dlldecl std::shared_ptr<async::detail::startable> create_server(
     const std::shared_ptr<runner>& r_
   , const cool::ng::net::ip::address& addr_
-  , int port_
+  , uint16_t port_
   , const cb::server::weak_ptr& cb_);
 
 dlldecl std::shared_ptr<async::detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& runner_
   , const cool::ng::net::ip::address& addr_
-  , int port_
+  , uint16_t port_
   , const cb::stream::weak_ptr& cb_
   , void* buf_
   , std::size_t bufsz_);
@@ -136,20 +146,22 @@ namespace detail {
 //     template parameter preserves actual runner type that is passed to
 //     the user callback
 template <typename RunnerT>
-class server : public async::detail::event_source
+class server : public async::detail::startable
              , public cb::server
              , public cool::ng::util::self_aware<server<RunnerT>>
 {
  public:
-  using connect_handler = std::function<bool(const std::shared_ptr<RunnerT>&, const cool::ng::net::handle, const cool::ng::net::ip::address&, int)>;
+  using connect_handler = std::function<void(const std::shared_ptr<RunnerT>&, const cool::ng::net::handle, const cool::ng::net::ip::address&, uint16_t)>;
+  using error_handler = std::function<void(const std::shared_ptr<RunnerT>&, const std::error_code&)>;
+
   using ptr = std::shared_ptr<server>;
 
  public:
-  server(const std::weak_ptr<RunnerT>& runner_, const connect_handler& h_)
-      : m_runner(runner_), m_handler(h_)
+  server(const std::weak_ptr<RunnerT>& runner_, const connect_handler& hc_, const error_handler& he_)
+      : m_runner(runner_), m_handler(hc_), m_err_handler(he_)
   { /* noop */ }
 
-  void initialize(const cool::ng::net::ip::address& addr_, int port_)
+  void initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
   {
     auto r = m_runner.lock();
     if (r)
@@ -167,25 +179,52 @@ class server : public async::detail::event_source
       throw cool::ng::exception::runner_not_available();
 
   }
-  ~server()                 { m_impl->shutdown(); }
+  ~server()
+  {
+    if (m_impl)
+      m_impl->shutdown();
+  }
 
-  // event_source interface
-  void start() override     { m_impl->start();    }
-  void stop() override      { m_impl->stop();     }
-  void shutdown() override  { m_impl->stop();     }
+  //--- event_source interface
+  void start() override                    { m_impl->start(); }
+  void stop() override                     { m_impl->stop();  }
+  void shutdown() override                 { m_impl->stop();  }
   const std::string& name() const override { return m_impl->name(); }
 
-  // cb_server interface
-  bool on_connect(const cool::ng::net::handle handle_, const cool::ng::net::ip::address& addr_, int port_) override
+  //--- cb::server interface
+  bool on_connect(const cool::ng::net::handle handle_, const cool::ng::net::ip::address& addr_, uint16_t port_) override
   {
     auto r = m_runner.lock();
-    return m_handler(r, handle_, addr_, port_);
+    if (r)
+    {
+      try
+      {
+        m_handler(r, handle_, addr_, port_);
+        return true;
+      }
+      catch (...)
+      {
+        return false;  // user handler threw an exception, don't trust it
+      }
+    }
+    return false;  // runner no longer there, close client connection
+  }
+
+  void on_event(const std::error_code& err) override
+  {
+    if (!m_err_handler)
+      return;
+
+    auto r = m_runner.lock();
+    if (r)
+      try { m_err_handler(r, err); } catch (...) { /* noop */ }
   }
 
  private:
-  std::weak_ptr<RunnerT>    m_runner;
-  connect_handler           m_handler;
-  async::detail::startable* m_impl;
+  std::weak_ptr<RunnerT> m_runner;
+  connect_handler        m_handler;
+  error_handler          m_err_handler;
+  std::shared_ptr<async::detail::startable> m_impl;
 };
 
 template <typename RunnerT>
@@ -205,7 +244,7 @@ class stream : public async::detail::connected_writable
        , const event_handler& eh_)
       : m_runner(runner_), m_rhandler(rh_), m_whandler(wh_), m_oob(eh_)
   { /* noop */ }
-  void initialize(const cool::ng::net::ip::address& addr_, int port_, void* buf_, std::size_t bufsz_)
+  void initialize(const cool::ng::net::ip::address& addr_, uint16_t port_, void* buf_, std::size_t bufsz_)
   {
     auto r = m_runner.lock();
     if (r)
@@ -246,13 +285,15 @@ class stream : public async::detail::connected_writable
     }
   }
 
-  // event_source interface
-  void start() override     { m_impl->start();    }
-  void stop() override      { m_impl->stop();     }
-  void shutdown() override  { m_impl->stop();     }
-  const std::string& name() const override { return m_impl->name(); }
-
-  // connected_writable interface
+  //--- connected_writable interface
+  void shutdown() override
+  {
+    m_impl->shutdown();
+  }
+  const std::string& name() const override
+  {
+    return m_impl->name();
+  }
   inline void write(const void* data, std::size_t size) override
   {
     m_impl->write(data, size);
@@ -265,29 +306,42 @@ class stream : public async::detail::connected_writable
   {
     m_impl->disconnect();
   }
-  // cb_stream interface
+
+  //--- cb::stream interface
   void on_read(void*& buf_, std::size_t& size_) override
   {
-    if (m_rhandler)
-      try { m_rhandler(m_runner.lock(), buf_, size_); } catch (...) { }
+    if (!m_rhandler)
+      return;
+
+    auto r = m_runner.lock();
+    if (r)
+      try { m_rhandler(r, buf_, size_); } catch (...) { /* noop */ }
   }
   void on_write(const void* buf_, std::size_t size_) override
   {
-    if (m_whandler)
-      try { m_whandler(m_runner.lock(), buf_, size_); } catch (...) { }
+    if (!m_whandler)
+      return;
+
+    auto r = m_runner.lock();
+    if (r)
+      try { m_whandler(r, buf_, size_); } catch (...) { /* noop */ }
   }
   void on_event(cb::stream::event evt, const std::error_code& e) override
   {
-    if (m_oob)
-      try { m_oob(m_runner.lock(), evt, e); } catch (...) { }
+    if (!m_oob)
+      return;
+
+    auto r = m_runner.lock();
+    if (r)
+      try { m_oob(r, evt, e); } catch (...) { /* noop */ }
   }
 
  private:
   std::shared_ptr<async::detail::connected_writable> m_impl;
-  std::weak_ptr<RunnerT>            m_runner;
-  rd_handler                        m_rhandler;
-  wr_handler                        m_whandler;
-  event_handler                     m_oob;
+  std::weak_ptr<RunnerT> m_runner;
+  rd_handler             m_rhandler;
+  wr_handler             m_whandler;
+  event_handler          m_oob;
 };
 
 } } } } } // namespace

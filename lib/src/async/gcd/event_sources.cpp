@@ -48,59 +48,13 @@ using cool::ng::error::no_error;
 // ==========================================================================
 namespace net { namespace impl {
 
+using cool::ng::net::handle;
+using cool::ng::net::invalid_handle;
+
 namespace exc = cool::ng::exception;
 namespace ip = cool::ng::net::ip;
 namespace ipv4 = cool::ng::net::ipv4;
 namespace ipv6 = cool::ng::net::ipv6;
-
-// --------------------------------------------------------------------------
-// -----
-// ----- Factory methods
-// ------
-
-cool::ng::async::detail::startable* create_server(
-    const std::shared_ptr<runner>& r_
-  , const ip::address& addr_
-  , int port_
-  , const cb::server::weak_ptr& cb_)
-{
-  return new server(r_->impl(), addr_, port_, cb_);
-}
-
-std::shared_ptr<async::detail::connected_writable> create_stream(
-    const std::shared_ptr<runner>& r_
-  , const cool::ng::net::ip::address& addr_
-  , int port_
-  , const cb::stream::weak_ptr& cb_
-  , void* buf_
-  , std::size_t bufsz_)
-{
-  auto ret = cool::ng::util::shared_new<stream>(r_->impl(), cb_);
-  ret->initialize(addr_, port_, buf_, bufsz_);
-  return ret;
-}
-
-std::shared_ptr<async::detail::connected_writable> create_stream(
-    const std::shared_ptr<runner>& r_
-  , cool::ng::net::handle h_
-  , const cb::stream::weak_ptr& cb_
-  , void* buf_
-  , std::size_t bufsz_)
-{
-  auto ret = cool::ng::util::shared_new<stream>(r_->impl(), cb_);
-  ret->initialize(h_, buf_, bufsz_);
-  return ret;
-}
-std::shared_ptr<async::detail::connected_writable> create_stream(
-    const std::shared_ptr<runner>& r_
-  , const cb::stream::weak_ptr& cb_
-  , void* buf_
-  , std::size_t bufsz_)
-{
-  auto ret = cool::ng::util::shared_new<stream>(r_->impl(), cb_);
-  ret->initialize(buf_, bufsz_);
-  return ret;
-}
 
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -115,148 +69,211 @@ std::shared_ptr<async::detail::connected_writable> create_stream(
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
-
-server::server(const std::shared_ptr<async::impl::executor>& ex_
-             , const cool::ng::net::ip::address& addr_
-             , int port_
-             , const cb::server::weak_ptr& cb_)
-  : named("cool.ng.async.net.server"), m_handler(cb_)
+server::context::context(const server::ptr& s_
+                       , const std::shared_ptr<async::impl::executor>& ex_
+                       , const ip::address& addr_
+                       , uint16_t port_)
+  : m_server(s_), m_handle(invalid_handle)
 {
-  switch (addr_.version())
+  try
   {
-    case ip::version::ipv6:
-      init_ipv6(addr_, port_);
-      break;
-
-    case ip::version::ipv4:
-      init_ipv4(addr_, port_);
-      break;
-  }
-
-  m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_handle, 0 , ex_->queue());
-  m_source.cancel_handler(on_cancel);
-  m_source.event_handler(on_event);
-  m_source.context(this);
-}
-
-void server::init_ipv6(const cool::ng::net::ip::address& addr_, int port_)
-{
-  m_handle = ::socket(AF_INET6, SOCK_STREAM, 0);
-  if (m_handle == ::cool::ng::net::invalid_handle)
-    throw exc::socket_failure();
-
-  {
-    const int enable = 1;
-    if (::setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) != 0)
+    m_handle = ::socket(addr_.version() == ip::version::ipv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0);
+    if (m_handle == ::cool::ng::net::invalid_handle)
       throw exc::socket_failure();
-  }
-  {
-    sockaddr_in6 addr;
-    std::memset(&addr, 0, sizeof(addr));
-    addr.sin6_family = AF_INET6;
-    addr.sin6_addr = static_cast<in6_addr>(addr_);
-    addr.sin6_port = htons(port_);
+    {
+      const int enable = 1;
+      if (::setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) != 0)
+        throw exc::socket_failure();
+    }
+    {
+      struct sockaddr* addr;
+      std::size_t sz;
+      sockaddr_in  addr4;
+      sockaddr_in6 addr6;
 
-    if (::bind(m_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
-      throw exc::socket_failure();
+      if (addr_.version() == ip::version::ipv4)
+      {
+        sz = sizeof(addr4);
+        addr = reinterpret_cast<struct sockaddr*>(&addr4);
+        std::memset(&addr4, 0, sizeof(addr4));
+        addr4.sin_family = AF_INET;
+        addr4.sin_addr = static_cast<in_addr>(addr_);
+        addr4.sin_port = ntohs(port_);
+      }
+      else
+      {
+        sz = sizeof(addr6);
+        addr = reinterpret_cast<struct sockaddr*>(&addr6);
+        std::memset(&addr6, 0, sizeof(addr6));
+        addr6.sin6_family = AF_INET6;
+        addr6.sin6_addr = static_cast<in6_addr>(addr_);
+        addr6.sin6_port = ntohs(port_);
+      }
+
+      if (::bind(m_handle, addr, sz) != 0)
+        throw exc::socket_failure();
+    }
 
     if (::listen(m_handle, 10) != 0)
       throw exc::socket_failure();
+
+    m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_handle, 0 , ex_->queue());
+    m_source.cancel_handler(on_cancel);
+    m_source.event_handler(on_event);
+    m_source.context(this);
+  }
+  catch (...)
+  {
+    m_source.destroy();
+    if (m_handle != invalid_handle)
+      ::close(m_handle);
+    throw;
   }
 }
 
-void server::init_ipv4(const cool::ng::net::ip::address& addr_, int port_)
-{
-  m_handle = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (m_handle == ::cool::ng::net::invalid_handle)
-    throw exc::socket_failure();
-
-  {
-    const int enable = 1;
-    if (::setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) != 0)
-      throw exc::socket_failure();
-  }
-  {
-    sockaddr_in addr;
-    std::memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr = static_cast<in_addr>(addr_);
-    addr.sin_port = htons(port_);
-
-    if (::bind(m_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
-      throw exc::socket_failure();
-
-    if (::listen(m_handle, 10) != 0)
-      throw exc::socket_failure();
-  }
-}
-
-void server::start()
+void server::context::start_accept()
 {
   m_source.resume();
 }
 
-void server::stop()
+void server::context::stop_accept()
 {
   m_source.suspend();
 }
 
-void server::on_cancel(void* ctx)
+void server::context::shutdown()
 {
-  auto self = static_cast<server*>(ctx);
+  start_accept();
+  m_source.cancel();
+}
+
+void server::context::on_cancel(void* ctx)
+{
+  auto self = static_cast<context*>(ctx);
   self->m_source.release();
+
   ::close(self->m_handle);
 
   delete self;
 }
 
-void server::on_event(void* ctx)
+void server::context::on_event(void* ctx)
 {
-  auto self = static_cast<server*>(ctx);
-  auto cb = self->m_handler.lock();
+  auto self = static_cast<context*>(ctx);
   std::size_t size = self->m_source.get_data();
 
   for (std::size_t i = 0; i < size; ++i)
   {
     struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
-    cool::ng::net::handle clt = accept(self->m_handle, reinterpret_cast<sockaddr*>(&addr), &len);
+    handle clt = accept(self->m_handle, reinterpret_cast<sockaddr*>(&addr), &len);
 
-    if (!cb)  // close immediatelly if callback no longer exists - but do accept to avoid repeated calls
+    if (clt != invalid_handle)
     {
-      ::close(clt);
-      continue;
+      ip::host_container address(addr);
+      uint16_t port = (static_cast<const ip::address&>(address).version() == ip::version::ipv4)
+         ? ntohs(reinterpret_cast<sockaddr_in*>(&addr)->sin_port)
+         : ntohs(reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port);
+
+      self->m_server->process_accept(clt, address, port);
     }
-
-    try
+    else
     {
-      bool res = false;
-      if (addr.ss_family == AF_INET)
-      {
-        ipv4::host ca(reinterpret_cast<sockaddr_in*>(&addr)->sin_addr);
-        res = cb->on_connect(clt, ca, ntohs(reinterpret_cast<sockaddr_in*>(&addr)->sin_port));
-      }
-      else if (addr.ss_family == AF_INET6)
-      {
-        ipv6::host ca(reinterpret_cast<sockaddr_in6*>(&addr)->sin6_addr);
-        res = cb->on_connect(clt, ca, ntohs(reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port));
-      }
-
-      // ELSE case is covered by res being false, which will close the accepted socket
-      if (!res)
-        ::close(clt);
-    }
-    catch (...)
-    {
-      ::close(clt);   // if user handlers throw an uncontained exception
+      // TODO: error logic
     }
   }
 }
 
+// ---------------------------
+// server class implementation
+
+server::server(const std::shared_ptr<async::impl::executor>& ex_
+             , const cb::server::weak_ptr& cb_)
+  : named("cool.ng.async.net.server")
+  , m_state(state::stopped)
+  , m_context(nullptr)
+  , m_handler(cb_)
+  , m_exec(ex_)
+{ /* noop */ }
+
+server::~server()
+{ /* noop */ }
+
+void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
+{
+  auto e = m_exec.lock();
+  if (!e)
+    throw exc::runner_not_available();
+
+  m_context = new context(self().lock(), e, addr_, port_);
+}
+
+
+void server::start()
+{
+  state expect = state::stopped;
+
+  if (m_state.compare_exchange_strong(expect, state::starting))
+  {
+    m_context->start_accept();
+    expect = state::starting;
+    m_state.compare_exchange_strong(expect, state::accepting); // TODO: any action if it fails
+    return;
+  }
+
+  if (expect == state::accepting)  // was already accepting
+    return;
+
+  throw exc::invalid_state();
+}
+
+void server::stop()
+{
+  state expect = state::accepting;
+
+  if (m_state.compare_exchange_strong(expect, state::stopping))
+  {
+    m_context->stop_accept();
+    expect = state::stopping;
+    m_state.compare_exchange_strong(expect, state::stopped); // TODO: any action if it fails
+    return;
+  }
+
+  if (expect == state::stopped)  // was already accepting
+    return;
+
+  throw exc::invalid_state();
+}
+
 void server::shutdown()
 {
-  start();
-  m_source.cancel();
+  m_context->shutdown();
+}
+
+void server::process_accept(cool::ng::net::handle h_
+                          , const cool::ng::net::ip::address& addr_
+                          , uint16_t port_)
+{
+  auto cb = m_handler.lock();
+
+  if (!cb || m_state != state::accepting)
+  {
+    // user handler no longer exists, close connection and be done
+    ::close(h_);
+    return;
+  }
+
+  try
+  {
+    if (!cb->on_connect(h_, addr_, port_))
+    {
+      ::close(h_);
+    }
+  }
+  catch (...)
+  {
+    ::close(h_);
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -516,6 +533,7 @@ void stream::on_rd_cancel(void* ctx)
 {
   auto self = static_cast<rd_context*>(ctx);
   self->m_source.release();
+
   ::close(self->m_handle);
 
   if (self->m_rd_is_mine)
@@ -543,8 +561,8 @@ void stream::on_rd_event(void* ctx)
     auto aux = self->m_stream->m_handler.lock();
     if (aux)
     {
-      aux->on_read(buf, size);
-      if (buf != self->m_rd_data)
+      try { aux->on_read(buf, size); } catch (...) { /* noop */ }
+      if (buf != self->m_rd_data && size > 0)
       {
         if (self->m_rd_is_mine)
         {
@@ -699,24 +717,6 @@ void stream::process_disconnect_event()
   auto aux = m_handler.lock();
   if (aux)
     try { aux->on_event(cb::stream::event::disconnected, no_error()); } catch (...) { }
-}
-
-void stream::start()
-{
-  if (m_state != state::connected)
-    return;
-  auto aux = m_reader.load();
-  if (aux != nullptr)
-    aux->m_source.resume();
-}
-
-void stream::stop()
-{
-  if (m_state != state::connected)
-    return;
-  auto aux = m_reader.load();
-  if (aux != nullptr)
-    aux->m_source.suspend();
 }
 
 void stream::shutdown()

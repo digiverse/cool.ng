@@ -214,6 +214,7 @@ set( COOL_NG_LIB_SRCS
   lib/src/error.cpp
   lib/src/ip_address.cpp
   lib/src/async/runner.cpp
+  lib/src/async/event_sources.cpp
 )
 
 # --- executor sources
