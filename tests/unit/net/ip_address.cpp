@@ -222,7 +222,7 @@ BOOST_AUTO_TEST_CASE(in_addr_conversions)
         BOOST_CHECK_NO_THROW(ipv4::host h3(ip4_ref));
         BOOST_CHECK_NO_THROW(ipv4::host h4(ip6_ref));
         BOOST_CHECK_NO_THROW(ipv4::network n2(24, ip4_ref));
-        BOOST_CHECK_THROW(ipv4::host h(ip6_ref_2), cool::ng::exception::illegal_argument);
+        BOOST_CHECK_THROW(ipv4::host h(ip6_ref_2), cool::ng::exception::bad_conversion);
       }
       // next check that values are correct - CHECK_NO_THROW is scoped, so
       // construct variables again
@@ -276,7 +276,7 @@ BOOST_AUTO_TEST_CASE(in_addr_conversions)
       BOOST_CHECK_NO_THROW(ip4_1 = ipv4::loopback); // reset content
       BOOST_CHECK_NO_THROW(ip4_1 = ip6_ref);   // legal to assign in6_addr if mapped network
       BOOST_CHECK_EQUAL(ip4_1, ip4_r1);
-      BOOST_CHECK_THROW(ip4_1 = ip6_ref_2, cool::ng::exception::illegal_argument); // not legal to assign other in6_addr
+      BOOST_CHECK_THROW(ip4_1 = ip6_ref_2, cool::ng::exception::bad_conversion); // not legal to assign other in6_addr
 
       BOOST_CHECK_NO_THROW(ip4_aux = static_cast<in_addr>(ip4_1));
       BOOST_CHECK_EQUAL(0, ::memcmp(&ip4_aux, &ip4_ref, sizeof(in_addr)));
@@ -427,8 +427,8 @@ BOOST_AUTO_TEST_CASE(string_conversions)
       BOOST_CHECK_NO_THROW(ipv4::host h2(s_i3));
       BOOST_CHECK_NO_THROW(ipv4::network n3(s_i4_1));
       BOOST_CHECK_NO_THROW(ipv4::network n4(s_i4));
-      BOOST_CHECK_THROW(ipv6::network n(std::string("2001::/130")), cool::ng::exception::illegal_argument);
-      BOOST_CHECK_THROW(ipv4::network n(std::string("192.168.3.0/35")), cool::ng::exception::illegal_argument);
+      BOOST_CHECK_THROW(ipv6::network n(std::string("2001::/130")), cool::ng::exception::parsing_error);
+      BOOST_CHECK_THROW(ipv4::network n(std::string("192.168.3.0/35")), cool::ng::exception::parsing_error);
     }
 
     ipv6::host h1(s_i1);
@@ -457,8 +457,8 @@ BOOST_AUTO_TEST_CASE(string_conversions)
       BOOST_CHECK_NO_THROW(ipv4::host h2(c_i3));
       BOOST_CHECK_NO_THROW(ipv4::network n3(c_i4_1));
       BOOST_CHECK_NO_THROW(ipv4::network n4(c_i4));
-      BOOST_CHECK_THROW(ipv6::network n("2001::/130"), cool::ng::exception::illegal_argument);
-      BOOST_CHECK_THROW(ipv4::network n("192.168.3.0/35"), cool::ng::exception::illegal_argument);
+      BOOST_CHECK_THROW(ipv6::network n("2001::/130"), cool::ng::exception::parsing_error);
+      BOOST_CHECK_THROW(ipv4::network n("192.168.3.0/35"), cool::ng::exception::parsing_error);
     }
 
     ipv6::host h1(c_i1);
@@ -519,11 +519,11 @@ BOOST_AUTO_TEST_CASE(string_conversions)
     // check that too large mask is detected
     {
       ipv6::network a;
-      BOOST_CHECK_THROW(a = std::string("2017::/129"), cool::ng::exception::illegal_argument);
+      BOOST_CHECK_THROW(a = std::string("2017::/129"), cool::ng::exception::parsing_error);
     }
     {
       ipv4::network a;
-      BOOST_CHECK_THROW(a = std::string("192.168.3.0/33"), cool::ng::exception::illegal_argument);
+      BOOST_CHECK_THROW(a = std::string("192.168.3.0/33"), cool::ng::exception::parsing_error);
     }
     // check that mask remains unaffected if none specified in the string
      {
@@ -581,11 +581,11 @@ BOOST_AUTO_TEST_CASE(string_conversions)
     // check that too large mask is detected
     {
       ipv6::network a;
-      BOOST_CHECK_THROW(a = "2017::/129", cool::ng::exception::illegal_argument);
+      BOOST_CHECK_THROW(a = "2017::/129", cool::ng::exception::parsing_error);
     }
     {
       ipv4::network a;
-      BOOST_CHECK_THROW(a = "192.168.3.0/33", cool::ng::exception::illegal_argument);
+      BOOST_CHECK_THROW(a = "192.168.3.0/33", cool::ng::exception::parsing_error);
     }
     // check that mask remains unaffected if none specified in the string
      {
