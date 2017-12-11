@@ -66,25 +66,36 @@ const std::string& server::name() const
 
 const std::string& stream::name() const
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   return m_impl->name();
 }
 
 void stream::write(const void* data_, std::size_t size_)
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   m_impl->write(data_, size_);
 }
 
 void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   m_impl->connect(addr_, port_);
 }
 
 void stream::disconnect()
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   m_impl->disconnect();
 }
 
-
+stream::operator bool() const
+{
+  return !!m_impl;
+}
 
 namespace impl {
 

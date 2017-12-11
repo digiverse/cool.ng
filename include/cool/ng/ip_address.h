@@ -942,6 +942,9 @@ class host : public ip::host
   binary_t m_data;
 };
 
+/**
+ * IPv4 network address implementation class.
+ */
 class network : public ip::network
 {
  public:
@@ -1266,6 +1269,12 @@ inline std::ostream& operator <<(std::ostream& os, const address& val)
  */
 dlldecl std::istream& operator >>(std::istream& is, address& val);
 
+/**
+ * Host address container that can hold either IPv4 or IPv6 host address.
+ *
+ * This container is a replacement for cumbersone <tt>struct sockaddr_storage</tt>
+ * address container.
+ */
 class host_container
 {
  public:

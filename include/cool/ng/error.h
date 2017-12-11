@@ -43,7 +43,8 @@ enum class errc
   resource_busy = 8,
   parsing_error = 9,
   concurrency_problem = 10,
-  not_available = 11
+  not_available = 11,
+  empty_object = 12
 };
 
 struct library_category : std::error_category

@@ -253,6 +253,14 @@ class parsing_error : public logic_fault
   { /* noop */ }
 };
 
+class empty_object : public logic_fault
+{
+ public:
+  dlldecl empty_object(std::size_t depth_ = default_bt_depth) NOEXCEPT_
+      : logic_fault(cool::ng::error::errc::empty_object, depth_)
+  { /* noop */ }
+};
+
 class operation_failed : public runtime_fault
 {
  public:

@@ -71,26 +71,27 @@ class server
    *     std::function<void(const std::shared_ptr<RunnerT>&, const stream&)>
    * ~~~
    *         The connect handler will be called from the task submitted by @ref server
-   *         to the <em>task queue of the new @ref stream "stream's" @ref runner</em>.
-   *         The first parameter is a shared pointer to the new stream's @ref runner
+   *         to the task queue of the @ref server "server's" @ref runner.
+   *         The first parameter is a shared pointer to the server's @ref runner
    *         and the second paramer is the new @ref stream itself. By passing the new
-   *         @ref stream to the connect handler the @ref server yields the ownershi of
+   *         @ref stream to the connect handler the @ref server yields the ownership of
    *         this stream to the user code.
    *
    * @tparam StreamFactoryT <b>StreamFactoryT</b> is the concrete type of the user provided
    *         @em Callable that will create and return a new @ref stream. This type
    *         must be assignable to the following functional type:
    * ~~~{.c}
-   *     std::function<stream(const cool::ng::net::ip::address&, uint16_t)>
+   *     std::function<stream(const std::shared_ptr<RunnerT>&, const cool::ng::net::ip::address&, uint16_t)>
    * ~~~
    *         Server will use this factory @em Callable, from its @ref runner context,
    *         each time a new client connects to obtain a fresh @ref stream to associate
    *         with the new client connection. The factory is expected to return a new
    *         @ref stream in unconnected state, as constructed by the stream's
-   *         @ref stream::stream "ctor (1)". @ref server will close the client
+   *         @ref stream::stream() "ctor (2)". @ref server will close the client
    *         connection if the factory @em Callable fails to provide @ref stream
    *         in the required state or if it throws. The parameters to the factory
-   *         @em Callable are remote IP address and network port of the new client.
+   *         @em Callable, in addition to the shared pointer to server's @ref runner,
+   *         are remote IP address and network port of the new client.
    * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
    *            schedule asynchronous notifications for execution.
    * @param addr_ IP address of the network peer to bind to. This may be an
@@ -139,7 +140,9 @@ class server
     m_impl = impl;
     impl->initialize(addr_, port_);
   }
-
+  /**
+   * Starts the @ref server.
+   */
   dlldecl void start();
   dlldecl void stop();
   dlldecl const std::string& name() const;

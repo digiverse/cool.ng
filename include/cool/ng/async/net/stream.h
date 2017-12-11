@@ -52,9 +52,22 @@ class server;
 class stream
 {
  public:
+  /**
+   * Default constructor to allow @ref stream "streams" to be stored in standard
+   * library containers.
+   *
+   * This constructor constructs an empty, non-functional @ref stream. The only
+   * way to make it functional is to replace it with a functional stream using
+   * copy assignment or move assignment operator.
+   *
+   * @note The only permitted operations on an empty stream are copy assignment
+   *   and the @ref operator bool() "bool" conversion operator. Any other
+   *   operation will throw @ref cool::ng::exception::empty_object "empty_object"
+   *   exception.
+   */
   stream() { /* noop */ }
   /**
-   * <em>(1)</em> Constructs a new instance of asynchronous connection-oriented input/output
+   * Constructs a new instance of asynchronous connection-oriented input/output
    * stream.
    *
    * When constructed using this constructor the stream is <em>not
@@ -109,11 +122,11 @@ class stream
    *         Note that the third parameter will have meaning only if the event
    *         was caused by failure - otherwise it will be set to 0. The following
    *         is the list of possible events:
-   *          Value                       | Description
-   *          ----------------------------|------------
-   *          oob_event::connected        | The stream successfully connected
-   *          oob_event::failure_detected | The stream failed to connect to network peer
-   *          oob_event::disconnected     | The network peer closed the connection
+   *          Value                         | Description
+   *          ------------------------------|------------
+   *          detail::oob_event::connect    | The stream successfully connected
+   *          detail::oob_event::failure    | The stream failed to connect to network peer
+   *          detail::oob_event::disconnect | The network peer closed the connection
    *
    * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
    *            schedule asynchronous notifications for execution.
@@ -130,6 +143,8 @@ class stream
    *            buffer internally, the size of the buffer to allocate
    *
    * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
+   *        "runner" specified via parameter @a r_ is no longer available
    * @throw std::bad_alloc if the internal memory allocation failed
    * @sa connect()
    */
@@ -156,7 +171,7 @@ class stream
   }
 
   /**
-   * <em>2</em> Constructs a new instance of asynchronous connection-oriented
+   * Constructs a new instance of asynchronous connection-oriented
    * input/output stream and connects it to the specified address.
    *
    * When constructed using this constructor the stream is will initiate an
@@ -169,8 +184,7 @@ class stream
    * is connected and ready to transmit and receive data.
    *
    * <b>Template Parameters</b><br>
-   * See @ref stream() "stream(r_, hr_, hw_, he_)" constructor for details on
-   * the template parameters.
+   * See the above constructor for details on the template parameters.
    *
    * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
    *            schedule asynchronous notifications for execution.
@@ -244,9 +258,25 @@ class stream
    */
   dlldecl void connect(const cool::ng::net::ip::address& addr_, uint16_t port_);
 
+  /**
+   * Disconnects the connected stream from the remote peer.
+   *
+   * Disconnected stream can be connected again using @ref connect() method.
+   *
+   * @throw cool::ng::exception::invalid_state if the stream is not connected.
+   */
   dlldecl void disconnect();
 
-  explicit operator bool() { return !!m_impl; }
+  /**
+   * Empty stream predicate.
+   *
+   * @return true if this @ref stream is properly created and functional, false if empty.
+   *
+   * @note Returning true does not imply that the stream is in a correct state
+   *       for the required operation. It just indicates that it was not
+   *       default constructed as an empty shell/placeholder.
+   */
+  dlldecl explicit operator bool() const;
 
  private:
   friend class impl::server;

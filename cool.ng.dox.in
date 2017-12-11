@@ -755,6 +755,7 @@ WARN_LOGFILE           =
 
 INPUT                  = @COOL_NG_HOME@/include/cool/ng \
                          @COOL_NG_HOME@/include/cool/ng/async \
+                         @COOL_NG_HOME@/include/cool/ng/async/net \
                          @COOL_NG_HOME@/mainpage.dox
 
 # This tag can be used to specify the character encoding of the source files
