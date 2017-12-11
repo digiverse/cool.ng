@@ -181,6 +181,8 @@ set( COOL_NG_API_HEADERS
     include/cool/ng/async/task.h
     include/cool/ng/async/runner.h
     include/cool/ng/async/event_sources.h
+    include/cool/ng/async/net/server.h
+    include/cool/ng/async/net/stream.h
 )
 
 set( COOL_NG_IMPL_HEADERS
@@ -196,6 +198,9 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/repeat_impl.h
     include/cool/ng/impl/async/loop_impl.h
     include/cool/ng/impl/async/event_sources.h
+    include/cool/ng/impl/async/net_types.h
+    include/cool/ng/impl/async/net_server.h
+    include/cool/ng/impl/async/net_stream.h
 )
 
 # ### ##################################################

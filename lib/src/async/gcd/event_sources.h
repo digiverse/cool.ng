@@ -31,7 +31,7 @@
 #include <dispatch/dispatch.h>
 #include "cool/ng/bases.h"
 #include "cool/ng/ip_address.h"
-#include "cool/ng/impl/async/event_sources.h"
+#include "cool/ng/impl/async/net_types.h"
 
 #include "executor.h"
 
@@ -120,7 +120,7 @@ class dispatch_source
   ::dispatch_source_t m_source;
 };
 
-class server : public cool::ng::async::detail::startable
+class server : public detail::startable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<server>
 {
@@ -180,7 +180,7 @@ class server : public cool::ng::async::detail::startable
  * source contexts - these will get deleted  through their cancel callbacks. So
  * in a sense they co-manage the life time of the stream implementation.
  */
-class stream : public cool::ng::async::detail::connected_writable
+class stream : public detail::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {
@@ -208,9 +208,9 @@ class stream : public cool::ng::async::detail::connected_writable
                 , uint16_t port_
                 , void* buf_
                 , std::size_t bufsz_);
-  void initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
+  void initialize(cool::ng::net::handle h_);
   void initialize(void* buf_, std::size_t bufsz_);
-
+  void set_handle(cool::ng::net::handle h_) override;
   void shutdown() override;
   const std::string& name() const override { return named::name(); }
 

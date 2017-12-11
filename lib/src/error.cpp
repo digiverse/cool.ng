@@ -61,6 +61,7 @@ std::string library_category::message(int ev) const
     "the requested resource is busy and not available",
     "parsing of textual input failed",
     "an object that is not thread safe has encountered race condition",
+    "the requested item was either not specified or was not made available"
   };
   static const char* const unknown = "unrecognized error";
 

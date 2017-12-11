@@ -57,6 +57,10 @@
 // #include "test_server.h"
 
 using ms = std::chrono::milliseconds;
+using std::placeholders::_1;
+using std::placeholders::_2;
+using std::placeholders::_3;
+using std::placeholders::_4;
 
 #define DELAY 100000
 
@@ -67,6 +71,7 @@ namespace ip = cool::ng::net::ip;
 namespace ipv4 = cool::ng::net::ipv4;
 namespace ipv6 = cool::ng::net::ipv6;
 namespace async = cool::ng::async;
+using cool::ng::async::net::detail::oob_event;
 
 class test_runner : public cool::ng::async::runner
 {
@@ -107,7 +112,7 @@ std::shared_ptr<async::net::stream> create_client(const std::shared_ptr<test_run
       { }
     , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
       { }
-    , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+    , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
       { }
   );
 
@@ -129,12 +134,12 @@ std::shared_ptr<async::net::stream> create_connected_client(const std::shared_pt
       { }
     , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
       { }
-    , [&m, &cv, &connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+    , [&m, &cv, &connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
       {
         std::unique_lock<std::mutex> l(m);
         switch (evt)
         {
-          case async::net::stream::oob_event::connected:
+          case oob_event::connect:
             connected = true;
             cv.notify_one();
             break;
@@ -152,6 +157,18 @@ std::shared_ptr<async::net::stream> create_connected_client(const std::shared_pt
   return clt;
 }
 
+async::net::stream stream_factory(
+    const std::shared_ptr<test_runner>& r_
+  , const ip::address&
+  , uint16_t
+  , const std::weak_ptr<test_runner>& stream_r_
+  , const async::net::detail::types<test_runner>::read_handler& rh_
+  , const async::net::detail::types<test_runner>::write_handler& wh_
+  , const async::net::detail::types<test_runner>::event_handler& eh_)
+{
+    return async::net::stream(stream_r_, rh_, wh_, eh_);
+}
+
 #if 1
 // Just creates and destroys server to check that everything completes
 // gracefully.
@@ -162,7 +179,7 @@ BOOST_AUTO_TEST_CASE(server_dtor)
   std::mutex m;
   std::condition_variable cv;
   int num_clients = 0;
-  std::shared_ptr<async::net::stream> srv_stream;
+  async::net::stream srv_stream;
 
   auto r = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
@@ -172,50 +189,43 @@ BOOST_AUTO_TEST_CASE(server_dtor)
         std::weak_ptr<test_runner>(r)
       , ipv6::any
       , 22220
-      , [&m, &cv, &srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r
-                            , const net::handle h
-                            , const ip::address& a
-                            , uint16_t p)
+      , std::bind(stream_factory, _1, _2, _3, r2
+          , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
+            { }
+          , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+            { }
+          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+            {
+              if (r)
+                r->inc();
+              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              switch (evt)
+              {
+                case oob_event::disconnect:
+                  --num_clients;
+                  cv.notify_one();
+                  break;
+
+                default:
+                  break;
+              }
+            }
+        )
+      , [&m, &cv, &srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
           if (r)
             r->inc();
 
-          std::cout << "Connect from [" << static_cast<std::string>(a) << "]:" << p << "\n";
-          std::unique_lock<std::mutex> l(m);
-          srv_stream = std::make_shared<async::net::stream>(
-              std::weak_ptr<test_runner>(r2)
-            , h
-            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
-              { }
-            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-              { }
-            , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
-              {
-                if (r)
-                  r->inc();
-                std::cout << "server received event " << static_cast<int>(evt) << "\n";
-                switch (evt)
-                {
-                  case async::net::stream::oob_event::disconnected:
-                    --num_clients;
-                    cv.notify_one();
-                    break;
-
-                  default:
-                    break;
-                }
-              }
-          );
-
+          srv_stream = s_;
           ++num_clients;
           cv.notify_one();
 
           std::this_thread::sleep_for(ms(1000));
 
           if (num_clients % 2 == 1)
-            srv_stream.reset();
+            srv_stream = async::net::stream();
           else
-            srv_stream->disconnect();
+            srv_stream.disconnect();
           std::cout << "num clients: " << num_clients << "\n";
         }
     );
@@ -244,7 +254,12 @@ BOOST_AUTO_TEST_CASE(server_errors)
           wr
         , ipv4::any
         , 22211
-        , [] (const std::shared_ptr<test_runner>& r, const net::handle h, const ip::address& a, int p) { }
+        , std::bind(stream_factory, _1, _2, _3, r
+            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&) { }
+            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t) { }
+            , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e) { }
+          )
+        , [] (const std::shared_ptr<test_runner>& r, const async::net::stream& s_) { }
       )
     , cool::ng::exception::runner_not_available);
   }
@@ -263,13 +278,18 @@ BOOST_AUTO_TEST_CASE(server_errors)
           wr
         , ipv4::any
         , port
-        , [] (const std::shared_ptr<test_runner>& r, const net::handle h, const ip::address& a, int p) { }
+        , std::bind(stream_factory, _1, _2, _3, r
+            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&) { }
+            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t) { }
+            , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e) { }
+          )
+        , [] (const std::shared_ptr<test_runner>& r, const async::net::stream& s_) { }
       )
     , cool::ng::exception::socket_failure);
   }
 }
 #endif
-#if 0
+#if 1
 // Tests:
 //   - accept calls from the server
 //   - both client-side ctors of the stream
@@ -287,49 +307,38 @@ BOOST_AUTO_TEST_CASE(accept_test)
     std::mutex m;
     std::condition_variable cv;
     int num_clients = 0;
-    std::array<std::shared_ptr<async::net::stream>, 2> srv_stream;
+    std::array<async::net::stream, 2> srv_stream;
 
     auto server = async::net::server(
         std::weak_ptr<test_runner>(r)
       , ipv6::any
       , 22220
-      , [&m, &cv, &srv_stream, &r2, &num_clients, &srv_addr](const std::shared_ptr<test_runner>& r
-                            , const net::handle h
-                            , const ip::address& a
-                            , uint16_t p)
-        {
-          if (r)
-            r->inc();
-
-          std::cout << "Connect from [" << static_cast<std::string>(a) << "]:" << p << "\n";
-          std::unique_lock<std::mutex> l(m);
-          srv_stream[num_clients] = std::make_shared<async::net::stream>(
-              std::weak_ptr<test_runner>(r2)
-            , h
-            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
-              { }
-            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-              { }
-            , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+      , std::bind(stream_factory, _1, _2, _3, r2
+          , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
+            { }
+          , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+            { }
+          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+            {
+              r->inc();
+              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              switch (evt)
               {
-                if (r)
-                  r->inc();
-                std::cout << "server received event " << static_cast<int>(evt) << "\n";
-                switch (evt)
-                {
-                  case async::net::stream::oob_event::disconnected:
-                    --num_clients;
-                    cv.notify_one();
-                    break;
+                case oob_event::disconnect:
+                  --num_clients;
+                  cv.notify_one();
+                  break;
 
-                  default:
-                    break;
-                }
+                default:
+                  break;
               }
-          );
-          srv_addr[num_clients] = static_cast<std::string>(a);
+            }
+        )
+      , [&m, &cv, &srv_stream, &r2, &num_clients, &srv_addr](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
+        {
+          r->inc();
+          srv_stream[num_clients] = s_;
           ++num_clients;
-          cv.notify_one();
         }
     );
 
@@ -364,7 +373,6 @@ BOOST_AUTO_TEST_CASE(start_stop)
 {
   check_start_sockets();
 
-  std::array<std::string, 2> srv_addr;
   auto r = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
 
@@ -374,47 +382,41 @@ BOOST_AUTO_TEST_CASE(start_stop)
     std::mutex m;
     std::condition_variable cv;
     int num_clients = 0;
-    std::array<std::shared_ptr<async::net::stream>, 2> srv_stream;
+    std::array<async::net::stream, 2> srv_stream;
 
     auto server = async::net::server(
         std::weak_ptr<test_runner>(r)
       , ipv6::any
       , 22220
-      , [&m, &cv, &srv_stream, &r2, &num_clients, &srv_addr](const std::shared_ptr<test_runner>& r
-                            , const net::handle h
-                            , const ip::address& a
-                            , uint16_t p)
+      , std::bind(stream_factory, _1, _2, _3, r
+          , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
+            { }
+          , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+            { }
+          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+            {
+              if (r)
+                r->inc();
+              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              switch (evt)
+              {
+                case oob_event::disconnect:
+                  --num_clients;
+                  cv.notify_one();
+                  break;
+
+                default:
+                  break;
+              }
+            }
+        )
+      , [&m, &cv, &srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
           if (r)
             r->inc();
 
-          std::cout << "Connect from [" << static_cast<std::string>(a) << "]:" << p << "\n";
           std::unique_lock<std::mutex> l(m);
-          srv_stream[num_clients] = std::make_shared<async::net::stream>(
-              std::weak_ptr<test_runner>(r2)
-            , h
-            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
-              { }
-            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-              { }
-            , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
-              {
-                if (r)
-                  r->inc();
-                std::cout << "server received event " << static_cast<int>(evt) << "\n";
-                switch (evt)
-                {
-                  case async::net::stream::oob_event::disconnected:
-                    --num_clients;
-                    cv.notify_one();
-                    break;
-
-                  default:
-                    break;
-                }
-              }
-          );
-          srv_addr[num_clients] = static_cast<std::string>(a);
+          srv_stream[num_clients] = s_;
           ++num_clients;
           cv.notify_one();
         }
@@ -423,7 +425,6 @@ BOOST_AUTO_TEST_CASE(start_stop)
     server.start();
 
     auto client1 = create_connected_client<test_runner>(r2, ipv4::loopback, 22220, 100);
-
 
     std::unique_lock<std::mutex> l(m);
     cv.wait_for(l, ms(100), [&client1, &num_clients] () { return !!client1 && num_clients == 1; } );
@@ -480,7 +481,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
   bool srv_written = false;
   bool clt_written = false;
 
-  std::shared_ptr<async::net::stream> srv_stream;
+  async::net::stream srv_stream;
 
   auto r = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
@@ -489,56 +490,50 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
         std::weak_ptr<test_runner>(r)
       , ipv6::any
       , 22228
-      , [&m, &cv, &srv_stream, &r2, &srv_connected, &srv_size, &buffer, &srv_written](const std::shared_ptr<test_runner>& r
-                            , const net::handle h
-                            , const ip::address& a
-                            , uint16_t p)
+      , std::bind(stream_factory, _1, _2, _3, r2
+          , [&srv_size, &m, &cv, &buffer] (const std::shared_ptr<test_runner>&, void*&, std::size_t& size_)
+            {
+              srv_size += size_;
+//                std::cout << "received " << size_ << " bytes, total " << srv_size << " bytes\n";
+              if (srv_size >= buffer.capacity())
+              {
+                std::unique_lock<std::mutex> l(m);
+                cv.notify_one();
+              }
+            }
+          , [&srv_written, &m, &cv, &srv_stream] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+            {
+              std::unique_lock<std::mutex> l(m);
+              srv_written = true;
+              cv.notify_one();
+            }
+          , [&srv_connected, &m, &cv] (const std::shared_ptr<test_runner>&, oob_event evt, const std::error_code& e)
+            {
+              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              switch (evt)
+              {
+                case oob_event::connect:
+                  srv_connected = true;
+                  cv.notify_one();
+                  break;
+
+                case oob_event::disconnect:
+                  srv_connected = false;
+                  cv.notify_one();
+                  break;
+
+                default:
+                  break;
+              }
+            }
+        )
+      , [&m, &cv, &srv_stream, &r2, &srv_connected](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
           if (r)
             r->inc();
 
-          std::cout << "Connect from [" << static_cast<std::string>(a) << "]:" << p << "\n";
           std::unique_lock<std::mutex> l(m);
-           srv_stream = std::make_shared<async::net::stream>(
-              std::weak_ptr<test_runner>(r2)
-            , h
-            , [&srv_size, &m, &cv, &buffer] (const std::shared_ptr<test_runner>&, void*&, std::size_t& size_)
-              {
-                srv_size += size_;
-//                std::cout << "received " << size_ << " bytes, total " << srv_size << " bytes\n";
-                if (srv_size >= buffer.capacity())
-                {
-                  std::unique_lock<std::mutex> l(m);
-                  cv.notify_one();
-                }
-              }
-            , [&srv_written, &m, &cv, &srv_stream] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-              {
-                std::unique_lock<std::mutex> l(m);
-                srv_written = true;
-                cv.notify_one();
-              }
-            , [&srv_connected, &m, &cv] (const std::shared_ptr<test_runner>&, async::net::stream::oob_event evt, const std::error_code& e)
-              {
-                std::cout << "server received event " << static_cast<int>(evt) << "\n";
-                switch (evt)
-                {
-                  case async::net::stream::oob_event::connected:
-                    srv_connected = true;
-                    cv.notify_one();
-                    break;
-
-                  case async::net::stream::oob_event::disconnected:
-                    srv_connected = false;
-                    cv.notify_one();
-                    break;
-
-                  default:
-                    break;
-                }
-              }
-          );
-
+          srv_stream = s_;
           srv_connected = true;
           cv.notify_one();
         }
@@ -566,7 +561,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
               clt_written = true;;
               cv.notify_one();
           }
-        , [&m, &cv, &client_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+        , [&m, &cv, &client_connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
           {
             if (r)
               r->inc();
@@ -575,12 +570,12 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
             std::cout << "client received event " << static_cast<int>(evt) << "\n";
             switch (evt)
             {
-              case async::net::stream::oob_event::connected:
+              case oob_event::connect:
                 client_connected = true;
                 cv.notify_one();
                 break;
 
-              case async::net::stream::oob_event::disconnected:
+              case oob_event::disconnect:
                 client_connected = false;
                 cv.notify_one();
                 break;
@@ -600,7 +595,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
       BOOST_CHECK_EQUAL(1, r2->counter());
 
       client->write(buffer.data(), buffer.capacity());
-      srv_stream->write(buffer.data(), buffer.capacity());
+      srv_stream.write(buffer.data(), buffer.capacity());
       cv.wait_for(l, ms(2000),
         [&clt_size, &srv_size, &buffer, &srv_written,&clt_written] ()
         {
@@ -637,8 +632,7 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
     std::condition_variable cv;
     bool srv_connected = false;
     bool clt_connected = false;
-    std::shared_ptr<async::net::stream> srv_stream;
-    std::string srv_peer_addr;
+    async::net::stream srv_stream;
 
     auto r = std::make_shared<test_runner>();
     auto r2 = std::make_shared<test_runner>();
@@ -647,39 +641,33 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
         std::weak_ptr<test_runner>(r)
       , ipv6::any
       , 22229
-      , [&m, &cv, &srv_stream, &r2, &srv_peer_addr, &srv_connected](
-              const std::shared_ptr<test_runner>& r
-            , const net::handle h
-            , const ip::address& a
-            , uint16_t p)
+      , std::bind(stream_factory, _1, _2, _3, r2
+          , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
+            { }
+          , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
+            { }
+          , [ &m, &cv, &srv_connected, &srv_stream] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+            {
+              if (r)
+                r->inc();
+              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              switch (evt)
+              {
+                case oob_event::disconnect:
+                  srv_connected = false;
+                  srv_stream = async::net::stream();
+                  cv.notify_one();
+                  break;
+
+                default:
+                  break;
+              }
+            }
+        )
+      , [&m, &cv, &srv_stream, &r2, &srv_connected](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
           std::unique_lock<std::mutex> l(m);
-          srv_stream = std::make_shared<async::net::stream>(
-              std::weak_ptr<test_runner>(r2)
-            , h
-            , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
-              { }
-            , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-              { }
-            , [ &m, &cv, &srv_connected, &srv_stream] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
-              {
-                if (r)
-                  r->inc();
-                std::cout << "server received event " << static_cast<int>(evt) << "\n";
-                switch (evt)
-                {
-                  case async::net::stream::oob_event::disconnected:
-                    srv_connected = false;
-                    srv_stream.reset();
-                    cv.notify_one();
-                    break;
-
-                  default:
-                    break;
-                }
-              }
-          );
-          srv_peer_addr = static_cast<std::string>(a);
+          srv_stream = s_;
           srv_connected = true;
           cv.notify_one();
         }
@@ -693,7 +681,7 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
         { }
       , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
         { }
-      , [&m, &cv, &clt_connected] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+      , [&m, &cv, &clt_connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
         {
           if (r)
             r->inc();
@@ -702,12 +690,12 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
           std::cout << "client received event " << static_cast<int>(evt) << "\n";
           switch (evt)
           {
-            case async::net::stream::oob_event::connected:
+            case oob_event::connect:
               clt_connected = true;
               cv.notify_one();
               break;
 
-            case async::net::stream::oob_event::disconnected:
+            case oob_event::disconnect:
               clt_connected = false;
               cv.notify_one();
               break;
@@ -722,7 +710,6 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
 
     std::unique_lock<std::mutex> l(m);
     cv.wait_for(l, ms(500), [&clt_connected, &srv_connected] () { return clt_connected && srv_connected; } );
-    BOOST_CHECK_EQUAL("::1", srv_peer_addr);
     BOOST_CHECK_EQUAL(true, clt_connected);
     BOOST_CHECK_EQUAL(true, srv_connected);
     BOOST_CHECK_EQUAL(true, !!srv_stream);
@@ -737,7 +724,6 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
     clt_connected = false;
     client.connect(cool::ng::net::ipv4::loopback, 22229);
     cv.wait_for(l, ms(500), [&clt_connected, &srv_connected] () { return clt_connected && srv_connected; } );
-    BOOST_CHECK_EQUAL("::ffff:127.0.0.1", srv_peer_addr);
     BOOST_CHECK_EQUAL(true, clt_connected);
     BOOST_CHECK_EQUAL(true, srv_connected);
     BOOST_CHECK_EQUAL(true, !!srv_stream);
@@ -749,6 +735,7 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
 }
 #endif
 
+#if 0
 BOOST_AUTO_TEST_CASE(ctor_failures)
 {
   auto r = std::make_shared<test_runner>();
@@ -765,7 +752,7 @@ BOOST_AUTO_TEST_CASE(ctor_failures)
           { }
         , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
           { }
-        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+        , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
           {}
         , nullptr
         , 50000000000
@@ -775,8 +762,8 @@ BOOST_AUTO_TEST_CASE(ctor_failures)
 #endif
 
 }
-
-#if 1
+#endif
+#if 0
 BOOST_AUTO_TEST_CASE(failed_connect_ctor)
 {
 
@@ -792,7 +779,7 @@ BOOST_AUTO_TEST_CASE(failed_connect_ctor)
           { }
         , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
           { }
-        , [] (const std::shared_ptr<test_runner>& r, async::net::stream::oob_event evt, const std::error_code& e)
+        , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
           {}
       )
     , cool::ng::exception::socket_failure

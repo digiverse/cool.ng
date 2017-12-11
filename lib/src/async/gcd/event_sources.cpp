@@ -33,6 +33,7 @@
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
+#include "cool/ng/async/net/stream.h"
 #include "event_sources.h"
 
 namespace cool { namespace ng { namespace async {
@@ -265,15 +266,15 @@ void server::process_accept(cool::ng::net::handle h_
 
   try
   {
-    if (!cb->on_connect(h_, addr_, port_))
-    {
-      ::close(h_);
-    }
+    auto stream = cb->manufacture(addr_, port_);
+    stream.m_impl->set_handle(h_);
+    try { cb->on_connect(stream); } catch (...) { /* noop */ }
   }
   catch (...)
   {
     ::close(h_);
   }
+
 }
 
 // --------------------------------------------------------------------------
@@ -315,13 +316,13 @@ void stream::initialize(const cool::ng::net::ip::address& addr_
   connect(addr_, port_);
 }
 
-void stream::initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_)
+void stream::set_handle(cool::ng::net::handle h_)
 {
 
   m_state = state::connected;
 
 #if defined(OSX_TARGET)
-  // on OSX accepted socket does not preserve non-blocking properties of listen socket
+  // on OSX accepted socket does not preserve non-blocking properties of the listen socket
   int option = 1;
   if (ioctl(h_, FIONBIO, &option) != 0)
     throw exc::socket_failure();
@@ -332,7 +333,7 @@ void stream::initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_
     throw exc::socket_failure();
 
   create_write_source(h_, false);
-  create_read_source(rh, buf_, bufsz_);
+  create_read_source(rh, m_buf, m_size);
 }
 
 void stream::initialize(void* buf_, std::size_t bufsz_)
@@ -683,7 +684,7 @@ void stream::process_connect_event(context* ctx, std::size_t size)
 
     auto aux = m_handler.lock();
     if (aux)
-      try { aux->on_event(cb::stream::event::connected, no_error()); } catch (...) { }
+      try { aux->on_event(detail::oob_event::connect, no_error()); } catch (...) { }
   }
   catch (const cool::ng::exception::base& e)
   {
@@ -695,7 +696,7 @@ void stream::process_connect_event(context* ctx, std::size_t size)
 
     auto aux = m_handler.lock();
     if (aux)
-      try { aux->on_event(cb::stream::event::failure_detected, e.code()); } catch (...) { }
+      try { aux->on_event(detail::oob_event::failure, e.code()); } catch (...) { }
   }
 }
 
@@ -716,7 +717,7 @@ void stream::process_disconnect_event()
 
   auto aux = m_handler.lock();
   if (aux)
-    try { aux->on_event(cb::stream::event::disconnected, no_error()); } catch (...) { }
+    try { aux->on_event(detail::oob_event::disconnect, no_error()); } catch (...) { }
 }
 
 void stream::shutdown()

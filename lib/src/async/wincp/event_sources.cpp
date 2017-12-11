@@ -25,6 +25,7 @@
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
+#include "cool/ng/async/net/stream.h"
 #include "event_sources.h"
 
 #pragma comment(lib, "Ws2_32.lib")
@@ -51,6 +52,30 @@ namespace ip = cool::ng::net::ip;
 namespace ipv4 = cool::ng::net::ipv4;
 namespace ipv6 = cool::ng::net::ipv6;
 
+namespace {
+
+void set_address(sockaddr_in& sa_, const ip::address& a_, uint16_t port_, sockaddr*& p_, int& size)
+{
+  memset(&sa_, 0, sizeof(sa_));
+  sa_.sin_family = AF_INET;
+  sa_.sin_addr = static_cast<in_addr>(a_);
+  sa_.sin_port = htons(port_);
+  p_ = reinterpret_cast<sockaddr*>(&sa_);
+  size = sizeof(sa_);
+}
+
+void set_address(sockaddr_in6& sa_, const ip::address& a_, uint16_t port_, sockaddr*& p_, int& size)
+{
+  memset(&sa_, 0, sizeof(sa_));
+  sa_.sin6_family = AF_INET6;
+  sa_.sin6_addr = static_cast<in6_addr>(a_);
+  sa_.sin6_port = htons(port_);
+  p_ = reinterpret_cast<sockaddr*>(&sa_);
+  size = sizeof(sa_);
+}
+
+} // anonymous namespace
+
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -64,7 +89,7 @@ namespace ipv6 = cool::ng::net::ipv6;
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
-server::context::context(const server::ptr& s_, const cool::ng::net::ip::address& addr_, uint16_t port_)
+server::context::context(const server::ptr& s_, const ip::address& addr_, uint16_t port_)
     : m_server(s_)
     , m_pool(async::impl::poolmgr::get_poolmgr())
     , m_handle(invalid_handle)
@@ -87,6 +112,8 @@ server::context::context(const server::ptr& s_, const cool::ng::net::ip::address
       if (setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) == SOCKET_ERROR)
         throw exc::socket_failure();
 
+      // enable connect from IPv4 sockets, too ... something that's enable by
+      // default on OSX and Linux
       if (addr_.version() == ip::version::ipv6)
       {
         const DWORD ipv6only = 0;
@@ -97,26 +124,12 @@ server::context::context(const server::ptr& s_, const cool::ng::net::ip::address
       sockaddr_in addr4;
       sockaddr_in6 addr6;
       sockaddr* p;
-      std::size_t size;
+      int size;
 
       if (addr_.version() == ip::version::ipv4)
-      {
-        std::memset(&addr4, 0, sizeof(addr4));
-        addr4.sin_family = AF_INET;
-        addr4.sin_addr = static_cast<in_addr>(addr_);
-        addr4.sin_port = htons(port_);
-        p = reinterpret_cast<sockaddr*>(&addr4);
-        size = sizeof(addr4);
-      }
+        set_address(addr4, addr_, port_, p, size);
       else
-      {
-        std::memset(&addr6, 0, sizeof(addr6));
-        addr6.sin6_family = AF_INET6;
-        addr6.sin6_addr = static_cast<in6_addr>(addr_);
-        addr6.sin6_port = htons(port_);
-        p = reinterpret_cast<sockaddr*>(&addr6);
-        size = sizeof(addr6);
-      }
+        set_address(addr6, addr_, port_, p, size);
 
       if (bind(m_handle, p, static_cast<int>(size)) == SOCKET_ERROR)
         throw exc::socket_failure();
@@ -126,34 +139,36 @@ server::context::context(const server::ptr& s_, const cool::ng::net::ip::address
     }
 
     // ----
-    // For whatever reason beyond my comprehension AcceptEx and GetAcceptExSockAddrs
-    // aren't directly reachable but their addresses must be fetched via ioctl!!??
+    // Fetch AcceptEx and GetAcceptExSockAddrs function pointers
+    {
+      DWORD filler;
 
-    GUID guid = WSAID_ACCEPTEX;
-    if (WSAIoctl(
-          m_handle
-        , SIO_GET_EXTENSION_FUNCTION_POINTER
-        , &guid
-        , sizeof(guid)
-        , &m_accept_ex
-        , sizeof(m_accept_ex)
-        , &m_filler
-        , nullptr
-        , nullptr) == SOCKET_ERROR)
-      throw exc::socket_failure();
+      GUID guid = WSAID_ACCEPTEX;
+      if (WSAIoctl(
+            m_handle
+          , SIO_GET_EXTENSION_FUNCTION_POINTER
+          , &guid
+          , sizeof(guid)
+          , &m_accept_ex
+          , sizeof(m_accept_ex)
+          , &filler
+          , nullptr
+          , nullptr) == SOCKET_ERROR)
+        throw exc::socket_failure();
 
-    guid = WSAID_GETACCEPTEXSOCKADDRS;
-    if (WSAIoctl(
-          m_handle
-        , SIO_GET_EXTENSION_FUNCTION_POINTER
-        , &guid
-        , sizeof(guid)
-        , &m_get_sock_addrs
-        , sizeof(m_get_sock_addrs)
-        , &m_filler
-        , nullptr
-        , nullptr) == SOCKET_ERROR)
-      throw exc::socket_failure();
+      guid = WSAID_GETACCEPTEXSOCKADDRS;
+      if (WSAIoctl(
+            m_handle
+          , SIO_GET_EXTENSION_FUNCTION_POINTER
+          , &guid
+          , sizeof(guid)
+          , &m_get_sock_addrs
+          , sizeof(m_get_sock_addrs)
+          , &filler
+          , nullptr
+          , nullptr) == SOCKET_ERROR)
+        throw exc::socket_failure();
+    }
 
     // ----
     // Create thread pool i/o completion object and associate it with
@@ -206,7 +221,7 @@ void server::context::start_accept()
     , 0
     , sizeof(m_buffer) / 2
     , sizeof(m_buffer) / 2
-    , &m_filler
+    , nullptr //&m_filler
     , &m_overlapped))
   {
     auto hr = WSAGetLastError();
@@ -238,7 +253,6 @@ void server::context::shutdown()
 //    must submit work to the executor of the runner the event source is
 //    associated with. To do so it must create a work context and submit it
 //    to executor::run method.
-
 void server::context::on_accept(
       PTP_CALLBACK_INSTANCE instance_
     , PVOID context_
@@ -291,6 +305,7 @@ void server::context::process_accept()
     , &len_local
     , reinterpret_cast<sockaddr**>(&remote)
     , &len_remote);
+
   if (setsockopt(
       m_client_handle
     , SOL_SOCKET
@@ -353,7 +368,6 @@ void server::start()
 
   throw exc::invalid_state();
 }
-
 
 void server::stop()
 {
@@ -425,19 +439,30 @@ class exec_for_accept : public cool::ng::async::detail::event_context
     auto cb = self->m_handler.lock();
     if (cb)
     {
-      try { res = cb->on_connect(self->m_handle, self->m_addr, self->m_port); } catch (...) { /* noop */ }
+      try
+      {
+        // this call is made directly to detail::server template in the context of
+        // the runner
+        auto s = cb->manufacture(self->m_addr, self->m_port);
+        server::install_handle(s, self->m_handle);
+        try { cb->on_connect(s); } catch (...) { }
+      }
+      catch (...)
+      {
+        closesocket(self->m_handle);
+      }
     }
-    if (!res)
+    else
     {
       closesocket(self->m_handle);
     }
   }
 
  private:
-  ip::host_container    m_addr;
-  int                   m_port;
-  handle m_handle;
-  cb::server::weak_ptr  m_handler;
+  ip::host_container   m_addr;
+  int                  m_port;
+  handle               m_handle;
+  cb::server::weak_ptr m_handler;
 };
 
 void server::process_accept(const cool::ng::net::ip::address& addr_, uint16_t port_)
@@ -455,7 +480,7 @@ void server::process_accept(const cool::ng::net::ip::address& addr_, uint16_t po
   else
   {
     // executor no longer exists hence nobody can process connect request -
-    // just close the client habdle
+    // just close the client handle
     closesocket(m_context->m_client_handle);
   }
 
@@ -463,6 +488,10 @@ void server::process_accept(const cool::ng::net::ip::address& addr_, uint16_t po
   m_context->start_accept();
 }
 
+void server::install_handle(cool::ng::async::net::stream& s_, cool::ng::net::handle h_)
+{
+  s_.m_impl->set_handle(h_);
+}
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -496,7 +525,8 @@ class exec_for_io : public cool::ng::async::detail::event_context
 
   void entry_point() override
   {
-    try { m_ctx->m_stream->on_event(m_ctx, m_overlapped, m_io_result, m_num_transferred); } catch (...) { /* noop */ }
+    // this call is made into impl::server, but in the context of the runner
+    m_ctx->m_stream->on_event(m_ctx, m_overlapped, m_io_result, m_num_transferred);
   }
 
  private:
@@ -507,7 +537,13 @@ class exec_for_io : public cool::ng::async::detail::event_context
 };
 
 stream::context::context(const stream::ptr& s_, handle h_, void* buf_, std::size_t sz_)
-  : m_stream(s_), m_handle(h_), m_tpio(nullptr), m_rd_data(buf_), m_rd_size(sz_), m_rd_is_mine(buf_ == nullptr), m_wr_busy(false)
+  : m_stream(s_)
+  , m_handle(h_)
+  , m_tpio(nullptr)
+  , m_rd_data(buf_)
+  , m_rd_size(sz_)
+  , m_rd_is_mine(buf_ == nullptr)
+  , m_wr_busy(false)
 {
   if (m_rd_is_mine)
     m_rd_data = new uint8_t[m_rd_size];
@@ -599,11 +635,8 @@ void stream::initialize(const cool::ng::net::ip::address& addr_
   connect(addr_, port_);
 }
 
-void stream::initialize(handle h_, void* buf_, std::size_t bufsz_)
+void stream::set_handle(handle h_)
 {
-  m_rd_size = bufsz_;
-  m_rd_data = buf_;
-
   try
   {
     m_context = new context(self().lock(), h_, m_rd_data, m_rd_size);
@@ -614,11 +647,11 @@ void stream::initialize(handle h_, void* buf_, std::size_t bufsz_)
   catch (...)
   {
     // at this point no ovelapped operation is running hence
-    // explicitly delete context
-
+    // delete context directly at here
     if (m_context != nullptr)
       delete m_context;
     m_context = nullptr;
+    m_state = state::disconnected;
     throw;
   }
 }
@@ -678,31 +711,9 @@ void stream::start_write_source()
   }
 }
 
-namespace {
-
-void set_address(sockaddr_in& sa_, const ip::address& a_, uint16_t port_, sockaddr*& p_, int& size)
-{
-  memset(&sa_, 0, sizeof(sa_));
-  sa_.sin_family = AF_INET;
-  sa_.sin_addr = static_cast<in_addr>(a_);
-  sa_.sin_port = htons(port_);
-  p_ = reinterpret_cast<sockaddr*>(&sa_);
-  size = sizeof(sa_);
-}
-
-void set_address(sockaddr_in6& sa_, const ip::address& a_, uint16_t port_, sockaddr*& p_, int& size)
-{
-  memset(&sa_, 0, sizeof(sa_));
-  sa_.sin6_family = AF_INET6;
-  sa_.sin6_addr = static_cast<in6_addr>(a_);
-  sa_.sin6_port = htons(port_);
-  p_ = reinterpret_cast<sockaddr*>(&sa_);
-  size = sizeof(sa_);
-}
-
-} // anonymous namespace
-
-void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
+// This method is always called from the user code in the context of the
+// user thread; either from the stream's ctor or using connect API call
+void stream::connect(const ip::address& addr_, uint16_t port_)
 {
   handle handle = invalid_handle;
 
@@ -727,7 +738,7 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
       m_context = new context(self().lock(), handle, m_rd_data, m_rd_size);
     }
 
-    // TODO: does this apply to client sockets, too?
+    // TODO: is this needed to client sockets, too?
     if (addr_.version() == ip::version::ipv6)
     {
       const DWORD ipv6only = 0;
@@ -810,7 +821,6 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
     m_state = state::disconnected;
     throw;
   }
-
 }
 
 // ---
@@ -865,13 +875,13 @@ void stream::process_connect_event(ULONG io_result_)
   {
     if (io_result_ == NO_ERROR)
     {
-      try { cb->on_event(cb::stream::event::connected, no_error()); } catch (...) { }
+      try { cb->on_event(detail::oob_event::connect, no_error()); } catch (...) { }
       start_read_source();
       return;  // upon success job done, return from the call
     }
     else
     {
-      try { cb->on_event(cb::stream::event::failure_detected, std::error_code(io_result_, std::system_category())); } catch (...) { }
+      try { cb->on_event(detail::oob_event::failure, std::error_code(io_result_, std::system_category())); } catch (...) { }
       // ... let the code continue below for cleanup ...
     }
   }
@@ -897,7 +907,7 @@ void stream::process_disconnect_event()
 
   if (cb)
   {
-    try { cb->on_event(cb::stream::event::disconnected, no_error()); } catch (...) { }
+    try { cb->on_event(detail::oob_event::disconnect, no_error()); } catch (...) { }
   }
 
 }

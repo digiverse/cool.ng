@@ -35,14 +35,14 @@
 
 #include "cool/ng/bases.h"
 #include "cool/ng/ip_address.h"
-#include "cool/ng/impl/async/event_sources.h"
+#include "cool/ng/impl/async/net_types.h"
 
 #include "executor.h"
 
 namespace cool { namespace ng { namespace async { namespace net { namespace impl {
 
 
-class server : public cool::ng::async::detail::startable
+class server : public detail::startable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<server>
 {
@@ -76,7 +76,6 @@ class server : public cool::ng::async::detail::startable
     uint8_t                   m_buffer[2 * sizeof(SOCKADDR_STORAGE) + 32];
     WSAOVERLAPPED             m_overlapped;
     ::cool::ng::net::handle   m_client_handle;
-    DWORD                     m_filler;
   };
 
  public:
@@ -90,9 +89,9 @@ class server : public cool::ng::async::detail::startable
   void stop() override;
   void shutdown() override;
 
+  static void install_handle(cool::ng::async::net::stream& s_, cool::ng::net::handle h_);
  private:
   void process_accept(const cool::ng::net::ip::address& addr_, uint16_t port_);
-  
  private:
   std::atomic<state>   m_state;
   std::weak_ptr<async::impl::executor> m_executor;
@@ -108,7 +107,7 @@ class server : public cool::ng::async::detail::startable
  * source context - it will get deleted  when ThreadpoolIo reports connection
  * error.
  */
-class stream : public cool::ng::async::detail::connected_writable
+class stream : public detail::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {
@@ -159,7 +158,6 @@ class stream : public cool::ng::async::detail::connected_writable
                 , uint16_t port_
                 , void* buf_
                 , std::size_t bufsz_);
-  void initialize(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
   void initialize(void* buf_, std::size_t bufsz_);
 
   // event_source interface
@@ -170,6 +168,7 @@ class stream : public cool::ng::async::detail::connected_writable
   void write(const void* data, std::size_t size) override;
   void connect(const cool::ng::net::ip::address& addr_, uint16_t port_) override;
   void disconnect() override;
+  void set_handle(cool::ng::net::handle h_) override;
 
  private:
   friend class exec_for_io;

@@ -24,6 +24,7 @@
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
+#include "cool/ng/impl/async/net_types.h"
 #include "cool/ng/async/event_sources.h"
 
 #if defined(COOL_ASYNC_PLATFORM_GCD)
@@ -97,7 +98,7 @@ namespace ipv6 = cool::ng::net::ipv6;
 // ----- Factory methods
 // ------
 
-std::shared_ptr<cool::ng::async::detail::startable> create_server(
+std::shared_ptr<cool::ng::async::net::detail::startable> create_server(
     const std::shared_ptr<runner>& r_
   , const ip::address& addr_
   , uint16_t port_
@@ -108,7 +109,7 @@ std::shared_ptr<cool::ng::async::detail::startable> create_server(
   return ret;
 }
 
-std::shared_ptr<async::detail::connected_writable> create_stream(
+std::shared_ptr<detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& r_
   , const cool::ng::net::ip::address& addr_
   , uint16_t port_
@@ -121,18 +122,7 @@ std::shared_ptr<async::detail::connected_writable> create_stream(
   return ret;
 }
 
-std::shared_ptr<async::detail::connected_writable> create_stream(
-    const std::shared_ptr<runner>& r_
-  , cool::ng::net::handle h_
-  , const cb::stream::weak_ptr& cb_
-  , void* buf_
-  , std::size_t bufsz_)
-{
-  auto ret = cool::ng::util::shared_new<stream>(r_->impl(), cb_);
-  ret->initialize(h_, buf_, bufsz_);
-  return ret;
-}
-std::shared_ptr<async::detail::connected_writable> create_stream(
+std::shared_ptr<detail::connected_writable> create_stream(
     const std::shared_ptr<runner>& r_
   , const cb::stream::weak_ptr& cb_
   , void* buf_

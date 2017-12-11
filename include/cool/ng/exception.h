@@ -253,7 +253,6 @@ class parsing_error : public logic_fault
   { /* noop */ }
 };
 
-
 class operation_failed : public runtime_fault
 {
  public:
