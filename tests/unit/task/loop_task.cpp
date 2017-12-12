@@ -51,24 +51,32 @@ class my_runner : public cool::ng::async::runner
   int counter = 0;
 };
 
+void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+{
+  auto start = std::chrono::system_clock::now();
+  while (!lambda())
+  {
+    auto now = std::chrono::system_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
+      return;
+  }
+}
+
+
 BOOST_AUTO_TEST_CASE(void_with_body)
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
   auto runner_3 = std::make_shared<my_runner>();
 
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
   counter = 0;
 
   auto wakeup = cool::ng::async::factory::create(
       runner_3
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r) -> void
+    , [&counter] (const std::shared_ptr<my_runner>& r) -> void
       {
         counter = 1;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
       }
   );
   auto body = cool::ng::async::factory::create(
@@ -91,9 +99,8 @@ BOOST_AUTO_TEST_CASE(void_with_body)
 
     auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate, body), wakeup);
 
-    std::unique_lock<std::mutex> l(m);
     task.run();
-    cv.wait_for(l, ms(100), [&counter] { return counter != 0; });
+    spin_wait(100, [&counter] { return counter != 0; });
     BOOST_CHECK_EQUAL(1, runner_1->counter);
     BOOST_CHECK_EQUAL(0, runner_2->counter);
   }
@@ -114,9 +121,8 @@ BOOST_AUTO_TEST_CASE(void_with_body)
 
     auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate, body), wakeup);
 
-    std::unique_lock<std::mutex> l(m);
     task.run();
-    cv.wait_for(l, ms(100), [&counter] { return counter != 0; });
+    spin_wait(100, [&counter] { return counter != 0; });
     BOOST_CHECK_EQUAL(100, runner_1->counter);
     BOOST_CHECK_EQUAL(99, runner_2->counter);
   }
@@ -128,19 +134,15 @@ BOOST_AUTO_TEST_CASE(int_with_body)
   auto runner_2 = std::make_shared<my_runner>();
   auto runner_3 = std::make_shared<my_runner>();
 
-  std::mutex m;
-  std::condition_variable cv;
-  int counter = -1;
-  bool done = false;
+  std::atomic<int> counter(-1);
+  std::atomic<bool> done(false);
 
   auto wakeup = cool::ng::async::factory::create(
       runner_3
-    , [&m, &cv, &counter, &done] (const std::shared_ptr<my_runner>& r, int input) -> void
+    , [&counter, &done] (const std::shared_ptr<my_runner>& r, int input) -> void
       {
         counter = input;
         done = true;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
       }
   );
   auto body = cool::ng::async::factory::create(
@@ -164,9 +166,8 @@ BOOST_AUTO_TEST_CASE(int_with_body)
 
     auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate, body), wakeup);
 
-    std::unique_lock<std::mutex> l(m);
     task.run(0);
-    cv.wait_for(l, ms(100), [&done] { return done; });
+    spin_wait(1000, [&done] { return done.load(); });
     BOOST_CHECK_EQUAL(1, runner_1->counter);
     BOOST_CHECK_EQUAL(0, runner_2->counter);
     BOOST_CHECK_EQUAL(0, counter);
@@ -189,9 +190,8 @@ BOOST_AUTO_TEST_CASE(int_with_body)
 
     auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate, body), wakeup);
 
-    std::unique_lock<std::mutex> l(m);
     task.run(0);
-    cv.wait_for(l, ms(100), [&done] { return done; });
+    spin_wait(1000, [&done] { return done.load(); });
     BOOST_CHECK_EQUAL(101, runner_1->counter);
     BOOST_CHECK_EQUAL(100, runner_2->counter);
     BOOST_CHECK_EQUAL(100, counter);
@@ -203,17 +203,13 @@ BOOST_AUTO_TEST_CASE(no_body)
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_3 = std::make_shared<my_runner>();
 
-  std::mutex m;
-  std::condition_variable cv;
-  bool done = false;
+  std::atomic<bool> done(false);
 
   auto wakeup = cool::ng::async::factory::create(
       runner_3
-    , [&m, &cv, &done] (const std::shared_ptr<my_runner>& r) -> void
+    , [&done] (const std::shared_ptr<my_runner>& r) -> void
       {
         done = true;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
       }
   );
 
@@ -229,9 +225,8 @@ BOOST_AUTO_TEST_CASE(no_body)
 
     auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate), wakeup);
 
-    std::unique_lock<std::mutex> l(m);
     task.run();
-    cv.wait_for(l, ms(100), [&done] { return done; });
+    spin_wait(100, [&done] { return done.load(); });
     BOOST_CHECK_EQUAL(1, runner_1->counter);
   }
 
@@ -250,9 +245,8 @@ BOOST_AUTO_TEST_CASE(no_body)
 
     auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate), wakeup);
 
-    std::unique_lock<std::mutex> l(m);
     task.run();
-    cv.wait_for(l, ms(100), [&done] { return done; });
+    spin_wait(100, [&done] { return done.load(); });
     BOOST_CHECK_EQUAL(100, runner_1->counter);
   }
 }
