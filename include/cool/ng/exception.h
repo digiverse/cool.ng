@@ -86,7 +86,7 @@ class base : public std::exception
 
   const char* what() const NOEXCEPT_ override
   {
-    return m_errc.message().c_str();
+    return "Cool.NG library exception. Use message() method for more details.";
   }
 
   const std::error_code code() const NOEXCEPT_

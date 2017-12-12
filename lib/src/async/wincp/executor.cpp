@@ -28,7 +28,13 @@
 
 namespace cool { namespace ng { namespace async { namespace impl {
 
+namespace {
+
+const PTP_WORK invalid_work = reinterpret_cast<const PTP_WORK>(0x1);
 CONSTEXPR_ const int TASK = 1;
+
+}
+
 
 poolmgr::weak_ptr poolmgr::m_self;
 critical_section  poolmgr::m_cs;
@@ -78,15 +84,15 @@ executor::executor(RunPolicy policy_)
     , m_work_in_progress(false)
     , m_active(true)
 {
-  m_fifo = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1000);
-  if (m_fifo == NULL)
+  m_fifo = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1000);
+  if (m_fifo == nullptr)
     throw exception::cp_failure();
 
   try
   {
     // Create work with the callback environment.
     m_work = CreateThreadpoolWork(task_executor, this, m_pool->get_environ());
-    if (m_work == NULL)
+    if (m_work.load() == nullptr)
       throw exception::threadpool_failure();
   }
   catch (...)
@@ -98,9 +104,13 @@ executor::executor(RunPolicy policy_)
 
 executor::~executor()
 {
-  stop();
 
-  if (m_fifo != NULL)
+  PTP_WORK expect = m_work.load();
+  if (m_work.compare_exchange_strong(expect, invalid_work))
+    if (expect != nullptr)
+      CloseThreadpoolWork(expect);
+
+  if (m_fifo != nullptr)
   {
     // delete all pending work in fifo queue (a.k.a. completion port)
     LPOVERLAPPED aux;
@@ -118,30 +128,15 @@ executor::~executor()
     CloseHandle(m_fifo);
   }
 
-  if  (m_work != NULL)
-    CloseThreadpoolWork(m_work);
-
-}
-
-void executor::start()
-{
-  bool expect = false;
-  if (m_active.compare_exchange_strong(expect, true))
-    SubmitThreadpoolWork(m_work);
-}
-
-void executor::stop()
-{
-  m_active = false;
 }
 
 // executor for task::run() that runs in the thread pool
 VOID CALLBACK executor::task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_)
 {
-  static_cast<executor*>(pv_)->task_executor();
+  static_cast<executor*>(pv_)->task_executor(work_);
 }
 
-void executor::task_executor()
+void executor::task_executor(PTP_WORK w_)
 {
   LPOVERLAPPED aux;
   DWORD        cmd;
@@ -149,7 +144,11 @@ void executor::task_executor()
 
   if (!GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 0))
   {
-    m_work_in_progress = false;
+    PTP_WORK expect = nullptr;
+    // somebody else must have created new work or, more likely, invalid_work has
+    // been set to signal end of execution
+    if (!m_work.compare_exchange_strong(expect, w_))
+      CloseThreadpoolWork(w_);
     return;
   }
 
@@ -159,13 +158,7 @@ void executor::task_executor()
     case cool::ng::async::detail::work_type::event_work:
     {
       auto event = static_cast<cool::ng::async::detail::event_context*>(static_cast<void*>(aux));
-      try
-      {
-        event->entry_point();
-      }
-      catch (...)
-      { /* noop */ }
-
+      try { event->entry_point(); } catch (...) { /* noop */ }
       delete event;
       break;
     }
@@ -179,54 +172,39 @@ void executor::task_executor()
       if (r)
       {
         // call into task
-        try
-        {
-          context->entry_point(r, context);
-        }
-        catch(...)
-        {
-          /* noop */
-        }
-
+        try { context->entry_point(r, context); } catch (...) { /* noop */ }
         if (stack->empty())
-        {
           delete stack;
-        }
         else
-        {
           r->impl()->run(stack);
-        }
       }
       else
-      {
         delete stack;
-      }
 
       break;
     }
   }
 
-  start_work();
+  if (m_work.load() == invalid_work)  // invalid work signals end of execution
+  {
+    CloseThreadpoolWork(w_);
+    return;
+  }
 
+  SubmitThreadpoolWork(w_);
 }
 
 void executor::run(cool::ng::async::detail::work* ctx_)
 {
-  bool do_start = false;
-
   PostQueuedCompletionStatus(m_fifo, TASK, NULL, reinterpret_cast<LPOVERLAPPED>(ctx_));
-  do_start = m_work_in_progress.compare_exchange_strong(do_start, true);
 
-  if (do_start)
-    start_work();
-}
-
-void executor::start_work()
-{
-  if (m_active)
+  PTP_WORK w = m_work;
+  if (w != nullptr && w != invalid_work)
   {
-    SubmitThreadpoolWork(m_work);
+    if (m_work.compare_exchange_strong(w, nullptr))
+      SubmitThreadpoolWork(w);
   }
 }
+
 
 } } } } // namespace

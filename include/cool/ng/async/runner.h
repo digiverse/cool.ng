@@ -150,22 +150,6 @@ class runner
    */
   dlldecl const std::string& name() const;
   /**
-   * Stop executing the tasks from this runner's queue.
-   *
-   * Currently executing tasks from this runner queue are executed to their
-   * completion but new tasks are no longer scheduled for execution.
-   * Note that suspending the execution will affect all clones that share the
-   * same task queue.
-   */
-  dlldecl void stop();
-  /**
-   * Resume execution of tasks from this runner's queue.
-   *
-   * Note that resuming the execution will affect all clones that share the
-   * same task queue.
-   */
-  dlldecl void start();
-  /**
    * Return the task queue implementation.
    *
    * Returns a reference to the internal task queue implementation. Portable

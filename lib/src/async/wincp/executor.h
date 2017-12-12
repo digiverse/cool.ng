@@ -102,18 +102,15 @@ class executor : public ::cool::ng::util::named
   executor(RunPolicy policy_);
   ~executor();
 
-  void start();
-  void stop();
   void run(detail::work*);
   bool is_system() const { return false; }
 
  private:
   static VOID CALLBACK task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
-  void task_executor();
-  void start_work();
+  void task_executor(PTP_WORK w_);
 
  private:
-  PTP_WORK          m_work;
+  std::atomic<PTP_WORK> m_work;
   queue_type        m_fifo;
   poolmgr::ptr      m_pool;
 

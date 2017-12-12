@@ -99,8 +99,22 @@ void check_start_sockets()
     requested = MAKEWORD(2, 2);
 
     WSAStartup(requested, &data);
+    wsa_started = true;
   }
 #endif
+}
+
+std::atomic<bool> boolean_flag;
+
+void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+{
+  auto start = std::chrono::system_clock::now();
+  while (!lambda())
+  {
+    auto now = std::chrono::system_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
+      return;
+  }
 }
 
 template <typename RunnerT>
@@ -113,7 +127,21 @@ std::shared_ptr<async::net::stream> create_client(const std::shared_ptr<test_run
     , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
       { }
     , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
-      { }
+      {
+        switch (evt)
+        {
+          case oob_event::connect:
+            boolean_flag = true;
+            break;
+
+          case oob_event::disconnect:
+            boolean_flag = false;
+            break;
+
+          default:
+            break;
+        }
+      }
   );
 
   return clt;
@@ -122,9 +150,7 @@ std::shared_ptr<async::net::stream> create_client(const std::shared_ptr<test_run
 template <typename RunnerT>
 std::shared_ptr<async::net::stream> create_connected_client(const std::shared_ptr<test_runner>& r, const ip::address& addr, uint16_t port, int msec)
 {
-  std::mutex m;
-  std::condition_variable cv;
-  bool connected = false;
+  boolean_flag = false;
 
   auto clt = std::make_shared<async::net::stream>(
       std::weak_ptr<test_runner>(r)
@@ -134,14 +160,16 @@ std::shared_ptr<async::net::stream> create_connected_client(const std::shared_pt
       { }
     , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
       { }
-    , [&m, &cv, &connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+    , [] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
       {
-        std::unique_lock<std::mutex> l(m);
         switch (evt)
         {
           case oob_event::connect:
-            connected = true;
-            cv.notify_one();
+            boolean_flag = true;
+            break;
+
+          case oob_event::disconnect:
+            boolean_flag = false;
             break;
 
           default:
@@ -150,9 +178,8 @@ std::shared_ptr<async::net::stream> create_connected_client(const std::shared_pt
       }
   );
 
-  std::unique_lock<std::mutex> l(m);
-  cv.wait_for(l, ms(msec), [&connected] () { return connected; } );
-  if (!connected)
+  spin_wait(msec, [] () { return boolean_flag.load(); });
+  if (!boolean_flag)
     clt.reset();
   return clt;
 }
@@ -304,9 +331,7 @@ BOOST_AUTO_TEST_CASE(accept_test)
 
   // local scope to help debugging
   {
-    std::mutex m;
-    std::condition_variable cv;
-    int num_clients = 0;
+    std::atomic<int> num_clients(0);
     std::array<async::net::stream, 2> srv_stream;
 
     auto server = async::net::server(
@@ -318,15 +343,13 @@ BOOST_AUTO_TEST_CASE(accept_test)
             { }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
-          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+          , [&num_clients] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
             {
               r->inc();
-              std::cout << "server received event " << static_cast<int>(evt) << "\n";
               switch (evt)
               {
                 case oob_event::disconnect:
                   --num_clients;
-                  cv.notify_one();
                   break;
 
                 default:
@@ -334,7 +357,7 @@ BOOST_AUTO_TEST_CASE(accept_test)
               }
             }
         )
-      , [&m, &cv, &srv_stream, &r2, &num_clients, &srv_addr](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
+      , [&srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
           r->inc();
           srv_stream[num_clients] = s_;
@@ -344,25 +367,28 @@ BOOST_AUTO_TEST_CASE(accept_test)
 
     server.start();
 
-    auto client1 = create_connected_client<test_runner>(r2, ipv4::loopback, 22220, 100);
+    std::shared_ptr<async::net::stream> client1, client2;
+    BOOST_CHECK_NO_THROW(client1 = create_connected_client<test_runner>(r2, ipv4::loopback, 22220, 100));
 
 
-    std::unique_lock<std::mutex> l(m);
-    cv.wait_for(l, ms(100), [&client1, &num_clients] () { return !!client1 && num_clients == 1; } );
+    spin_wait(100, [&client1, &num_clients] () { return !!client1 && num_clients == 1; } );
     BOOST_CHECK_EQUAL(true, !!client1);
     BOOST_CHECK_EQUAL(1, num_clients);
 
-    auto client2 = create_client<test_runner>(r2, 100);
-    client2->connect(ipv6::loopback, 22220);
+    BOOST_CHECK_NO_THROW(client2 = create_client<test_runner>(r2, 100));
+    boolean_flag = false;
+    BOOST_CHECK_NO_THROW(client2->connect(ipv6::loopback, 22220));
 
-    cv.wait_for(l, ms(100), [&client2, &num_clients] () { return !!client2 && num_clients == 2; } );
+    spin_wait(100, [] () { return boolean_flag.load(); });
+    spin_wait(100, [&client2, &num_clients] () { return !!client2 && num_clients == 2; } );
     BOOST_CHECK_EQUAL(2, num_clients);
     BOOST_CHECK_EQUAL(true, !!client2);
+    BOOST_CHECK_EQUAL(true, boolean_flag.load());
 
     client1.reset();
     client2.reset();
 
-    cv.wait_for(l, ms(100), [&num_clients] () { return num_clients == 0; } );
+    spin_wait(300, [&num_clients] () { return num_clients == 0; } );
     BOOST_CHECK_EQUAL(0, num_clients);
   }
 }
@@ -376,33 +402,27 @@ BOOST_AUTO_TEST_CASE(start_stop)
   auto r = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
 
-
   // local scope to help debugging
   {
-    std::mutex m;
-    std::condition_variable cv;
-    int num_clients = 0;
+    std::atomic<int> num_clients(0);
     std::array<async::net::stream, 2> srv_stream;
 
     auto server = async::net::server(
         std::weak_ptr<test_runner>(r)
       , ipv6::any
-      , 22220
+      , 11220
       , std::bind(stream_factory, _1, _2, _3, r
           , [] (const std::shared_ptr<test_runner>&, void*, std::size_t&)
             { }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
-          , [&num_clients, &m, &cv] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+          , [&num_clients] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
             {
-              if (r)
-                r->inc();
-              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              r->inc();
               switch (evt)
               {
                 case oob_event::disconnect:
                   --num_clients;
-                  cv.notify_one();
                   break;
 
                 default:
@@ -410,54 +430,55 @@ BOOST_AUTO_TEST_CASE(start_stop)
               }
             }
         )
-      , [&m, &cv, &srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
+      , [&srv_stream, &r2, &num_clients](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
-          if (r)
-            r->inc();
-
-          std::unique_lock<std::mutex> l(m);
+          r->inc();
           srv_stream[num_clients] = s_;
           ++num_clients;
-          cv.notify_one();
         }
     );
 
     server.start();
 
-    auto client1 = create_connected_client<test_runner>(r2, ipv4::loopback, 22220, 100);
+    std::shared_ptr<async::net::stream> client1, client2;
 
-    std::unique_lock<std::mutex> l(m);
-    cv.wait_for(l, ms(100), [&client1, &num_clients] () { return !!client1 && num_clients == 1; } );
+    BOOST_CHECK_NO_THROW(client1 = create_connected_client<test_runner>(r2, ipv4::loopback, 11220, 100));
+
+    spin_wait(100, [&client1, &num_clients] () { return !!client1 && num_clients == 1; } );
     BOOST_CHECK_EQUAL(true, !!client1);
     BOOST_CHECK_EQUAL(1, num_clients);
 
     // stop server
     server.stop();
-    std::this_thread::sleep_for(ms(10));
+    std::this_thread::sleep_for(ms(100));
 
-    auto client2 = create_client<test_runner>(r2, 100);
-    BOOST_CHECK_NO_THROW(client2->connect(ipv6::loopback, 22220));
+    // despite server being stopped client receives connect immediatelly ...
+    boolean_flag = false;
+    BOOST_CHECK_NO_THROW(client2 = create_client<test_runner>(r2, 100));
+    BOOST_CHECK_NO_THROW(client2->connect(ipv6::loopback, 11220));
 
-    cv.wait_for(l, ms(100), [&client2, &num_clients] () { return !!client2 && num_clients == 2; } );
+    spin_wait(1000, [] () { return boolean_flag.load(); });
+    BOOST_CHECK_EQUAL(true, boolean_flag.load());
     BOOST_CHECK_EQUAL(1, num_clients);
     BOOST_CHECK_EQUAL(true, !!client2);
 
     // start server
     server.start();
-    std::this_thread::sleep_for(ms(10));
 
-    BOOST_CHECK_THROW(client2->connect(ipv6::loopback, 22220), cool::ng::exception::invalid_state);
-
-    cv.wait_for(l, ms(100), [&client2, &num_clients] () { return !!client2 && num_clients == 2; } );
+    // ... but server callback is triggered only after the server is started again
+    spin_wait(2000, [&client2, &num_clients] () { return !!client2 && num_clients == 2; } );
     BOOST_CHECK_EQUAL(2, num_clients);
     BOOST_CHECK_EQUAL(true, !!client2);
+    BOOST_CHECK_THROW(client2->connect(ipv6::loopback, 11220), cool::ng::exception::invalid_state);
+
 
     client1.reset();
     client2.reset();
 
-    cv.wait_for(l, ms(100), [&num_clients] () { return num_clients == 0; } );
+    spin_wait(300, [&num_clients] () { return num_clients == 0; } );
     BOOST_CHECK_EQUAL(0, num_clients);
   }
+
   std::this_thread::sleep_for(ms(200));
 }
 
@@ -509,7 +530,6 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
             }
           , [&srv_connected, &m, &cv] (const std::shared_ptr<test_runner>&, oob_event evt, const std::error_code& e)
             {
-              std::cout << "server received event " << static_cast<int>(evt) << "\n";
               switch (evt)
               {
                 case oob_event::connect:
@@ -567,7 +587,6 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
               r->inc();
 
             std::unique_lock<std::mutex> l(m);
-            std::cout << "client received event " << static_cast<int>(evt) << "\n";
             switch (evt)
             {
               case oob_event::connect:
@@ -628,10 +647,8 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
 {
   check_start_sockets();
   {
-    std::mutex m;
-    std::condition_variable cv;
-    bool srv_connected = false;
-    bool clt_connected = false;
+    std::atomic<bool> srv_connected(false);
+    std::atomic<bool> clt_connected(false);
     async::net::stream srv_stream;
 
     auto r = std::make_shared<test_runner>();
@@ -646,17 +663,14 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
             { }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
-          , [ &m, &cv, &srv_connected, &srv_stream] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+          , [&srv_connected, &srv_stream] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
             {
-              if (r)
-                r->inc();
-              std::cout << "server received event " << static_cast<int>(evt) << "\n";
+              r->inc();
               switch (evt)
               {
                 case oob_event::disconnect:
                   srv_connected = false;
                   srv_stream = async::net::stream();
-                  cv.notify_one();
                   break;
 
                 default:
@@ -664,12 +678,10 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
               }
             }
         )
-      , [&m, &cv, &srv_stream, &r2, &srv_connected](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
+      , [&srv_stream, &r2, &srv_connected](const std::shared_ptr<test_runner>& r, const async::net::stream& s_)
         {
-          std::unique_lock<std::mutex> l(m);
           srv_stream = s_;
           srv_connected = true;
-          cv.notify_one();
         }
     );
 
@@ -681,23 +693,18 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
         { }
       , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
         { }
-      , [&m, &cv, &clt_connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
+      , [&clt_connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
         {
-          if (r)
-            r->inc();
+          r->inc();
 
-          std::unique_lock<std::mutex> l(m);
-          std::cout << "client received event " << static_cast<int>(evt) << "\n";
           switch (evt)
           {
             case oob_event::connect:
               clt_connected = true;
-              cv.notify_one();
               break;
 
             case oob_event::disconnect:
               clt_connected = false;
-              cv.notify_one();
               break;
 
             default:
@@ -708,22 +715,21 @@ BOOST_AUTO_TEST_CASE(connect_disconnect_connect_disconnect_test)
 
     client.connect(cool::ng::net::ipv6::loopback, 22229);
 
-    std::unique_lock<std::mutex> l(m);
-    cv.wait_for(l, ms(500), [&clt_connected, &srv_connected] () { return clt_connected && srv_connected; } );
+    spin_wait(500, [&clt_connected, &srv_connected] () { return clt_connected && srv_connected; } );
     BOOST_CHECK_EQUAL(true, clt_connected);
     BOOST_CHECK_EQUAL(true, srv_connected);
     BOOST_CHECK_EQUAL(true, !!srv_stream);
     BOOST_CHECK_THROW(client.connect(cool::ng::net::ipv6::loopback, 22229), cool::ng::exception::invalid_state);
 
     client.disconnect();
-    cv.wait_for(l, ms(500), [&clt_connected, &srv_connected] () { return clt_connected && !srv_connected; } );
+    spin_wait(500, [&clt_connected, &srv_connected] () { return clt_connected && !srv_connected; } );
     BOOST_CHECK_EQUAL(true, clt_connected);
     BOOST_CHECK_EQUAL(false, srv_connected);
     BOOST_CHECK_EQUAL(false, !!srv_stream);
 
     clt_connected = false;
     client.connect(cool::ng::net::ipv4::loopback, 22229);
-    cv.wait_for(l, ms(500), [&clt_connected, &srv_connected] () { return clt_connected && srv_connected; } );
+    spin_wait(500, [&clt_connected, &srv_connected] () { return clt_connected && srv_connected; } );
     BOOST_CHECK_EQUAL(true, clt_connected);
     BOOST_CHECK_EQUAL(true, srv_connected);
     BOOST_CHECK_EQUAL(true, !!srv_stream);

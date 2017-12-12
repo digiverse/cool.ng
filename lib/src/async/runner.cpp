@@ -51,16 +51,6 @@ const std::shared_ptr<impl::executor>& runner::impl() const
   return m_impl;
 }
 
-void runner::start()
-{
-  m_impl->start();
-}
-
-void runner::stop()
-{
-  m_impl->stop();
-}
-
 namespace detail {
 
 void kickstart(context_stack* ctx_)

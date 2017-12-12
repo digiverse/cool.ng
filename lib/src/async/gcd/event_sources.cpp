@@ -455,10 +455,12 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
   {
 #if defined(LINUX_TARGET)
     handle = addr_.version() == ip::version::ipv6 ?
-        ::socket(AF_INET6, SOCK_STREAM, 0) : ::socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0);
+          ::socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0)
+        : ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
 #else
     handle = addr_.version() == ip::version::ipv6 ?
-        ::socket(AF_INET6, SOCK_STREAM, 0) : ::socket(AF_INET, SOCK_STREAM, 0);
+        ::socket(AF_INET6, SOCK_STREAM, 0)
+      : ::socket(AF_INET, SOCK_STREAM, 0);
 #endif
     if (handle == cool::ng::net::invalid_handle)
       throw exc::socket_failure();

@@ -42,6 +42,12 @@
 using namespace cool::ng::async::detail;
 using ms = std::chrono::milliseconds;
 
+#define TEST1 1
+#define TEST2 1
+#define TEST3 1
+#define TEST4 1
+
+
 class test_stack : public context_stack
 {
  public:
@@ -155,9 +161,20 @@ class test_simple : public context, public context_stack
   std::function<void(const std::shared_ptr<cool::ng::async::runner>&)> m_func;
 };
 
+void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+{
+  auto start = std::chrono::system_clock::now();
+  while (!lambda())
+  {
+    auto now = std::chrono::system_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
+      return;
+  }
+}
+
 BOOST_AUTO_TEST_SUITE(executor)
 
-
+#if TEST1==1
 BOOST_AUTO_TEST_CASE(basic)
 {
   auto runner = std::make_shared<cool::ng::async::runner>();
@@ -175,13 +192,13 @@ BOOST_AUTO_TEST_CASE(basic)
 
   stack->push(ctx);
   runner->impl()->run(stack);
-  while (aux == 0)
-  ;
+  spin_wait(100, [&aux] () { return aux > 0; });
 
   BOOST_CHECK_EQUAL(1, aux);
 }
+#endif
 
-#if 1
+#if TEST2==1
 BOOST_AUTO_TEST_CASE(deep_stack)
 {
 #if defined(WINDOWS_TARGET)
@@ -190,48 +207,35 @@ BOOST_AUTO_TEST_CASE(deep_stack)
   const int NUM_TASKS = 1000000;
 #endif
 
-  auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux;
-  aux = 0;
-  test_stack* stack = new test_stack;
-  std::mutex m;
-  std::condition_variable cv;
-
-  // the last task to execute - notify it's complete
-  stack->push(new test_context(
-      runner
-    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
-      {
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
-        delete stack->pop(); // remove self from stack
-      }
-  ));
-
-  for (int i = 0; i < NUM_TASKS; ++i)
   {
-    stack->push(new test_context(
-        runner
-      , [&] (const std::shared_ptr<cool::ng::async::runner>&)
-        {
-          ++aux;
-          delete stack->pop(); // remove self from stack
-        }
-      )
-    );
+    auto runner = std::make_shared<cool::ng::async::runner>();
+    std::atomic_int aux;
+    aux = 0;
+    test_stack* stack = new test_stack;
+
+    for (int i = 0; i < NUM_TASKS; ++i)
+    {
+      stack->push(new test_context(
+          runner
+        , [&] (const std::shared_ptr<cool::ng::async::runner>&)
+          {
+            ++aux;
+            delete stack->pop(); // remove self from stack
+          }
+        )
+      );
+    }
+
+    runner->impl()->run(stack);
+
+    spin_wait(15000, [&] { return aux == NUM_TASKS; } );
+    BOOST_CHECK_EQUAL(aux, NUM_TASKS);
   }
-
-  runner->impl()->run(stack);
-  {
-    std::unique_lock<std::mutex> l(m);
-
-    cv.wait_for(l, ms(15000), [&] { return aux == NUM_TASKS; } );
-  }
-
-  BOOST_CHECK_EQUAL(aux, NUM_TASKS);
+  std::this_thread::sleep_for(ms(100));
 }
 #endif
-#if 1
+
+#if TEST3==1
 BOOST_AUTO_TEST_CASE(many_stacks)
 {
 #if defined(WINDOWS_TARGET)
@@ -242,8 +246,6 @@ BOOST_AUTO_TEST_CASE(many_stacks)
   auto runner = std::make_shared<cool::ng::async::runner>();
   std::atomic_int aux;
   aux = 0;
-  std::mutex m;
-  std::condition_variable cv;
 
 
   for (int i = 0; i < NUM_TASKS; ++i)
@@ -258,79 +260,12 @@ BOOST_AUTO_TEST_CASE(many_stacks)
     );
   }
 
-  // the last task to execute - notify it's complete
-  runner->impl()->run(new test_simple(
-      runner
-    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
-      {
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
-      }
-  ));
-
-  BOOST_CHECK(aux > 0);
-  {
-    std::unique_lock<std::mutex> l(m);
-
-    cv.wait_for(l, ms(5000), [&] { return aux == NUM_TASKS; } );
-  }
-
+  spin_wait(5000, [&] { return aux == NUM_TASKS; });
   BOOST_CHECK_EQUAL(aux, NUM_TASKS);
 }
 #endif
-#if 1
-BOOST_AUTO_TEST_CASE(many_stacks_start_stop)
-{
-#if defined(WINDOWS_TARGET)
-  const int NUM_TASKS = 100000;
-#else
-  const int NUM_TASKS = 1000000;
-#endif
-  auto runner = std::make_shared<cool::ng::async::runner>();
-  std::atomic_int aux;
-  aux = 0;
-  std::mutex m;
-  std::condition_variable cv;
 
-
-  runner->impl()->stop();
-
-  for (int i = 0; i < NUM_TASKS; ++i)
-  {
-    runner->impl()->run(new test_simple(
-        runner
-      , [&, i] (const std::shared_ptr<cool::ng::async::runner>&)
-        {
-          if (aux == i)
-            ++aux;
-        }
-      )
-    );
-  }
-
-  // the last task to execute - notify it's complete
-  runner->impl()->run(new test_simple(
-      runner
-    , [&] (const std::shared_ptr<cool::ng::async::runner>&)
-      {
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
-      }
-  ));
-
-  BOOST_CHECK_EQUAL(0, aux);
-  runner->impl()->start();
-
-  {
-    std::unique_lock<std::mutex> l(m);
-
-    cv.wait_for(l, ms(5000), [&] { return aux == NUM_TASKS; } );
-  }
-
-  BOOST_CHECK_EQUAL(aux, NUM_TASKS);
-}
-#endif
-#if 1
+#if TEST4==1
 BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
 {
 #if defined(WINDOWS_TARGET)
@@ -345,13 +280,10 @@ BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
   aux = 0;
   std::mutex thread_m;
   std::condition_variable thread_cv;
-  std::mutex m;
-  std::condition_variable cv;
 
   bool go_for_it = false;
 
   std::unique_ptr<std::thread> threads[NUM_THREADS];
-  std::unique_lock<std::mutex> l(m);
 
   for (int i = 0; i < NUM_THREADS; ++i)
   {
@@ -372,17 +304,6 @@ BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
               }
           ));
         }
-        // the last task should notify the main thread that this thred's task
-        // sequence is complete - that will wake up main thread NUM_THREADS
-        // times but lamda should prevent premature completion
-        runner->impl()->run(new test_simple(
-            runner
-          , [&] (const std::shared_ptr<cool::ng::async::runner>&)
-            {
-              std::unique_lock<std::mutex> l(m);
-              cv.notify_one();
-            }
-        ));
       }
     ));
   }
@@ -393,12 +314,8 @@ BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
     thread_cv.notify_all();
   }
 
-  // wait for all tasks to complete
-  {
-    cv.wait_for(l, ms(5000), [&] { return aux == NUM_TASKS * NUM_THREADS; } );
-  }
+  spin_wait(5000, [&] { return aux == NUM_TASKS * NUM_THREADS; } );
 
-  // join threads
   for (int i = 0; i < NUM_THREADS; ++i)
     threads[i]->join();
 

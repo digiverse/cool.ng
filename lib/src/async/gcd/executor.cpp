@@ -42,33 +42,8 @@ executor::executor(RunPolicy policy_)
 
 executor::~executor()
 {
-  start();
   if (!m_is_system)
     dispatch_release(m_queue);
-}
-
-void executor::start()
-{
-  if (!m_is_system)
-  {
-    bool expect = false;
-    if (m_active.compare_exchange_strong(expect, true))
-    {
-      ::dispatch_resume(m_queue);
-    }
-  }
-}
-
-void executor::stop()
-{
-  if (!m_is_system)
-  {
-    bool expect = true;
-    if (m_active.compare_exchange_strong(expect, false))
-    {
-      ::dispatch_suspend(m_queue);
-    }
-  }
 }
 
 void executor::run(detail::context_stack* ctx_)
