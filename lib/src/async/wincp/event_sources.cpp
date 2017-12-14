@@ -34,6 +34,161 @@ namespace cool { namespace ng { namespace async {
 
 using cool::ng::error::no_error;
 
+namespace exc = cool::ng::exception;
+namespace ip = cool::ng::net::ip;
+namespace ipv4 = cool::ng::net::ipv4;
+namespace ipv6 = cool::ng::net::ipv6;
+
+
+namespace impl {
+// ==========================================================================
+// ======
+// ======
+// ====== Timer
+// ======
+// ======
+// ==========================================================================
+
+
+timer::context::context(const timer::ptr& t_)
+    : m_timer(t_)
+    , m_pool(async::impl::poolmgr::get_poolmgr())
+    , m_source(nullptr)
+    , m_active(false)
+{
+  m_source = CreateThreadpoolTimer(on_event, this, m_pool->get_environ());
+  if (m_source == nullptr)
+    throw exc::threadpool_failure();
+}
+
+timer::context::~context()
+{ /* noop */ }
+
+void timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
+{
+  auto self = static_cast<context*>(ctx_);
+  switch (self->m_timer->m_state)
+  {
+    case state::destroying:
+      CloseThreadpoolTimer(self->m_source);
+      delete self;
+      return;
+
+    case state::running:
+      if (self->m_active.load())
+        self->m_timer->expired();
+      break;
+  }
+}
+
+timer::timer(const std::weak_ptr<cb::timer>& t_
+           , uint64_t p_
+           , uint64_t l_)
+  : named("si.digiverse.ng.cool.timer")
+  , m_state(state::running)
+  , m_callback(t_)
+  , m_context(nullptr)
+  , m_period(p_ / 1000)
+  , m_leeway(l_ / 1000)
+{
+  if (m_period == 0)
+    m_period = 1;
+  if (m_leeway == 0)
+    m_leeway = 1;
+}
+
+timer::~timer()
+{ }
+
+void timer::initialize(const std::shared_ptr<async::impl::executor>& ex_)
+{
+  m_executor = ex_;
+  m_context = new context(self().lock());
+}
+
+void timer::period(uint64_t p_, uint64_t l_)
+{
+  if (p_ == 0)
+    throw exc::illegal_argument();
+
+  m_period = p_ / 1000;
+  m_leeway = l_ / 1000;
+  if (m_period == 0)
+    m_period = 1;
+  if (m_leeway == 0)
+    m_leeway = 1;
+}
+
+void timer::shutdown()
+{
+  m_state = state::destroying;
+  stop();  // make it fire once more to do cleanup
+//  CloseThreadpoolTimer(m_context->m_source);
+//  delete m_context;
+}
+
+void timer::start()
+{
+  FILETIME fdt;
+  ULARGE_INTEGER dt;
+
+  // set timer to fire in m_period msec(NOTE: negative number)
+#pragma warning( suppress: 4146 )
+  dt.QuadPart = -static_cast<ULONGLONG>(m_period * 1000 * 10);
+  fdt.dwHighDateTime = dt.HighPart;
+  fdt.dwLowDateTime = dt.LowPart;
+
+  m_context->m_active = true;
+  SetThreadpoolTimer(m_context->m_source, &fdt, static_cast<DWORD>(m_period), static_cast<DWORD>(m_leeway));
+}
+
+void timer::stop()
+{
+  m_context->m_active = false;
+  FILETIME fdt;
+
+  fdt.dwHighDateTime = 0;
+  fdt.dwLowDateTime = 0;
+  // cancel any previous settings - it will fire once but m_active
+  // flag should prevent propagation to user callback
+  SetThreadpoolTimer(m_context->m_source, &fdt, 0, 0);
+}
+
+// ---
+// Execution context for a task submitterd to specified async::executor. This
+// task will do actual callback into the user code
+class exec_for_timer : public cool::ng::async::detail::event_context
+{
+ public:
+  exec_for_timer(const std::weak_ptr<cb::timer>& cb_)
+      : m_handler(cb_)
+  { /* noop */ }
+
+  void entry_point() override
+  {
+    auto cb = static_cast<exec_for_timer*>(static_cast<void*>(this))->m_handler.lock();
+    if (cb)
+      cb->expired();
+  }
+
+ private:
+  std::weak_ptr<cb::timer> m_handler;
+};
+
+void timer::expired()
+{
+  try
+  {
+    auto r = m_executor.lock();
+    if (r)
+      r->run(new exec_for_timer(m_callback));
+  }
+  catch (...)
+  { /* noop */ }
+}
+
+} // namespace impl
+
 // ==========================================================================
 // ======
 // ======
@@ -46,11 +201,6 @@ namespace net { namespace impl {
 
 using cool::ng::net::handle;
 using cool::ng::net::invalid_handle;
-
-namespace exc = cool::ng::exception;
-namespace ip = cool::ng::net::ip;
-namespace ipv4 = cool::ng::net::ipv4;
-namespace ipv6 = cool::ng::net::ipv6;
 
 namespace {
 
@@ -325,7 +475,7 @@ void server::context::process_accept()
 
 server::server(const std::shared_ptr<async::impl::executor>& ex_
              , const cb::server::weak_ptr& cb_)
-    : named("cool.ng.async.net.server")
+    : named("si.digiverse.ng.cool.server")
     , m_state(state::stopped)
     , m_executor(ex_)
     , m_handler(cb_)
@@ -610,7 +760,7 @@ void stream::context::on_event(
 
 stream::stream(const std::weak_ptr<async::impl::executor>& ex_
              , const cb::stream::weak_ptr& cb_)
-    : named("cool.ng.async.net.stream")
+    : named("si.digiverse.ng.cool.stream")
     , m_state(state::disconnected)
     , m_executor(ex_)
     , m_pool(async::impl::poolmgr::get_poolmgr())

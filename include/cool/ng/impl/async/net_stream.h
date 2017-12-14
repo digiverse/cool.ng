@@ -38,8 +38,6 @@
 
 #include "net_types.h"
 
-#include "cool/ng/async/net/stream.h"
-
 namespace cool { namespace ng { namespace async { namespace net {
 
 namespace detail {

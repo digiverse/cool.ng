@@ -24,8 +24,137 @@
 #if !defined(cool_ng_f36abcb0_dda1_42a3_b25a_9beef951523a)
 #define      cool_ng_f36abcb0_dda1_42a3_b25a_9beef951523a
 
+#include <functional>
+#include <cstdint>
+#include <memory>
+#include <chrono>
+
+#include "cool/ng/bases.h"
+#include "cool/ng/exception.h"
+
+namespace cool { namespace ng { namespace async {
+
+
+namespace detail {
+
+namespace itf {
+
+class source
+{
+ public:
+  virtual ~source() { /* noop */ }
+  virtual const std::string& name() const = 0;
+  virtual void shutdown() = 0;
+};
+
+class startable : public source
+{
+ public:
+  virtual void start() = 0;
+  virtual void stop() = 0;
+};
+
+class timer : public startable
+{
+ public:
+  virtual void period(uint64_t, uint64_t) = 0;
+};
+
+} }  // namespace detail::itf
+
+namespace impl {
+namespace cb
+{
+
+class timer
+{
+ public:
+  virtual ~timer() { /* noop */}
+  virtual void expired() = 0;
+};
+
+} // namespace cb
+
+// factories
+dlldecl std::shared_ptr<detail::itf::timer> create_timer(
+    const std::shared_ptr<runner>& r_
+  , const std::weak_ptr<cb::timer>& t_
+  , uint64_t p_
+  , uint64_t l_
+);
+
+} // namespace impl
+
+namespace detail {
+
+template <typename RunnerT>
+class timer : public cool::ng::util::self_aware<timer<RunnerT>>
+            , public itf::timer
+            , public impl::cb::timer
+{
+ public:
+  using handler = std::function<void(const std::shared_ptr<RunnerT>&)>;
+
+ public:
+  timer(const std::weak_ptr<RunnerT>& r_, const handler& h_ )
+    : m_runner(r_), m_handler(h_)
+  { /* noop */}
+
+  ~timer()
+  {
+    if (m_impl)
+      m_impl->shutdown();
+  }
+
+  void initialize(uint64_t p_, uint64_t l_)
+  {
+    if (p_ == 0 || !m_handler)
+      throw exception::illegal_argument();
+    auto r = m_runner.lock();
+    if (!r)
+      throw exception::runner_not_available();
+    m_impl = impl::create_timer(r, this->self(), p_, l_);
+  }
+
+  // itf::timer interface
+  void start() override
+  {
+    m_impl->start();
+  }
+  void stop() override
+  {
+    m_impl->stop();
+  }
+  void period(uint64_t p_, uint64_t l_) override
+  {
+    m_impl->period(p_, l_);
+  }
+  const std::string& name() const override
+  {
+    return m_impl->name();
+  }
+
+  void shutdown() override
+  { /* noop */ }
+
+  // impl::cb::timer interface
+  void expired() override
+  {
+    auto r = m_runner.lock();
+    if (r)
+    {
+      try { m_handler(r); } catch (...) { /* noop */ }
+    }
+  }
+
+ private:
+  std::shared_ptr<itf::timer> m_impl;
+  std::weak_ptr<RunnerT>      m_runner;
+  handler                     m_handler;
+};
 
 
 
+} } } } // namespace
 #endif
 

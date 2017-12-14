@@ -47,6 +47,63 @@ namespace cool { namespace ng { namespace async {
 
 using cool::ng::error::no_error;
 
+namespace exc = cool::ng::exception;
+namespace ip = cool::ng::net::ip;
+namespace ipv4 = cool::ng::net::ipv4;
+namespace ipv6 = cool::ng::net::ipv6;
+
+void timer::start()
+{
+  if (!*this)
+    throw cool::ng::exception::empty_object();
+  m_impl->start();
+}
+
+void timer::stop()
+{
+  if (!*this)
+    throw cool::ng::exception::empty_object();
+  m_impl->stop();
+}
+
+void  timer::period(uint64_t p_, uint64_t l_)
+{
+  if (!*this)
+    throw cool::ng::exception::empty_object();
+  m_impl->period(p_, l_);
+}
+
+const std::string& timer::name() const
+{
+  if (!*this)
+    throw cool::ng::exception::empty_object();
+  return m_impl->name();
+}
+
+timer::operator bool() const
+{
+  return !!m_impl;
+}
+
+namespace impl {
+// --------------------------------------------------------------------------
+// -----
+// ----- Factory methods
+// ------
+
+dlldecl std::shared_ptr<detail::itf::timer> create_timer(
+    const std::shared_ptr<runner>& r_
+  , const std::weak_ptr<cb::timer>& t_
+  , uint64_t p_
+  , uint64_t l_)
+{
+  auto ret = cool::ng::util::shared_new<timer>(t_, p_, l_);
+  ret->initialize(r_->impl());
+  return ret;
+}
+
+} // namespace impl
+
 namespace net {
 
 void server::start()
@@ -98,11 +155,6 @@ stream::operator bool() const
 }
 
 namespace impl {
-
-namespace exc = cool::ng::exception;
-namespace ip = cool::ng::net::ip;
-namespace ipv4 = cool::ng::net::ipv4;
-namespace ipv6 = cool::ng::net::ipv6;
 
 // --------------------------------------------------------------------------
 // -----

@@ -32,13 +32,11 @@
 #include "cool/ng/bases.h"
 #include "cool/ng/ip_address.h"
 #include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources.h"
 
 #include "executor.h"
 
 namespace cool { namespace ng { namespace async {
-
-
-namespace net { namespace impl {
 
 // tiny wrapper around dispatch source libdispatch functions - also
 // prevents unbalanced resume/suspend calls
@@ -115,10 +113,84 @@ class dispatch_source
     release();
   }
 
+  ::dispatch_source_t source() const
+  {
+    return m_source;
+  }
+
+  explicit operator bool () const
+  {
+    return m_active;
+  }
+
  private:
   std::atomic<bool>   m_active;
   ::dispatch_source_t m_source;
 };
+
+
+// ==========================================================================
+// ======
+// ======
+// ====== Timer event source
+// ======
+// ======
+// ==========================================================================
+
+namespace impl {
+
+class timer : public cool::ng::util::named
+            , public detail::itf::timer
+            , public cool::ng::util::self_aware<timer>
+{
+  struct context
+  {
+    context(const timer::ptr& s_
+          , const std::shared_ptr<async::impl::executor>& ex_);
+    ~context();
+
+    static void on_event(void* ctx);
+    static void on_cancel(void* ctx);
+    void shutdown();
+
+    timer::ptr      m_timer;
+    dispatch_source m_source;
+  };
+
+ public:
+  timer(const std::weak_ptr<cb::timer>& t_
+      , uint64_t p_
+      , uint64_t l_);
+  ~timer();
+
+  void initialize(const std::shared_ptr<async::impl::executor>& ex_);
+  // detail::itf::timer
+  void start() override;
+  void stop() override;
+  void period(uint64_t p_, uint64_t l_) override;
+  void shutdown() override;
+  const std::string& name() const override
+  {
+    return named::name();
+  }
+
+ private:
+  const std::weak_ptr<cb::timer> m_callback;
+  context*                       m_context;
+  uint64_t m_period;
+  uint64_t m_leeway;
+};
+
+} // namespace impl
+
+// ==========================================================================
+// ======
+// ======
+// ====== Network event sources
+// ======
+// ======
+// ==========================================================================
+namespace net { namespace impl {
 
 class server : public detail::startable
              , public cool::ng::util::named

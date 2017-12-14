@@ -40,6 +40,111 @@ namespace cool { namespace ng { namespace async {
 
 using cool::ng::error::no_error;
 
+using cool::ng::net::handle;
+using cool::ng::net::invalid_handle;
+
+namespace exc = cool::ng::exception;
+namespace ip = cool::ng::net::ip;
+namespace ipv4 = cool::ng::net::ipv4;
+namespace ipv6 = cool::ng::net::ipv6;
+
+namespace impl {
+
+// ==========================================================================
+// ======
+// ======
+// ====== Timer event source
+// ======
+// ======
+// ==========================================================================
+
+timer::context::context(const timer::ptr& t_, const std::shared_ptr<async::impl::executor>& ex_)
+    : m_timer(t_)
+{
+  m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0 , ex_->queue());
+  m_source.cancel_handler(on_cancel);
+  m_source.event_handler(on_event);
+  m_source.context(this);
+}
+
+timer::context::~context()
+{ /* noop */ }
+
+void timer::context::shutdown()
+{
+  m_source.resume();
+  m_source.cancel();
+}
+
+void timer::context::on_cancel(void* ctx)
+{
+  auto self = static_cast<context*>(ctx);
+  self->m_source.release();
+
+  delete self;
+}
+
+void timer::context::on_event(void *ctx)
+{
+  auto self = static_cast<context*>(ctx);
+  auto cb = self->m_timer->m_callback.lock();
+  if (cb)
+    cb->expired();
+}
+
+timer::timer(const std::weak_ptr<cb::timer>& t_
+           , uint64_t p_
+           , uint64_t l_)
+  : named("si.digiverse.ng.cool.timer")
+  , m_callback(t_)
+  , m_context(nullptr)
+  , m_period(p_ * 1000)
+  , m_leeway(l_ * 1000)
+{
+}
+
+
+timer::~timer()
+{ }
+
+void timer::initialize(const std::shared_ptr<async::impl::executor>& ex_)
+{
+  m_context = new context(self().lock(), ex_);
+}
+
+void timer::period(uint64_t p_, uint64_t l_)
+{
+  if (p_ == 0)
+    throw exc::illegal_argument();
+  m_period = p_ * 1000;
+  m_leeway = l_ * 1000;
+
+}
+
+void timer::shutdown()
+{
+  m_context->shutdown();
+}
+
+void timer::start()
+{
+  if (m_context->m_source)
+    m_context->m_source.suspend();
+
+  ::dispatch_source_set_timer(m_context->m_source.source(), ::dispatch_time(DISPATCH_TIME_NOW, m_period), m_period, m_leeway);
+  m_context->m_source.resume();
+}
+
+void timer::stop()
+{
+  m_context->m_source.suspend();
+}
+
+} // namespace impl
+
+
+
+
 // ==========================================================================
 // ======
 // ======
@@ -48,14 +153,6 @@ using cool::ng::error::no_error;
 // ======
 // ==========================================================================
 namespace net { namespace impl {
-
-using cool::ng::net::handle;
-using cool::ng::net::invalid_handle;
-
-namespace exc = cool::ng::exception;
-namespace ip = cool::ng::net::ip;
-namespace ipv4 = cool::ng::net::ipv4;
-namespace ipv6 = cool::ng::net::ipv6;
 
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -190,7 +287,7 @@ void server::context::on_event(void* ctx)
 
 server::server(const std::shared_ptr<async::impl::executor>& ex_
              , const cb::server::weak_ptr& cb_)
-  : named("cool.ng.async.net.server")
+  : named("si.digiverse.ng.cool.server")
   , m_state(state::stopped)
   , m_context(nullptr)
   , m_handler(cb_)
@@ -293,7 +390,7 @@ void server::process_accept(cool::ng::net::handle h_
 
 stream::stream(const std::weak_ptr<async::impl::executor>& ex_
              , const cb::stream::weak_ptr& cb_)
-    : named("cool.ng.async.net.stream")
+    : named("si.digiverse.ng.cool.stream")
     , m_state(state::disconnected)
     , m_executor(ex_)
     , m_handler(cb_)

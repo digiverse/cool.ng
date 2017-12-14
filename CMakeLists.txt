@@ -359,6 +359,7 @@ set( API_UNIT_TESTS
   loop_task
   ip_address
   es_reader
+  es_timer
 )
 
 set( traits_SRCS tests/unit/traits/traits.cpp )
@@ -372,6 +373,7 @@ set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
 set( loop_task_SRCS tests/unit/task/loop_task.cpp )
 set( ip_address_SRCS tests/unit/net/ip_address.cpp )
 set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp )
+set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )

@@ -26,29 +26,6 @@
 
 #include "impl/platform.h"
 
-namespace cool { namespace ng {
-
-/**
- * Elements supporting concurrent asynchronous programming.
- *
- * <b>Task Queues</b>
- *  - @ref cool::ng::async::runner "runner" class is a task queue abstraction
- *
- * <b>Tasks</b>
- *  - @ref cool::ng::async::task "task" class template represents a unit of scheduling
- *    into the task queue
- *  - @ref cool::ng::async::factory "factory" is a factory class providing methods
- *    for creating simple tasks and combining them into compound tasks
- *
- * <b>Event Sources</b>
- *  - Data input/output event sources:
- *    - @ref cool::ng::async::reader "reader" provides data input stream of events
- */
-namespace async {
-
-
-} } }
-
 #include "async/runner.h"
 #include "async/task.h"
 #include "async/event_sources.h"
