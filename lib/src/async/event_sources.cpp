@@ -24,7 +24,7 @@
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
-#include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources_types.h"
 #include "cool/ng/async/event_sources.h"
 
 #if defined(COOL_ASYNC_PLATFORM_GCD)
@@ -104,22 +104,40 @@ dlldecl std::shared_ptr<detail::itf::timer> create_timer(
 
 } // namespace impl
 
+// --------------------------------------------------------------------------
+// -----
+// ----- network sources
+// ------
+// --------------------------------------------------------------------------
+
 namespace net {
 
 void server::start()
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   m_impl->start();
 }
 
 void server::stop()
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   m_impl->stop();
 }
 
 const std::string& server::name() const
 {
+  if (!*this)
+    throw cool::ng::exception::empty_object();
   return m_impl->name();
 }
+
+server::operator bool() const
+{
+  return !!m_impl;
+}
+
 
 const std::string& stream::name() const
 {
@@ -161,7 +179,7 @@ namespace impl {
 // ----- Factory methods
 // ------
 
-std::shared_ptr<cool::ng::async::net::detail::startable> create_server(
+std::shared_ptr<async::detail::itf::startable> create_server(
     const std::shared_ptr<runner>& r_
   , const ip::address& addr_
   , uint16_t port_
@@ -172,7 +190,7 @@ std::shared_ptr<cool::ng::async::net::detail::startable> create_server(
   return ret;
 }
 
-std::shared_ptr<detail::connected_writable> create_stream(
+std::shared_ptr<detail::itf::connected_writable> create_stream(
     const std::shared_ptr<runner>& r_
   , const cool::ng::net::ip::address& addr_
   , uint16_t port_
@@ -185,7 +203,7 @@ std::shared_ptr<detail::connected_writable> create_stream(
   return ret;
 }
 
-std::shared_ptr<detail::connected_writable> create_stream(
+std::shared_ptr<detail::itf::connected_writable> create_stream(
     const std::shared_ptr<runner>& r_
   , const cb::stream::weak_ptr& cb_
   , void* buf_

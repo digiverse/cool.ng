@@ -198,7 +198,7 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/repeat_impl.h
     include/cool/ng/impl/async/loop_impl.h
     include/cool/ng/impl/async/event_sources.h
-    include/cool/ng/impl/async/net_types.h
+    include/cool/ng/impl/async/event_sources_types.h
     include/cool/ng/impl/async/net_server.h
     include/cool/ng/impl/async/net_stream.h
 )

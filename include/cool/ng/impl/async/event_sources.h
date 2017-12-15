@@ -34,57 +34,6 @@
 
 namespace cool { namespace ng { namespace async {
 
-
-namespace detail {
-
-namespace itf {
-
-class source
-{
- public:
-  virtual ~source() { /* noop */ }
-  virtual const std::string& name() const = 0;
-  virtual void shutdown() = 0;
-};
-
-class startable : public source
-{
- public:
-  virtual void start() = 0;
-  virtual void stop() = 0;
-};
-
-class timer : public startable
-{
- public:
-  virtual void period(uint64_t, uint64_t) = 0;
-};
-
-} }  // namespace detail::itf
-
-namespace impl {
-namespace cb
-{
-
-class timer
-{
- public:
-  virtual ~timer() { /* noop */}
-  virtual void expired() = 0;
-};
-
-} // namespace cb
-
-// factories
-dlldecl std::shared_ptr<detail::itf::timer> create_timer(
-    const std::shared_ptr<runner>& r_
-  , const std::weak_ptr<cb::timer>& t_
-  , uint64_t p_
-  , uint64_t l_
-);
-
-} // namespace impl
-
 namespace detail {
 
 template <typename RunnerT>

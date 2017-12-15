@@ -33,7 +33,7 @@
 #include "cool/ng/ip_address.h"
 #include "cool/ng/impl/platform.h"
 
-#include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources_types.h"
 #include "cool/ng/impl/async/net_stream.h"
 
 namespace cool { namespace ng {
@@ -280,7 +280,7 @@ class stream
 
  private:
   friend class impl::server;
-  std::shared_ptr<detail::connected_writable> m_impl;
+  std::shared_ptr<detail::itf::connected_writable> m_impl;
 };
 
 } } } } // namespace

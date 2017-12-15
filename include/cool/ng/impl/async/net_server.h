@@ -36,7 +36,7 @@
 #include "cool/ng/impl/platform.h"
 #include "cool/ng/async/runner.h"
 
-#include "net_types.h"
+#include "event_sources_types.h"
 
 #include "cool/ng/async/net/stream.h"
 
@@ -48,7 +48,7 @@ namespace detail {
 //     template parameter preserves actual runner type that is passed to
 //     the user callback
 template <typename RunnerT>
-class server : public startable
+class server : public async::detail::itf::startable
              , public impl::cb::server
              , public cool::ng::util::self_aware<server<RunnerT>>
 {
@@ -132,11 +132,11 @@ class server : public startable
   }
 
  private:
-  std::weak_ptr<RunnerT>     m_runner;
-  stream_factory             m_factory;
-  connect_handler            m_handler;
-  error_handler              m_err_handler;
-  std::shared_ptr<startable> m_impl;
+  std::weak_ptr<RunnerT> m_runner;
+  stream_factory         m_factory;
+  connect_handler        m_handler;
+  error_handler          m_err_handler;
+  std::shared_ptr<async::detail::itf::startable> m_impl;
 };
 
 

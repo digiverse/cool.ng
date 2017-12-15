@@ -35,7 +35,7 @@
 
 #include "cool/ng/bases.h"
 #include "cool/ng/ip_address.h"
-#include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources_types.h"
 #include "cool/ng/impl/async/event_sources.h"
 
 #include "executor.h"
@@ -116,7 +116,7 @@ class timer : public cool::ng::util::named
 
 namespace net { namespace impl {
 
-class server : public detail::startable
+class server : public async::detail::itf::startable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<server>
 {
@@ -181,7 +181,7 @@ class server : public detail::startable
  * source context - it will get deleted  when ThreadpoolIo reports connection
  * error.
  */
-class stream : public detail::connected_writable
+class stream : public detail::itf::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {

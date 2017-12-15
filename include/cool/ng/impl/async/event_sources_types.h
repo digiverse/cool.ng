@@ -32,7 +32,81 @@
 #include "cool/ng/ip_address.h"
 #include "cool/ng/async/runner.h"
 
-namespace cool { namespace ng { namespace async { namespace net  {
+namespace cool { namespace ng { namespace async {
+
+
+namespace detail {
+
+// --- ============================================
+// --- Common interfaces for implementation classes
+//
+namespace itf {
+
+// event source generic interface
+class event_source
+{
+ public:
+  virtual ~event_source() { /* noop */ }
+  virtual const std::string& name() const = 0;
+  virtual void shutdown() = 0;
+};
+
+//--- startable event source interface
+class startable : public event_source
+{
+ public:
+  virtual void start() = 0;
+  virtual void stop() = 0;
+};
+
+//--- timer event source interface
+class timer : public startable
+{
+ public:
+  virtual void period(uint64_t, uint64_t) = 0;
+};
+
+//--- writable event source interface
+class writable : public event_source
+{
+ public:
+  virtual void write(const void* data, std::size_t sz) = 0;
+};
+
+} }  // namespace detail::itf
+
+
+namespace impl {
+namespace cb {
+
+class timer
+{
+ public:
+  virtual ~timer() { /* noop */}
+  virtual void expired() = 0;
+};
+
+
+} // namespace cb
+
+// --- ---------------------------------------------
+// ---
+// --- Factories
+// ---
+
+dlldecl std::shared_ptr<detail::itf::timer> create_timer(
+    const std::shared_ptr<runner>& r_
+  , const std::weak_ptr<cb::timer>& t_
+  , uint64_t p_
+  , uint64_t l_
+);
+
+} // namespace impl
+
+// --- ============================================
+// --- Network event sources
+//
+namespace net  {
 
 class stream;
 
@@ -60,32 +134,10 @@ class types
 
 };
 
-// event source generic interface
-class event_source
-{
- public:
-  virtual ~event_source() { /* noop */ }
-  virtual const std::string& name() const = 0;
-  virtual void shutdown() = 0;
-};
-
-//--- startable event source interface
-class startable: public event_source
-{
- public:
-  virtual void start() = 0;
-  virtual void stop() = 0;
-};
-
-//--- writable event source interface
-class writable : public event_source
-{
- public:
-  virtual void write(const void* data, std::size_t sz) = 0;
-};
+namespace itf {
 
 //--- connected writable event source interface
-class connected_writable : public writable
+class connected_writable : public async::detail::itf::writable
 {
  public:
   virtual void connect(const ip::address&, uint16_t) = 0;
@@ -93,6 +145,8 @@ class connected_writable : public writable
   virtual void set_handle(cool::ng::net::handle h_) = 0;
 
 };
+
+} // namespace itf
 
 } // namespace detail
 
@@ -138,20 +192,20 @@ class stream
 
 // factories for implementation classes
 
-dlldecl std::shared_ptr<detail::startable> create_server(
+dlldecl std::shared_ptr<async::detail::itf::startable> create_server(
     const std::shared_ptr<runner>& r_
   , const cool::ng::net::ip::address& addr_
   , uint16_t port_
   , const cb::server::weak_ptr& cb_);
 
-dlldecl std::shared_ptr<detail::connected_writable> create_stream(
+dlldecl std::shared_ptr<detail::itf::connected_writable> create_stream(
     const std::shared_ptr<runner>& runner_
   , const cool::ng::net::ip::address& addr_
   , uint16_t port_
   , const cb::stream::weak_ptr& cb_
   , void* buf_
   , std::size_t bufsz_);
-dlldecl std::shared_ptr<detail::connected_writable> create_stream(
+dlldecl std::shared_ptr<detail::itf::connected_writable> create_stream(
     const std::shared_ptr<runner>& runner_
   , const cb::stream::weak_ptr& cb_
   , void* buf_

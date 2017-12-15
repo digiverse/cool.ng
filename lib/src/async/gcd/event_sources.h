@@ -31,7 +31,7 @@
 #include <dispatch/dispatch.h>
 #include "cool/ng/bases.h"
 #include "cool/ng/ip_address.h"
-#include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources_types.h"
 #include "cool/ng/impl/async/event_sources.h"
 
 #include "executor.h"
@@ -192,7 +192,7 @@ class timer : public cool::ng::util::named
 // ==========================================================================
 namespace net { namespace impl {
 
-class server : public detail::startable
+class server : public async::detail::itf::startable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<server>
 {
@@ -252,7 +252,7 @@ class server : public detail::startable
  * source contexts - these will get deleted  through their cancel callbacks. So
  * in a sense they co-manage the life time of the stream implementation.
  */
-class stream : public detail::connected_writable
+class stream : public detail::itf::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {

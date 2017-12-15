@@ -30,7 +30,7 @@
 
 #include "cool/ng/impl/platform.h"
 #include "cool/ng/ip_address.h"
-#include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources_types.h"
 #include "cool/ng/impl/async/event_sources.h"
 
 #include "net/stream.h"
@@ -42,14 +42,23 @@ namespace cool { namespace ng { namespace async {
  *
  * Timer objects periodically, with a period @a p_, submit a task to @ref runner
  * @a r_ that calls the user @em Callable @a h_.
+ * The internal resolution of @ref timer class is one microsecond. The actual
+ * resolution is platform dependent, as follows:
+ *   Platform        | Actual Resolution
+ *   ----------------|-----------------
+ *    MacOS/OS X     | 1 microsecond
+ *    Linux          | 1 microsecond
+ *    MS Windows     | 1 millisecond
+ * When transforming period and leeway values to the actual resolution, the
+ * result is rounded to the nearest actual resolution unit, but is always at
+ * least 1 resolution unit. Thus both 100 microsends and 12000 microseconds
+ * would result in 1 millisecond on Microsoft Windows.
  *
  * @note Upon creation the timer object is inactive and must be explicitly
  *   started using @ref start().
  * @note Timer objects created via copy construction or copy assignment
  *   are clones and refer to the same underlying timer implementation. Any
  *   changes made through one of the clones will affect all clones.
- * @note The internal resolution of @ref timer class is one microsecond. The actual
- *   resolution is platform dependent.
  */
 class timer
 {
@@ -68,6 +77,7 @@ class timer
    *   exception.
    */
   timer() { /* noop */ }
+
   /**
    * Create a timer object.
    *
@@ -93,6 +103,9 @@ class timer
    *        to microseconds, is equal to 0 or if the handler @a h_ is empty
    * @throw exception::runner_not_available thrown if the runner @a r_ no longer
    *        exists at the moment of construction
+   * @throw exception::threadpool_failure if threadpool operation failed. This
+   *        is an MS Windows specific exception.
+   *
    * @note Upon creating the timer is inactive and must explicitly be activated
    *       via @ref start().
    * @note The leeway of the timer is set to 10% of the period or to at least
@@ -127,6 +140,13 @@ class timer
    *         @c std::chrono::duration class template.
    * @tparam Period2T <b>Period2T</b> is mapped into @c Period template parameter of
    *         @c std::chrono::duration class template.
+   *
+   * @throw exception::illegal_argument thrown if period, when converted
+   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
+   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
+   *        exists at the moment of construction
+   * @throw exception::threadpool_failure if threadpool operation failed. This
+   *        is an MS Windows specific exception.
    *
    * @param r_ the @ref runner to use to shedule t he periodic task
    * @param h_ the user @em Callable to be called from periodic task.
@@ -164,6 +184,13 @@ class timer
    * @param h_ the user @em Callable to be called from periodic task.
    * @param p_ period of the timer, in microseconds.
    *
+   * @throw exception::illegal_argument thrown if period, when converted
+   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
+   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
+   *        exists at the moment of construction
+   * @throw exception::threadpool_failure if threadpool operation failed. This
+   *        is an MS Windows specific exception.
+   *
    * @note Upon creating the timer is inactive and must explicitly be activated
    *       via @ref start().
    * @note The leeway of the timer is set to 10% of the period or to at least
@@ -194,6 +221,13 @@ class timer
    * @param p_ period of the timer, in microseconds.
    * @param l_ leeway, the interval the system can defer the timer, in microseconds
    *
+   * @throw exception::illegal_argument thrown if period, when converted
+   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
+   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
+   *        exists at the moment of construction
+   * @throw exception::threadpool_failure if threadpool operation failed. This
+   *        is an MS Windows specific exception.
+   *
    * @note Upon creating the timer is inactive and must explicitly be activated
    *       via @ref start().
    */
@@ -210,8 +244,8 @@ class timer
   /**
    * Change the period of the timer.
    *
-   * When changing the period the new period becomes effective after the call
-   * to @ref start().
+   * When changing the period the new period becomes effective after the next
+   * call to @ref start().
    *
    * @tparam RepT <b>RepT</b> is mapped into @c Rep template parameter of
    *         @c std::chrono::duration class template.
@@ -232,10 +266,8 @@ class timer
   /**
    * Set or change the period of the timer.
    *
-   * Sets or changes the period of the timer. For the timers created through one
-   * of the constructors that do not set the timer period at the construction
-   * time the period must be set before they can be started. When changing the
-   * period the new period becomes effective after the call to start().
+   * When changing the period the new period becomes effective after the next
+   * call to @ref start().
    *
    * @tparam RepT <b>RepT</b> is mapped into @c Rep template parameter of
    *         @c std::chrono::duration class template.
@@ -262,10 +294,8 @@ class timer
   /**
    * Set or change the period of the timer.
    *
-   * Sets or changes the period of the timer. For the timers created through one
-   * of the constructors that do not set the timer period at the construction
-   * time the period must be set before they can be started. When changing the
-   * period the new period becomes effective after the call to start().
+   * When changing the period the new period becomes effective after the next
+   * call to @ref start().
    *
    * @param p_ The period of the timer in microseconds.
    * @param l_ leeway, the amount of time, in microseconds, the system can defer
@@ -284,18 +314,17 @@ class timer
    * Starts the timer or the first time, or restarts it. In either case the timer
    * will trigger one full period after the call to start().
    *
-   * @exception cool::exception::illegal_state Thrown if the timer period is not set.
-   *
-   * @note start() is required after the period of the timer is changed.
+   * @note A call to start() is required after the period of the timer is changed
+   *       in order to activate the new period.
    */
   dlldecl void start();
 
   /**
    * Suspend the timer.
    *
-   * Suspends the timer by disabling the calls to the user callback. The timer
-   * is till running and is triggered at each period but without calling the
-   * user callback.
+   * Suspends the timer by disabling the calls to the user callback. Depending on
+   * the platform, the timer may still running and be triggered at each period,
+   * but without calling the user callback.
    */
   dlldecl void stop();
 
@@ -309,7 +338,7 @@ class timer
   /**
    * Return timer's name.
    *
-   * Each timer has a unique name.
+   * Each timer instance, except empty timers, has a unique name.
    */
   dlldecl const std::string& name() const;
 

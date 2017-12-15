@@ -36,14 +36,14 @@
 #include "cool/ng/impl/platform.h"
 #include "cool/ng/async/runner.h"
 
-#include "net_types.h"
+#include "event_sources_types.h"
 
 namespace cool { namespace ng { namespace async { namespace net {
 
 namespace detail {
 
 template <typename RunnerT>
-class stream : public connected_writable
+class stream : public itf::connected_writable
              , public impl::cb::stream
              , public cool::ng::util::self_aware<stream<RunnerT>>
 {

@@ -88,8 +88,8 @@ timer::timer(const std::weak_ptr<cb::timer>& t_
   , m_state(state::running)
   , m_callback(t_)
   , m_context(nullptr)
-  , m_period(p_ / 1000)
-  , m_leeway(l_ / 1000)
+  , m_period((p_ + 500) / 1000)
+  , m_leeway((l_ + 500) / 1000)
 {
   if (m_period == 0)
     m_period = 1;
@@ -111,8 +111,8 @@ void timer::period(uint64_t p_, uint64_t l_)
   if (p_ == 0)
     throw exc::illegal_argument();
 
-  m_period = p_ / 1000;
-  m_leeway = l_ / 1000;
+  m_period = (p_ + 500) / 1000;
+  m_leeway = (l_ + 500) / 1000;
   if (m_period == 0)
     m_period = 1;
   if (m_leeway == 0)
@@ -123,8 +123,6 @@ void timer::shutdown()
 {
   m_state = state::destroying;
   stop();  // make it fire once more to do cleanup
-//  CloseThreadpoolTimer(m_context->m_source);
-//  delete m_context;
 }
 
 void timer::start()

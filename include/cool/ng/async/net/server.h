@@ -33,7 +33,7 @@
 #include "cool/ng/ip_address.h"
 #include "cool/ng/impl/platform.h"
 
-#include "cool/ng/impl/async/net_types.h"
+#include "cool/ng/impl/async/event_sources_types.h"
 #include "cool/ng/impl/async/net_server.h"
 
 namespace cool { namespace ng {
@@ -57,6 +57,20 @@ namespace async { namespace net {
 class server
 {
  public:
+  /**
+   * Default constructor to allow @ref server "servers" to be stored in standard
+   * library containers.
+   *
+   * This constructor constructs an empty, non-functional @ref server. The only
+   * way to make it functional is to replace it with a functional server using
+   * copy assignment or move assignment operator.
+   *
+   * @note The only permitted operations on an empty server are copy assignment
+   *   and the @ref operator bool() "bool" conversion operator. Any other
+   *   operation will throw @ref cool::ng::exception::empty_object "empty_object"
+   *   exception.
+   */
+  server() { /* noop */ }
   /**
    * Constructs new instance of server with error handler.
    *
@@ -147,8 +161,19 @@ class server
   dlldecl void stop();
   dlldecl const std::string& name() const;
 
+  /**
+   * Empty server predicate.
+   *
+   * @return true if this @ref server is properly created and functional, false if empty.
+   *
+   * @note Returning true does not imply that the server is in a correct state
+   *       for the required operation. It just indicates that it was not
+   *       default constructed as an empty shell/placeholder.
+   */
+  dlldecl explicit operator bool() const;
+
  private:
-  std::shared_ptr<detail::startable> m_impl;
+  std::shared_ptr<async::detail::itf::startable> m_impl;
 };
 
 } } } } // namespace

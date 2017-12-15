@@ -204,21 +204,8 @@ class named : public identified
   std::string m_prefix;
 };
 
-template <typename T>
-class self_aware
-{
- public:
-   using ptr      = std::shared_ptr<T>;
-   using weak_ptr = std::weak_ptr<T>;
-
- public:
-  void self(const ptr& s_) { m_self = s_;   }
-  void self(const weak_ptr& s_)   { m_self = s_;   }
-  const weak_ptr& self() const    { return m_self; }
-
- private:
-  weak_ptr m_self;
-};
+#define befriend_shared_new \
+    template <typename _C, typename... _Args> friend std::shared_ptr<_C> cool::ng::util::shared_new(_Args&&...)
 
 template <typename T, typename... Args>
 std::shared_ptr<T> shared_new(Args&&... args_)
@@ -228,10 +215,30 @@ std::shared_ptr<T> shared_new(Args&&... args_)
   return ret;
 }
 
-#define befriend_shared_new \
-    template <typename _C, typename... _Args> friend std::shared_ptr<_C> cool::ng::util::shared_new(_Args&&...)
+template <typename T>
+class self_aware
+{
+ public:
+   using ptr      = std::shared_ptr<T>;
+   using weak_ptr = std::weak_ptr<T>;
+
+ public:
+  const weak_ptr& self() const    { return m_self; }
+
+ protected:
+  ptr shared_from_this() const    { return self().lock(); }
+
+ private:
+  befriend_shared_new;
+  void self(const ptr& s_)        { m_self = s_; }
+  void self(const weak_ptr& s_)   { m_self = s_; }
+
+ private:
+  weak_ptr m_self;
+};
 
 
 } } } // namespace
+
 
 #endif
