@@ -32,47 +32,9 @@
 #include "cool/ng/bases.h"
 #include "cool/ng/async/runner.h"
 #include "cool/ng/impl/async/context.h"
+#include "critical_section.h"
 
 namespace cool { namespace ng { namespace async { namespace impl {
-
-
-class critical_section
-{
-  critical_section(const critical_section&) = delete;
-  critical_section(critical_section&&) = delete;
-  critical_section& operator =(const critical_section&) = delete;
-  critical_section& operator =(critical_section&&) = delete;
-
- public:
-  inline critical_section(long spin_count = 1000000)
-  {
-    InitializeCriticalSectionAndSpinCount(&m_cs, spin_count);
-  }
-  inline ~critical_section()
-  {
-    DeleteCriticalSection(&m_cs);
-  }
-
-  // BasicLockable requirements
-  void lock()
-  {
-    EnterCriticalSection(&m_cs);
-  }
-  void unlock()
-  {
-    LeaveCriticalSection(&m_cs);
-  }
-
-  // Lockable requirements
-  bool try_lock()
-  {
-#pragma warning( suppress: 4800 )
-    return static_cast<bool>(TryEnterCriticalSection(&m_cs));
-  }
-
-private:
-  CRITICAL_SECTION m_cs;
-};
 
 class poolmgr
 {

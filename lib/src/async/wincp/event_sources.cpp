@@ -22,6 +22,8 @@
  */
 #include <iostream>
 #include <stdint.h>
+#include <mutex>
+
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
@@ -237,16 +239,42 @@ void set_address(sockaddr_in6& sa_, const ip::address& a_, uint16_t port_, socka
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
-server::context::context(const server::ptr& s_, const ip::address& addr_, uint16_t port_)
-    : m_server(s_)
+
+server::server(const std::shared_ptr<async::impl::executor>& ex_
+             , const cb::server::weak_ptr& cb_)
+    : named("si.digiverse.ng.cool.server")
+    , m_state(state::init)
+    , m_executor(ex_)
+    , m_handler(cb_)
     , m_pool(async::impl::poolmgr::get_poolmgr())
     , m_handle(invalid_handle)
-    , m_sock_type(addr_.version() == ip::version::ipv4 ? AF_INET : AF_INET6)
+    , m_client_handle(invalid_handle)
+    , m_sock_type(AF_INET)
     , m_accept_ex(nullptr)
     , m_get_sock_addrs(nullptr)
     , m_tpio(nullptr)
-    , m_client_handle(invalid_handle)
+    , m_context(nullptr)
+{ /* noop */ }
+
+server::~server()
 {
+  if (m_handle != invalid_handle)
+    closesocket(m_handle);
+  if (m_client_handle != invalid_handle)
+    closesocket(m_client_handle);
+  if (m_tpio != nullptr)
+  {
+    CloseThreadpoolIo(m_tpio);
+  }
+  if (m_context != nullptr)
+    delete m_context;
+}
+
+void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
+{
+  m_sock_type = addr_.version() == ip::version::ipv6 ? AF_INET6 : AF_INET;
+  m_context = new ptr(self().lock());
+
   try
   {
     // ----
@@ -323,11 +351,15 @@ server::context::context(const server::ptr& s_, const ip::address& addr_, uint16
     // the listen socket
     m_tpio = CreateThreadpoolIo(
         reinterpret_cast<HANDLE>(m_handle)
-      , context::on_accept
-      , this
+      , server::on_accept
+      , m_context
       , m_pool->get_environ());
     if (m_tpio == nullptr)
+    {
       throw exc::threadpool_failure();
+    }
+
+    m_state = state::stopped;
   }
   catch (...)
   {
@@ -338,154 +370,52 @@ server::context::context(const server::ptr& s_, const ip::address& addr_, uint16
     }
     if (m_tpio != nullptr)
     {
-      CancelThreadpoolIo(m_tpio);
+      CloseThreadpoolIo(m_tpio);
       m_tpio = nullptr;
     }
+    if (m_context != nullptr)
+    {
+      delete m_context;
+      m_context = nullptr;
+    }
+
+    m_state = state::error;
     throw;
   }
 }
 
-server::context::~context()
-{
-  if (m_handle != invalid_handle)
-    closesocket(m_handle);
-
-  if (m_tpio != nullptr)
-    CancelThreadpoolIo(m_tpio);
-}
-
-void server::context::start_accept()
+void server::start_accept()
 {
   m_client_handle = ::WSASocketW(m_sock_type, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
   if (m_client_handle == invalid_handle)
     throw exc::socket_failure();
 
   StartThreadpoolIo(m_tpio);
-  memset(&m_overlapped, 0, sizeof(m_overlapped));
-  if (!m_accept_ex(
-      m_handle
-    , m_client_handle
-    , m_buffer
-    , 0
-    , sizeof(m_buffer) / 2
-    , sizeof(m_buffer) / 2
-    , nullptr //&m_filler
-    , &m_overlapped))
+
+  BOOL res;
+  {
+    std::unique_lock<async::impl::critical_section> l(m_cs);
+
+    memset(&m_overlapped, 0, sizeof(m_overlapped));
+    res = m_accept_ex(m_handle , m_client_handle, m_buffer , 0 , sizeof(m_buffer) / 2, sizeof(m_buffer) / 2, nullptr , &m_overlapped);
+  }
+
+  if (!res)
   {
     auto hr = WSAGetLastError();
     if (hr != ERROR_IO_PENDING)
     {
       CancelThreadpoolIo(m_tpio);
-          // TODO: what to do here????
+      closesocket(m_client_handle);
+      m_client_handle = invalid_handle;
     }
   }
 }
 
-void server::context::stop_accept()
+void server::stop_accept()
 {
-  CancelIoEx(reinterpret_cast<HANDLE>(m_handle), &m_overlapped);
-}
-
-void server::context::shutdown()
-{
-  // this should make a roundtrip though threadpool with ABORTED error
-  // at which point callback should delete context
-  auto s = m_handle;
-  m_handle = invalid_handle;
-  closesocket(s);
-}
-
-// -- callback from the threadpool for AcceptEx call - this callback is a result
-//    of StartThreadpoIo work object and was not submitted in the context of any
-//    runner. To support synchronized semantics of event sources this callback
-//    must submit work to the executor of the runner the event source is
-//    associated with. To do so it must create a work context and submit it
-//    to executor::run method.
-void server::context::on_accept(
-      PTP_CALLBACK_INSTANCE instance_
-    , PVOID context_
-    , PVOID overlapped_
-    , ULONG io_result_
-    , ULONG_PTR num_transferred_
-    , PTP_IO io_)
-{
-  if (context_ == nullptr)
-    return;   // can't do anything here, at least prevents null pointer exception
-
-  auto ctx = static_cast<context*>(context_);
-  switch (io_result_)
-  {
-    case NO_ERROR:
-      ctx->process_accept();
-      break;
-
-	// either somebody closed the socket from the outside (shutdown()) or cancelled
-	// the pending AcceptEx operation (stop()) - use m_server's state to differentiate
-    case ERROR_OPERATION_ABORTED: 
-      {
-        state expect = state::stopping;
-        if (ctx->m_server->m_state.compare_exchange_strong(expect, state::stopped))
-          return;
-
-        if (expect == state::destroying)
-          delete ctx;
-      }
-      break;
-
-    default:
-      // TODO: what to do here:
-      break;
-  }
-}
-
-void server::context::process_accept()
-{
-  sockaddr_storage* local;
-  sockaddr_storage* remote;
-  int len_local, len_remote;
-
-  m_get_sock_addrs(
-      m_buffer
-    , 0
-    , sizeof(m_buffer) / 2
-    , sizeof(m_buffer) / 2
-    , reinterpret_cast<sockaddr**>(&local)
-    , &len_local
-    , reinterpret_cast<sockaddr**>(&remote)
-    , &len_remote);
-
-  if (setsockopt(
-      m_client_handle
-    , SOL_SOCKET
-    , SO_UPDATE_ACCEPT_CONTEXT
-    , reinterpret_cast<char *>(&m_handle), sizeof(m_handle)) != NO_ERROR)
-  {
-    // TODO: error handling
-  }
-
-  ip::host_container ca = *remote;
-  uint16_t port = ntohs(remote->ss_family == AF_INET
-    ? reinterpret_cast<sockaddr_in*>(remote)->sin_port
-      : ntohs(reinterpret_cast<sockaddr_in6*>(remote)->sin6_port));
-
-  m_server->process_accept(ca, port);
-}
-
-server::server(const std::shared_ptr<async::impl::executor>& ex_
-             , const cb::server::weak_ptr& cb_)
-    : named("si.digiverse.ng.cool.server")
-    , m_state(state::stopped)
-    , m_executor(ex_)
-    , m_handler(cb_)
-    , m_context(nullptr)
-{ /* noop */ }
-
-server::~server()
-{ /* noop */ }
-
-void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
-{
-  m_context = new context(self().lock(), addr_, port_);
+  std::unique_lock<async::impl::critical_section> l(m_cs);
+  CancelIoEx(reinterpret_cast<HANDLE>(m_handle), nullptr);
 }
 
 void server::start()
@@ -495,7 +425,7 @@ void server::start()
   {
     if (m_state.compare_exchange_strong(expect, state::starting))
     {
-      m_context->start_accept();
+      start_accept();
       expect = state::starting;
       m_state.compare_exchange_strong(expect, state::accepting);
       return;
@@ -524,7 +454,7 @@ void server::stop()
   {
     if (m_state.compare_exchange_strong(expect, state::stopping))
     {
-      m_context->stop_accept();
+      stop_accept();
       return;
     }
   }
@@ -550,7 +480,10 @@ void server::shutdown()
   state expect = state::accepting;
   if (m_state.compare_exchange_strong(expect, state::destroying))
   {
-    m_context->shutdown();
+    auto s = m_handle;
+    m_handle = invalid_handle;
+    m_context = nullptr;     // prevent dtorr from deleting context
+    closesocket(s);
     return;
   }
 
@@ -559,9 +492,9 @@ void server::shutdown()
   if (m_state.compare_exchange_strong(expect, state::destroying))
   {
     delete m_context;
+    m_context = nullptr;
     return;
   }
-
 }
 
 // ---
@@ -589,19 +522,21 @@ class exec_for_accept : public cool::ng::async::detail::event_context
     {
       try
       {
-        // this call is made directly to detail::server template in the context of
-        // the runner
+        // use factory to get new stream instance, install client handle
+        // and do final on_connect callback
         auto s = cb->manufacture(self->m_addr, self->m_port);
         server::install_handle(s, self->m_handle);
         try { cb->on_connect(s); } catch (...) { }
       }
       catch (...)
       {
+        // if stream factory threw just close handle thus disconnecting client
         closesocket(self->m_handle);
       }
     }
     else
     {
+      // if user callbackk no longer available just disconnect client
       closesocket(self->m_handle);
     }
   }
@@ -613,14 +548,93 @@ class exec_for_accept : public cool::ng::async::detail::event_context
   cb::server::weak_ptr m_handler;
 };
 
-void server::process_accept(const cool::ng::net::ip::address& addr_, uint16_t port_)
+
+// -- callback from the threadpool for AcceptEx call - this callback is a result
+//    of StartThreadpoIo work object and was not submitted in the context of any
+//    runner. To support synchronized semantics of event sources this callback
+//    must submit work to the executor of the runner the event source is
+//    associated with. To do so it must create a work context and submit it
+//    to executor::run method.
+
+void server::on_accept(
+      PTP_CALLBACK_INSTANCE instance_
+    , PVOID context_
+    , PVOID overlapped_
+    , ULONG io_result_
+    , ULONG_PTR num_transferred_
+    , PTP_IO io_)
 {
+  if (context_ == nullptr)
+    return;   // can't do anything here, at least prevents null pointer exception
+
+  auto ctx = static_cast<std::shared_ptr<server>*>(context_);
+
+  switch (io_result_)
+  {
+    case NO_ERROR:
+      (*ctx)->process_accept();
+      break;
+
+  // either somebody closed the socket from the outside (shutdown()) or cancelled
+  // the pending AcceptEx operation (stop()) - use server's state to differentiate
+    case ERROR_OPERATION_ABORTED:
+      {
+        state expect = state::stopping;
+        if ((*ctx)->m_state.compare_exchange_strong(expect, state::stopped))
+          return;
+
+        if (expect == state::destroying)
+          delete ctx;
+      }
+      break;
+
+    default:
+      // TODO: what to do here:
+      break;
+  }
+}
+
+void server::process_accept()
+{
+
+  sockaddr_storage* local;
+  sockaddr_storage* remote;
+  int len_local, len_remote;
+
+  // fetch local and remote addresses ...
+  m_get_sock_addrs(
+      m_buffer
+    , 0
+    , sizeof(m_buffer) / 2
+    , sizeof(m_buffer) / 2
+    , reinterpret_cast<sockaddr**>(&local)
+    , &len_local
+    , reinterpret_cast<sockaddr**>(&remote)
+    , &len_remote);
+
+  if (setsockopt(
+      m_client_handle
+    , SOL_SOCKET
+    , SO_UPDATE_ACCEPT_CONTEXT
+    , reinterpret_cast<char *>(&m_handle), sizeof(m_handle)) != NO_ERROR)
+  {
+    // TODO: error handling
+  }
+
+  ip::host_container addr = *remote;
+  uint16_t port = ntohs(remote->ss_family == AF_INET
+    ? reinterpret_cast<sockaddr_in*>(remote)->sin_port
+      : ntohs(reinterpret_cast<sockaddr_in6*>(remote)->sin6_port));
+
+  // ... and schedule callback to user code
   auto r = m_executor.lock();
   if (r)
   {
     cool::ng::async::detail::event_context* ctx = nullptr;
 
-    ctx = new exec_for_accept(m_handler, m_context->m_client_handle, addr_, port_);
+    auto aux = m_client_handle;
+    m_client_handle = invalid_handle;
+    ctx = new exec_for_accept(m_handler, aux, addr, port);
 
     if (ctx != nullptr)
       r->run(ctx);
@@ -629,11 +643,12 @@ void server::process_accept(const cool::ng::net::ip::address& addr_, uint16_t po
   {
     // executor no longer exists hence nobody can process connect request -
     // just close the client handle
-    closesocket(m_context->m_client_handle);
+    closesocket(m_client_handle);
+    m_client_handle = invalid_handle;
   }
 
   // all is done, restart the overlapped accept
-  m_context->start_accept();
+  start_accept();
 }
 
 void server::install_handle(cool::ng::async::net::stream& s_, cool::ng::net::handle h_)
@@ -661,11 +676,11 @@ void server::install_handle(cool::ng::async::net::stream& s_, cool::ng::net::han
 class exec_for_io : public cool::ng::async::detail::event_context
 {
  public:
-  exec_for_io(stream::context* ctx_
+  exec_for_io(stream::weak_ptr s_
             , PVOID overlapped_
             , ULONG io_result_
             , ULONG_PTR num_transferred_)
-      : m_ctx(ctx_)
+      : m_stream(s_)
       , m_overlapped(overlapped_)
       , m_io_result(io_result_)
       , m_num_transferred(num_transferred_)
@@ -674,11 +689,13 @@ class exec_for_io : public cool::ng::async::detail::event_context
   void entry_point() override
   {
     // this call is made into impl::server, but in the context of the runner
-    m_ctx->m_stream->on_event(m_ctx, m_overlapped, m_io_result, m_num_transferred);
+    auto s = m_stream.lock();
+    if (s)
+      s->on_event(m_overlapped, m_io_result, m_num_transferred);
   }
 
  private:
-  stream::context* m_ctx;
+  stream::weak_ptr m_stream;
   PVOID            m_overlapped;
   ULONG            m_io_result;
   ULONG_PTR        m_num_transferred;
@@ -693,6 +710,9 @@ stream::context::context(const stream::ptr& s_, handle h_, void* buf_, std::size
   , m_rd_is_mine(buf_ == nullptr)
   , m_wr_busy(false)
 {
+  if (sz_ == 0)
+    throw exc::illegal_argument();
+
   if (m_rd_is_mine)
     m_rd_data = new uint8_t[m_rd_size];
 
@@ -705,8 +725,7 @@ stream::context::context(const stream::ptr& s_, handle h_, void* buf_, std::size
 
   if (m_tpio == nullptr)
   {
-    auto aux = exc::threadpool_failure();
-    throw aux;
+    throw exc::threadpool_failure();
   }
 }
 
@@ -716,8 +735,10 @@ stream::context::~context()
     closesocket(m_handle);
 
   if (m_tpio != nullptr)
+  {
+    WaitForThreadpoolIoCallbacks(m_tpio, true);
     CloseThreadpoolIo(m_tpio);
-
+  }
   if (m_rd_is_mine && m_rd_data != nullptr)
     delete [] static_cast<uint8_t*>(m_rd_data);
 }
@@ -726,7 +747,7 @@ stream::context::~context()
 //    of StartThreadpoIo work object and was not submitted in the context of any
 //    runner. To support synchronized semantics of event sources this callback
 //    must submit work to the executor of the runner the event source is
-//    associated with. To do so it must create a work context and submit it
+//    associated with. To do so it must create an event work context and submit it
 //    to executor::run method.
 
 void stream::context::on_event(
@@ -740,12 +761,11 @@ void stream::context::on_event(
   if (context_ != nullptr)
   {
     auto ctx = static_cast<context*>(context_);
-
     // get executor and schedule event callback for execution on stream's runner
     auto r = ctx->m_stream->m_executor.lock();
     if (r)
     {
-      auto exec = new exec_for_io(ctx, overlapped_, io_result_, num_transferred_);
+      auto exec = new exec_for_io(ctx->m_stream, overlapped_, io_result_, num_transferred_);
       r->run(exec);
     }
     else
@@ -753,7 +773,6 @@ void stream::context::on_event(
       delete ctx;
     }
   }
-  //  TODO: error handling????
 }
 
 stream::stream(const std::weak_ptr<async::impl::executor>& ex_
@@ -824,8 +843,20 @@ void stream::start_read_source()
     auto err = GetLastError();
     if (err != ERROR_IO_PENDING)
     {
-      // TODO: disconnect, report error
       CancelThreadpoolIo(m_context->m_tpio);
+      switch (m_state.load())
+      {
+        case state::disconnecting:
+        case state::disconnected:
+        {
+          // this failure and state mean that there was no active read operation
+          // during external call to disconnect - cleanup the context and
+          // consequently remove itself, too.
+          auto aux = m_context;
+          m_context = nullptr;
+          delete aux;
+        }
+      }
       return;
     }
   }
@@ -852,10 +883,11 @@ void stream::start_write_source()
     auto err = GetLastError();
     if (err != ERROR_IO_PENDING)
     {
-      // TODO: error handling
       CancelThreadpoolIo(m_context->m_tpio);
       return;
     }
+    // any other failure means that handle was closed ... read operation will
+    // take care about cleanup
   }
 }
 
@@ -979,13 +1011,21 @@ void stream::disconnect()
 {
   state expect = state::connected;
   if (!m_state.compare_exchange_strong(expect, state::disconnecting))
-    throw exc::invalid_state();
+  {
+    if (expect == state::disconnected)
+      return;
+    else
+      throw exc::invalid_state();
+  }
 
   auto h = m_context->m_handle;
-  m_context->m_handle = invalid_handle;
-  m_context = nullptr;
-  m_state = state::disconnected;
-  closesocket(h);
+
+  expect = state::disconnecting;
+  if (m_state.compare_exchange_strong(expect, state::disconnected))
+  {
+    m_context->m_handle = invalid_handle;
+    closesocket(h);  // this will trigger ERROR_CONNECTION_ABORTED to threadpool
+  }
 }
 
 void stream::shutdown()
@@ -1072,15 +1112,31 @@ void stream::process_read_event(ULONG_PTR count_)
     try
     {
       try { cb->on_read(data, size); } catch (...) { /* noop */ }
-      if (data != m_context->m_rd_data && size > 0)
+
+      // check if callback modified buffer or size parameters
+      if (data != m_context->m_rd_data || size != m_context->m_rd_size)
       {
+        // release current buffer if allocated by me
         if (m_context->m_rd_is_mine)
-        {
           delete [] static_cast<uint8_t*>(m_context->m_rd_data);
-          m_context->m_rd_is_mine = false;
+
+        // there are some special values that requeire different considerations
+        //  - if size is zero revert to bufffer specified at the creation
+        //  - if buf is nullptr allocate buffer of specified size
+        if (size == 0)
+        {
+          m_context->m_rd_size = m_rd_size;
+          m_context->m_rd_data = m_rd_data;
         }
-        m_context->m_rd_data = data;
-        m_context->m_rd_size = size;
+        else
+        {
+          m_context->m_rd_data = data;
+          m_context->m_rd_size = size;
+        }
+        m_context->m_rd_is_mine = m_context->m_rd_data == nullptr;
+
+        if (m_context->m_rd_is_mine)
+          m_context->m_rd_data = new uint8_t[m_context->m_rd_size];
       }
     }
     catch (...)
@@ -1104,7 +1160,7 @@ void stream::process_write_event(ULONG_PTR count_)
     start_write_source();
 }
 
-void stream::on_event(context* ctx, PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_)
+void stream::on_event(PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_)
 {
   state expect;
 
@@ -1153,7 +1209,8 @@ void stream::on_event(context* ctx, PVOID overlapped_, ULONG io_result_, ULONG_P
 
     // -- caused by shutdown() or disconnect
     case ERROR_CONNECTION_ABORTED:
-      delete ctx;
+      if (m_context != nullptr)
+        delete m_context;
       break;
 
     // -- check if failed connect request

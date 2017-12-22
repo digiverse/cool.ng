@@ -543,6 +543,10 @@ void stream::disconnect()
 
 void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
 {
+  if (m_size == 0)
+    throw exc::illegal_argument();
+
+
   cool::ng::net::handle handle = cool::ng::net::invalid_handle;
 
   if (m_state != state::disconnected)
@@ -662,15 +666,31 @@ void stream::on_rd_event(void* ctx)
     if (aux)
     {
       try { aux->on_read(buf, size); } catch (...) { /* noop */ }
-      if (buf != self->m_rd_data && size > 0)
+
+      // check if callback modified buffer or size parameters
+      if (buf != self->m_rd_data || size != self->m_rd_size)
       {
+        // release current buffer if allocated by me
         if (self->m_rd_is_mine)
-        {
           delete [] static_cast<uint8_t*>(self->m_rd_data);
-          self->m_rd_is_mine = false;
+
+        // there are some special values that requeire different considerations
+        //  - if size is zero revert to bufffer specified at the creation
+        //  - if buf is nullptr allocate buffer of specified size
+        if (size == 0)
+        {
+          self->m_rd_size = self->m_stream->m_size;
+          self->m_rd_data = self->m_stream->m_buf;
         }
-        self->m_rd_data = buf;
-        self->m_rd_size = size;
+        else
+        {
+          self->m_rd_data = buf;
+          self->m_rd_size = size;
+        }
+        self->m_rd_is_mine = self->m_rd_data == nullptr;
+
+        if (self->m_rd_is_mine)
+          self->m_rd_data = new uint8_t[self->m_rd_size];
       }
     }
   }

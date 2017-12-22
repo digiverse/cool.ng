@@ -39,8 +39,9 @@
 #include "cool/ng/impl/async/event_sources.h"
 
 #include "executor.h"
+#include "critical_section.h"
 
-namespace cool { namespace ng { namespace async {
+namespace cool { namespace ng { namespace async { namespace impl {
 
 
 // ==========================================================================
@@ -50,8 +51,6 @@ namespace cool { namespace ng { namespace async {
 // ======
 // ======
 // ==========================================================================
-
-namespace impl {
 
 class timer : public cool::ng::util::named
             , public detail::itf::timer
@@ -120,36 +119,18 @@ class server : public async::detail::itf::startable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<server>
 {
-  enum class state { stopped, starting, accepting, stopping, destroying, error };
+  enum class state { init, stopped, starting, accepting, stopping, destroying, error };
 
   struct context
   {
-    context(const server::ptr& s_, const cool::ng::net::ip::address& addr_, uint16_t port_);
+    context(const server::ptr& s_);
     ~context();
 
-    void start_accept();
-    void stop_accept();
     void shutdown();
 
-    static void CALLBACK on_accept(
-        PTP_CALLBACK_INSTANCE instance_
-      , PVOID context_
-      , PVOID overlapped_
-      , ULONG io_result_
-      , ULONG_PTR num_transferred_
-      , PTP_IO io_);
-    void process_accept();
+   void process_accept();
 
-    server::ptr               m_server;
-    async::impl::poolmgr::ptr m_pool;
-    ::cool::ng::net::handle   m_handle;
-    int                       m_sock_type;
-    LPFN_ACCEPTEX             m_accept_ex;      // f. pointer to AcceptEx
-    LPFN_GETACCEPTEXSOCKADDRS m_get_sock_addrs; // f. pointer to GetAcceptExSockAddrs
-    PTP_IO                    m_tpio;
-    uint8_t                   m_buffer[2 * sizeof(SOCKADDR_STORAGE) + 32];
-    WSAOVERLAPPED             m_overlapped;
-    ::cool::ng::net::handle   m_client_handle;
+    server::ptr m_server;
   };
 
  public:
@@ -164,13 +145,40 @@ class server : public async::detail::itf::startable
   void shutdown() override;
 
   static void install_handle(cool::ng::async::net::stream& s_, cool::ng::net::handle h_);
+
  private:
-  void process_accept(const cool::ng::net::ip::address& addr_, uint16_t port_);
+  void start_accept();
+  void stop_accept();
+  void process_accept();
+  static void CALLBACK on_accept(
+      PTP_CALLBACK_INSTANCE instance_
+    , PVOID context_
+    , PVOID overlapped_
+    , ULONG io_result_
+    , ULONG_PTR num_transferred_
+    , PTP_IO io_);
+
  private:
-  std::atomic<state>   m_state;
-  std::weak_ptr<async::impl::executor> m_executor;
-  cb::server::weak_ptr m_handler;
-  context*             m_context;
+  std::atomic<state>          m_state;
+  std::weak_ptr<async::impl::executor> m_executor; // runner for this server
+  cb::server::weak_ptr        m_handler;           // towards user level event handler
+  async::impl::poolmgr::ptr   m_pool;              // to keep threadpool alive
+
+  ::cool::ng::net::handle   m_handle;              // listen socket
+  ::cool::ng::net::handle   m_client_handle;       // client soocket for accept
+  int                       m_sock_type;           // socket type flag to create client socket
+
+  // function pointers of inaccessbile Winsock2 symbols
+  LPFN_ACCEPTEX             m_accept_ex;      // f. pointer to AcceptEx
+  LPFN_GETACCEPTEXSOCKADDRS m_get_sock_addrs; // f. pointer to GetAcceptExSockAddrs
+
+  // for async accept operation
+  PTP_IO                    m_tpio;
+  uint8_t                   m_buffer[2 * sizeof(SOCKADDR_STORAGE) + 32];
+  WSAOVERLAPPED             m_overlapped;
+
+  async::impl::critical_section m_cs;
+  ptr*                      m_context;
 };
 
 /*
@@ -251,14 +259,13 @@ class stream : public detail::itf::connected_writable
   void start_write_source();
 
   // entry point to process i/o events from executor
-  void on_event(context* ctx, PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_);
+  void on_event(PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_);
   void process_connect_event(ULONG io_result_);
   void process_disconnect_event();
 
   void process_read_event(ULONG_PTR count_);
   void process_write_event(ULONG_PTR count_);
-  void process_write_event(context* ctx, std::size_t size);
-
+ 
  private:
 
  private:
