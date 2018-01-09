@@ -127,8 +127,7 @@ class server : public async::detail::itf::startable
     ~context();
 
     void shutdown();
-
-   void process_accept();
+    void process_accept();
 
     server::ptr m_server;
   };
@@ -193,12 +192,17 @@ class stream : public detail::itf::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {
-  enum class state { disconnected, connecting, connected, disconnecting  };
+  enum class state { disconnected, connecting, connected, disconnecting };
 
   struct context
   {
-    context(const stream::ptr& s_, cool::ng::net::handle h_, void* buf, std::size_t sz_);
+    using sptr = std::shared_ptr<context>;
+    using wptr = std::weak_ptr<context>;
+
+    context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, void* buf, std::size_t sz_);
     ~context();
+    void set_handle(context::sptr* ctxptr, cool::ng::net::handle h_);
+    bool close_context(context::sptr* cp_);
 
     // threadpool callback from completion port
     static void CALLBACK on_event(
@@ -209,8 +213,14 @@ class stream : public detail::itf::connected_writable
       , ULONG_PTR num_transferred_
       , PTP_IO io_);
 
-    stream::ptr          m_stream;
+    // callback from CloseThreadpoolCleanupGroupMembers
+    static void CALLBACK on_cleanup(void* context_, void* cleanup_);
+    // work executor for closing cleanup group members
+    static VOID CALLBACK task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
+
+    stream::ptr           m_stream;
     cool::ng::net::handle m_handle;
+    std::atomic<state>    m_state;
 
     // overlapped & threadpool support
     WSAOVERLAPPED m_rd_overlapped;
@@ -229,6 +239,13 @@ class stream : public detail::itf::connected_writable
     std::size_t       m_wr_size;
     std::size_t       m_wr_pos;
     DWORD             m_written_bytes;
+
+    // threadpool stuff
+    TP_CALLBACK_ENVIRON m_environ;
+    PTP_CLEANUP_GROUP   m_cleanup;
+
+    // need own work object to close cleanup group from callback
+    PTP_WORK            m_work;
   };
 
  public:
@@ -255,25 +272,30 @@ class stream : public detail::itf::connected_writable
  private:
   friend class exec_for_io;
 
-  void start_read_source();
-  void start_write_source();
+  void start_read_source(context::sptr* cp_);
+  void start_write_source(context::sptr* cp_);
 
+  void process_event(context::sptr* cp_, PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_);
+  void process_event_connecting(context::sptr* cp_, ULONG_PTR num_transferred_, ULONG io_result_);
+  void process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, ULONG io_result_);
+  void process_event_write(context::sptr* cp_, ULONG_PTR num_transferred_, ULONG io_result_);
+  
   // entry point to process i/o events from executor
   void on_event(PVOID overlapped_, ULONG io_result_, ULONG_PTR num_transferred_);
-  void process_connect_event(ULONG io_result_);
-  void process_disconnect_event();
+  void process_connecting_event(ULONG io_result_);
+  void process_disconnect_event(const std::error_code& err_);
 
   void process_read_event(ULONG_PTR count_);
   void process_write_event(ULONG_PTR count_);
- 
- private:
+
+  state set_state(state e_, state s_);
+  state get_state() const;
 
  private:
-  std::atomic<state>                   m_state;
   std::weak_ptr<async::impl::executor> m_executor; // to get the diapatch queue
   async::impl::poolmgr::ptr            m_pool;
   cb::stream::weak_ptr                 m_handler;  // handler for user events
-  context*                             m_context;  // threadpool I/O context
+  std::atomic<context::sptr*>          m_context;  // threadpool I/O context
 
   // Win32 weirdness support
   LPFN_CONNECTEX                       m_connect_ex;

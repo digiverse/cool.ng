@@ -256,7 +256,7 @@ class stream : public detail::itf::connected_writable
              , public cool::ng::util::named
              , public cool::ng::util::self_aware<stream>
 {
-  enum class state { disconnected, connecting, connected, disconnecting  };
+  enum class state { disconnected, connecting, connected, disconnecting };
 
   struct context
   {
@@ -301,7 +301,7 @@ class stream : public detail::itf::connected_writable
   bool cancel_read_source(rd_context*&);
 
   void create_read_source(cool::ng::net::handle h_, void* buf_, std::size_t bufsz_);
-  void process_connect_event(context* ctx, std::size_t size);
+  void process_connecting_event(context* ctx, std::size_t size);
   void process_disconnect_event();
   void process_write_event(context* ctx, std::size_t size);
 

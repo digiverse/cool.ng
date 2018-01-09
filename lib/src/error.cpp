@@ -50,19 +50,23 @@ const char* library_category::name() const NOEXCEPT_
 std::string library_category::message(int ev) const
 {
   static const char * const messages[] = {
-    "not an error",
-    "the runner requested through the weak_ptr no longer exists",
-    "internal: dynamic cast from async::runner to user runner type unexplicably failed",
-    "internal: no task context",
-    "the object was in the wrong state to perform the requested operation",
-    "the provided value was out of the valid value range",
-    "the parameter value was not valid",
-    "failed to convert provided value into the requested value"
-    "the requested resource is busy and not available",
-    "parsing of textual input failed",
-    "an object that is not thread safe has encountered race condition",
-    "the requested item was either not specified or was not made available",
-    "this object is empty and not functional"
+/*   0 */ "not an error",
+          "the runner requested through the weak_ptr no longer exists",
+          "internal: dynamic cast from async::runner to user runner type unexplicably failed",
+          "internal: no task context",
+          "the object was in the wrong state to perform the requested operation",
+          "the provided value was out of the valid value range",
+          "the parameter value was not valid",
+          "failed to convert provided value into the requested value",
+          "the requested resource is busy and not available",
+          "parsing of textual input failed",
+/*  10 */ "an object that is not thread safe has encountered race condition",
+          "the requested item was either not specified or was not made available",
+          "this object is empty and not functional",
+          "the pending request was aborted",
+          "the destination rejected connection",
+          "the destination is not reachable",
+          "the request has failed",
   };
   static const char* const unknown = "unrecognized error";
 

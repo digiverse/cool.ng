@@ -46,6 +46,7 @@ class poolmgr
   poolmgr();
   ~poolmgr();
   PTP_CALLBACK_ENVIRON get_environ() { return &m_environ; }
+  void add_environ(PTP_CALLBACK_ENVIRON e_);
   static ptr get_poolmgr();
 
  private:

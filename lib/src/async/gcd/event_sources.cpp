@@ -524,7 +524,28 @@ void stream::disconnect()
 {
   state expect = state::connected;
   if (!m_state.compare_exchange_strong(expect, state::disconnecting))
-    throw exc::invalid_state();
+  {
+    switch (expect)
+    {
+      default: // already disconnecting or disconnected, do nothing
+        return;
+
+      case state::connecting:  // leave in connecting state so that abort figures out what's going on
+       {
+          // that will trigger some event with error code, but remain in
+          // connecting state for proper cleanup
+          rd_context* aux;
+          if (!cancel_read_source(aux))
+            throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
+        }
+        {
+          context* aux;
+          if (!cancel_write_source(aux))
+            throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
+        }
+        return;
+    }
+  }
 
   {
     rd_context* aux;
@@ -623,6 +644,8 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
   }
 }
 
+// this may happen if disconnect is called during unfinished connect
+// hence a callback, if possible, is required
 void stream::on_wr_cancel(void* ctx)
 {
   auto self = static_cast<context*>(ctx);
@@ -630,6 +653,14 @@ void stream::on_wr_cancel(void* ctx)
   ::close(self->m_handle);
 
   self->m_stream->m_writer = nullptr;
+
+  state expect = state::connecting;
+  if (self->m_stream->m_state.compare_exchange_strong(expect, state::disconnected))
+  {
+    auto cb = self->m_stream->m_handler.lock();
+    if (cb)
+      try { cb->on_event(detail::oob_event::failure, error::make_error_code(error::errc::request_aborted)); } catch (...) { /* noop */ }
+  }
   delete self;
 }
 
@@ -706,7 +737,7 @@ void stream::on_wr_event(void* ctx)
   switch (static_cast<state>(self->m_stream->m_state))
   {
     case state::connecting:
-      self->m_stream->process_connect_event(self, size);
+      self->m_stream->process_connecting_event(self, size);
       break;
 
     case state::connected:
@@ -777,7 +808,7 @@ void stream::process_write_event(context* ctx, std::size_t size)
 // -    created event source is called first
 // -  o the implementation will only use write event source and will use size
 // -    data to determine the outcome of connect
-void stream::process_connect_event(context* ctx, std::size_t size)
+void stream::process_connecting_event(context* ctx, std::size_t size)
 {
   try
   {
@@ -789,7 +820,7 @@ void stream::process_connect_event(context* ctx, std::size_t size)
     if (size <= 2048)
   #endif
     {
-      throw exc::connection_failure();
+      throw exc::runtime_fault(error::errc::request_failed);
     }
 
     // connect succeeded - create reader context and start reader

@@ -44,7 +44,11 @@ enum class errc
   parsing_error = 9,
   concurrency_problem = 10,
   not_available = 11,
-  empty_object = 12
+  empty_object = 12,
+  request_aborted = 13,
+  request_rejected = 14,
+  destination_unreachable = 15,
+  request_failed = 16
 };
 
 struct library_category : std::error_category

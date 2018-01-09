@@ -58,6 +58,10 @@ poolmgr::~poolmgr()
   DestroyThreadpoolEnvironment(&m_environ);
 }
 
+void poolmgr::add_environ(PTP_CALLBACK_ENVIRON e_)
+{
+  SetThreadpoolCallbackPool(e_, m_pool);
+}
 // Use critical section to safely create thread pool - these are expected to be
 // pretty infrequent calls and critical section is okay for that
 // The deletion of the thread pool is handled via shared pointers owned by thread
@@ -77,7 +81,7 @@ poolmgr::ptr poolmgr::get_poolmgr()
 
 
 executor::executor(RunPolicy policy_)
-    : named("si.digiverse.ng.cool.runner")
+    : named("runner") // named("si.digiverse.ng.cool.runner")
     , m_work(nullptr)
     , m_fifo(nullptr)
     , m_pool(poolmgr::get_poolmgr())
