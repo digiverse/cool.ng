@@ -34,8 +34,8 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
-// #define DO_TRACE 0
-#define DO_TRACE 1
+#define DO_TRACE 0
+// #define DO_TRACE 1
 
 #if DO_TRACE == 1
 # define TRACE(a, b) std::cout << "---- [" << __LINE__ << "] " << a << ": " << b << "\n"

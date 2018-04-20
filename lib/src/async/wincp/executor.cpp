@@ -27,8 +27,8 @@
 #include "cool/ng/async/runner.h"
 #include "cool/ng/exception.h"
 
-// #define DO_TRACE 0
-#define DO_TRACE 1
+#define DO_TRACE 0
+// #define DO_TRACE 1
 
 #if DO_TRACE == 1
 #define TRACE(a, b) std::cout << "---- [" << __LINE__ << "] " << a << ": " << b << "\n"
@@ -142,8 +142,6 @@ executor::~executor()
 {
   TRACE(name(), "to delete executor " << this);
 
-  AcquireSRWLockExclusive(&m_lock);
-
   PTP_WORK expect = m_work.load();
   if (m_work.compare_exchange_strong(expect, invalid_work) && expect != nullptr)
   {
@@ -160,23 +158,16 @@ executor::~executor()
 
     while(GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 0))
     {
-    // NOTE: it is assumed that the non-empty context_stack will delete all its
-    // elements still left on the stack
-      // delete static_cast<cool::ng::async::detail::context_stack*>(static_cast<void*>(aux));
-      // delete static_cast<void*>(aux);
+      // NOTE: it is assumed that the non-empty context_stack will delete all its
+      // elements still left on the stack
 
-      // auto work = static_cast<cool::ng::async::detail::work *>(static_cast<void *>(aux));
-      // switch (work->type())
-      // {
-
-      // }
+      // CHECKME: is this enough?
+      delete static_cast<void*>(aux);
     }
 
     // now close the completion port
     CloseHandle(m_fifo);
   }
-
-  ReleaseSRWLockExclusive(&m_lock);
 
   TRACE(name(), "deleted");
 }
