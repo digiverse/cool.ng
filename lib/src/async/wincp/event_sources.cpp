@@ -22,8 +22,9 @@
  */
 #include <iostream>
 #include <stdint.h>
-#include <mutex>
+#include <condition_variable>
 #include <Cassert>
+#include <mutex>
 
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
@@ -33,7 +34,8 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
-#define DO_TRACE 0
+// #define DO_TRACE 0
+#define DO_TRACE 1
 
 #if DO_TRACE == 1
 # define TRACE(a, b) std::cout << "---- [" << __LINE__ << "] " << a << ": " << b << "\n"
@@ -74,7 +76,7 @@ timer::context::context(const timer::ptr& t_)
 timer::context::~context()
 { /* noop */ }
 
-void timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
+VOID CALLBACK timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
 {
   auto self = static_cast<context*>(ctx_);
   switch (self->m_timer->m_state)
@@ -168,8 +170,9 @@ void timer::stop()
 class exec_for_timer : public cool::ng::async::detail::event_context
 {
  public:
-  exec_for_timer(const std::weak_ptr<cb::timer>& cb_)
-      : m_handler(cb_)
+  exec_for_timer(PTP_CALLBACK_ENVIRON env, const std::weak_ptr<cb::timer>& cb_)
+    : m_handler(cb_)
+    , m_environ(env)
   { /* noop */ }
 
   void entry_point() override
@@ -179,8 +182,11 @@ class exec_for_timer : public cool::ng::async::detail::event_context
       cb->expired();
   }
 
+  void* environment() override { return m_environ; }
+
  private:
   std::weak_ptr<cb::timer> m_handler;
+  PTP_CALLBACK_ENVIRON m_environ;
 };
 
 void timer::expired()
@@ -189,7 +195,7 @@ void timer::expired()
   {
     auto r = m_executor.lock();
     if (r)
-      r->run(new exec_for_timer(m_callback));
+      r->run(new exec_for_timer(m_context->m_pool->get_environ(), m_callback));
   }
   catch (...)
   { /* noop */ }
@@ -266,6 +272,7 @@ server::server(const std::shared_ptr<async::impl::executor>& ex_
 
 server::~server()
 {
+  TRACE("server", "to delete server");
   if (m_handle != invalid_handle)
     closesocket(m_handle);
   if (m_client_handle != invalid_handle)
@@ -276,6 +283,7 @@ server::~server()
   }
   if (m_context != nullptr)
     delete m_context;
+  TRACE("server", "server deleted");
 }
 
 void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
@@ -511,7 +519,8 @@ void server::shutdown()
 class exec_for_accept : public cool::ng::async::detail::event_context
 {
  public:
-  exec_for_accept(const cb::server::weak_ptr& cb_
+  exec_for_accept(PTP_CALLBACK_ENVIRON env_
+                , const cb::server::weak_ptr& cb_
                 , handle h_
                 , const ip::host_container& addr_
                 , uint16_t port_)
@@ -519,6 +528,7 @@ class exec_for_accept : public cool::ng::async::detail::event_context
       , m_port(port_)
       , m_handle(h_)
       , m_handler(cb_)
+      , m_environ(env_)
   { /* noop */ }
 
   void entry_point() override
@@ -549,11 +559,14 @@ class exec_for_accept : public cool::ng::async::detail::event_context
     }
   }
 
- private:
+  void* environment() override { return m_environ; }
+
+private:
   ip::host_container   m_addr;
   int                  m_port;
   handle               m_handle;
   cb::server::weak_ptr m_handler;
+  PTP_CALLBACK_ENVIRON m_environ;
 };
 
 
@@ -642,7 +655,7 @@ void server::process_accept()
 
     auto aux = m_client_handle;
     m_client_handle = invalid_handle;
-    ctx = new exec_for_accept(m_handler, aux, addr, port);
+    ctx = new exec_for_accept(m_pool->get_environ(), m_handler, aux, addr, port);
 
     if (ctx != nullptr)
       r->run(ctx);
@@ -684,15 +697,32 @@ void server::install_handle(cool::ng::async::net::stream& s_, cool::ng::net::han
 class exec_for_io : public cool::ng::async::detail::event_context
 {
  public:
-  exec_for_io(const std::function<void()>& l_) : m_lambda(l_)
+  exec_for_io(PTP_CALLBACK_ENVIRON env, const std::function<void()>& l_)
+    : m_lambda(l_)
+    , m_environ(env)
   { /* noop */ }
 
-  void entry_point() override
-  {
-    m_lambda();
-  }
+  void* environment() override { return m_environ; }
+  void entry_point() override { m_lambda(); }
 
- private:
+ protected:
+  PTP_CALLBACK_ENVIRON m_environ;
+  std::function<void()> m_lambda;
+};
+
+class exec_for_cleanup : public cool::ng::async::detail::cleanup_context
+{
+ public:
+  exec_for_cleanup(PTP_CALLBACK_ENVIRON env, const std::function<void()>& l_)
+    : m_lambda(l_)
+    , m_environ(env)
+  { /* noop */ }
+
+  void* environment() override { return m_environ; }
+  void entry_point() override { m_lambda(); }
+
+ protected:
+  PTP_CALLBACK_ENVIRON m_environ;
   std::function<void()> m_lambda;
 };
 
@@ -706,7 +736,6 @@ stream::context::context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, vo
   , m_rd_is_mine(buf_ == nullptr)
   , m_wr_busy(false)
   , m_cleanup(nullptr)
-  , m_work(nullptr)
 {
   TRACE(s_->name(), "to create context");
   try
@@ -724,9 +753,10 @@ stream::context::context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, vo
     m_cleanup = CreateThreadpoolCleanupGroup();
     if (m_cleanup == nullptr)
       throw exc::threadpool_failure();
-    SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, context::on_cleanup);
+    // SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, context::on_cleanup);
+    SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, NULL);
 
-    TRACE(s_->name(), "context created");
+    TRACE(s_->name(), "context created, env=" << &m_environ);
   }
   catch (...)  // cleanup on exception
   {
@@ -758,9 +788,9 @@ void stream::context::set_handle(context::sptr* ctxptr, handle h_)
 
 stream::context::~context()
 {
-  TRACE(m_stream->name(),"to delete context");
-  if (m_handle != invalid_handle)
-    closesocket(m_handle);
+  TRACE(m_stream->name(), "to delete context");
+  // if (m_handle != invalid_handle)
+  //   closesocket(m_handle);
 
   if (m_cleanup != nullptr)
   {
@@ -771,10 +801,7 @@ stream::context::~context()
   if (m_rd_is_mine && m_rd_data != nullptr)
     delete [] static_cast<uint8_t*>(m_rd_data);
 
-  if (m_work != nullptr)
-    CloseThreadpoolWork(m_work);
-
-  TRACE(m_stream->name(),"context deleted");
+  TRACE(m_stream->name(), "context deleted");
 }
 
 bool stream::context::close_context(context::sptr* cp_)
@@ -782,18 +809,12 @@ bool stream::context::close_context(context::sptr* cp_)
   bool ret = m_stream->m_context.compare_exchange_strong(cp_, nullptr);
   if (ret)
   {
-    if (m_work != nullptr)
-    {
-      TRACE(m_stream->name(), "submitting work object to close context");
-      SubmitThreadpoolWork(m_work);
-    }
-    else
-    {
-      TRACE(m_stream->name(), "work is nullptr!");
-    }
+    TRACE(m_stream->name(), "submitting work object to close context");
+    m_stream->start_cleanup(cp_);
   }
   return ret;
 }
+
 void stream::context::on_event(
       PTP_CALLBACK_INSTANCE instance_
     , PVOID context_
@@ -802,25 +823,20 @@ void stream::context::on_event(
     , ULONG_PTR num_transferred_
     , PTP_IO io_)
 {
-
   assert(context_ != nullptr);   // context_ cannot be nullptr
 
   auto cp = static_cast<context::sptr*>(context_);
-  TRACE((*cp)->m_stream->name(), "context::on_event - result " << io_result_ << ", num_transferred " << num_transferred_ );
+  TRACE((*cp)->m_stream->name(), "context::on_event - result " << io_result_ << ", num_transferred " << num_transferred_);
   (*cp)->m_stream->process_event(cp, overlapped_, io_result_, num_transferred_);
 }
 
+// on_cleanup is called by CloseThreadpoolCleanupGroupMembers() for *each* member, not just once(!)
+// actual cleanup of m_context is performed after CloseThreadpoolCleanupGroupMembers() finishes
+// in start_cleanup()
 void stream::context::on_cleanup(void* context_, void* cleanup_)
 {
   auto cp = static_cast<context::sptr*>(cleanup_);
-  TRACE((*cp)->m_stream->name(), "context::on_cleanup called");
-  delete cp;
-}
-
-VOID CALLBACK stream::context::task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_)
-{
-  auto cp = static_cast<context::sptr*>(pv_);
-  CloseThreadpoolCleanupGroupMembers((*cp)->m_cleanup, true, cp);
+  TRACE((*cp)->m_stream->name(), "context::on_cleanup for " << context_);
 }
 
 stream::stream(const std::weak_ptr<async::impl::executor>& ex_
@@ -837,6 +853,7 @@ stream::stream(const std::weak_ptr<async::impl::executor>& ex_
 
 stream::~stream()
 {
+  shutdown();
   TRACE(name(), "now destroyed");
 }
 
@@ -895,10 +912,6 @@ void stream::set_handle(handle h_)
       throw exc::invalid_state();
     }
 
-    (*cp)->m_work = CreateThreadpoolWork(context::task_executor, cp, (*cp)->m_stream->m_pool->get_environ());
-    if ((*cp)->m_work == nullptr)
-      throw exception::threadpool_failure();
-
     start_read_source(cp);
     TRACE(name(), "set_handle completed");
   }
@@ -930,10 +943,6 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
       delete cp;
       throw exc::invalid_state();
     }
-
-    (*cp)->m_work = CreateThreadpoolWork(stream::context::task_executor, cp, m_pool->get_environ());
-    if ((*cp)->m_work == nullptr)
-      throw exc::threadpool_failure();
 
     auto type = AF_INET6;
     if (addr_.version() == ip::version::ipv4)
@@ -1022,6 +1031,43 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
   }
 }
 
+void stream::start_cleanup(context::sptr *cp)
+{
+  if (!(*cp)->m_cleanup)
+    return;
+
+  auto ex = m_executor.lock();
+  if (!ex)
+    return;
+
+  // signal the runner/poolmgr to clean up the stream
+  std::atomic<bool> finished{false};
+  std::condition_variable cv;
+  std::mutex mutex;
+  context::wptr wself = *cp;
+  auto exe_ctx = new exec_for_cleanup(&(*cp)->m_environ,
+    [wself, cp, &mutex, &cv, &finished]()
+    {
+      auto self = wself.lock();
+      if (self)
+        CloseThreadpoolCleanupGroupMembers((*cp)->m_cleanup, TRUE, cp);
+
+      std::unique_lock<std::mutex> lock(mutex);
+      finished = true;
+      cv.notify_one();
+    }
+  );
+
+  ex->run(exe_ctx);
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    while (!finished)
+      cv.wait(lock);
+
+    delete cp;
+  }
+}
+
 // ---
 // shutdown and disconnect are similar when in connected state. But shutdown
 // has to handle other states, too
@@ -1036,22 +1082,8 @@ void stream::disconnect()
       return;   // already disconnecting or disconnected
 
     case state::connecting:
-    {
       TRACE(name(), "disconnect called in state 'connecting'");
-      auto cp = m_context.load();
-      if (cp != nullptr)
-      {
-        auto h = (*cp)->m_handle;
-        (*cp)->m_handle = invalid_handle;
-        // that will trigger some event with error code, but remain in
-        // connecting state for proper cleanup
-        if (h != invalid_handle)
-          closesocket(h);
-      }
-      else
-        TRACE("(noname)", "ctx is nullptr");
-      return;
-    }
+      break;
 
     case state::connected:
       TRACE(name(), "disconnect called in state 'connected'");
@@ -1065,8 +1097,20 @@ void stream::disconnect()
     return;
   }
 
-  CloseThreadpoolCleanupGroupMembers((*cp)->m_cleanup, true, cp);
-  TRACE(name(), "disconnect completed");
+  // close the socket so that IOCP stops
+  auto h = (*cp)->m_handle;
+  if (h != invalid_handle)
+  {
+    closesocket(h);
+  }
+
+  // cancel all pending IO callbacks + prevent further ones
+  WaitForThreadpoolIoCallbacks((*cp)->m_tpio, TRUE);
+  // CancelThreadpoolIo((*cp)->m_tpio);
+
+
+  TRACE(name(), "submitting work object to close context");
+  start_cleanup(cp);
 }
 
 void stream::shutdown()
@@ -1096,14 +1140,14 @@ void stream::write(const void* data, std::size_t size)
 
 void stream::start_read_source(context::sptr* cp)
 {
-  TRACE((*cp)->m_stream->name(), "starting read source");
-
   memset(&(*cp)->m_rd_overlapped, 0, sizeof((*cp)->m_rd_overlapped));
+  DWORD size = static_cast<DWORD>((*cp)->m_rd_size);
+  TRACE((*cp)->m_stream->name(), "starting read source: " << size);
 
   StartThreadpoolIo((*cp)->m_tpio);
   if (!ReadFile(reinterpret_cast<HANDLE>((*cp)->m_handle)
     , (*cp)->m_rd_data
-    , static_cast<DWORD>((*cp)->m_rd_size)
+    , size
     , nullptr
     , &(*cp)->m_rd_overlapped))
   {
@@ -1121,12 +1165,11 @@ void stream::start_read_source(context::sptr* cp)
           // consequently remove itself, too.
           if (m_context.compare_exchange_strong(cp, nullptr))
             delete cp;
-          break;;
+          break;
         }
 
         default:
-          if (m_context.compare_exchange_strong(cp, nullptr))
-            CloseThreadpoolCleanupGroupMembers((*cp)->m_cleanup, true, cp);
+          (*cp)->close_context(cp);
           break;
       }
     }
@@ -1135,7 +1178,6 @@ void stream::start_read_source(context::sptr* cp)
 
 void stream::start_write_source(context::sptr* cp)
 {
-  TRACE((*cp)->m_stream->name(), "starting write source");
   memset(&(*cp)->m_wr_overlapped, 0, sizeof((*cp)->m_wr_overlapped));
 
   // note really necessary. still ... internal sizes are std::size_t (64 bits)
@@ -1143,6 +1185,7 @@ void stream::start_write_source(context::sptr* cp)
   // wanted to do write > 2G
   std::size_t full_size = (*cp)->m_wr_size - (*cp)->m_wr_pos;
   DWORD size = full_size > INT32_MAX ? INT32_MAX : static_cast<DWORD>(full_size);
+  TRACE((*cp)->m_stream->name(), "starting write source: " << size);
 
   StartThreadpoolIo((*cp)->m_tpio);
   if (!WriteFile(
@@ -1350,7 +1393,7 @@ void stream::process_event_connecting(context::sptr* cp_, ULONG_PTR num_transfer
         {
           auto handler = m_handler;
           context::wptr wself = *cp_;
-          auto exe_ctx = new exec_for_io(
+          auto exe_ctx = new exec_for_io(&(*cp_)->m_environ,
             [handler, wself, cp_]()
             {
               auto cb = handler.lock();
@@ -1372,17 +1415,17 @@ void stream::process_event_connecting(context::sptr* cp_, ULONG_PTR num_transfer
       }  // !!!!NOTE: fall through if !ex, but not if state wasn't 'connecting'
 
     default:
-      // NOTE: CloseThreadpoolCleanuoGroupMembers must not be called from
+      // NOTE: CloseThreadpoolCleanupGroupMembers must not be called from
       //       the ThreadpoolIo callback as it would block waiting on
       //       this callback to complete. Hence call to close_context()
       //       that will send work to do that to thread pool
-      if ((*cp_)->close_context(cp_))
+      // if ((*cp_)->close_context(cp_))
       {
         if (ex)
         {
           auto handler = m_handler;
-          auto exe_ctx = new exec_for_io(
-            [handler, io_result_, cp_]()
+          auto exe_ctx = new exec_for_io(m_pool->get_environ(),
+            [handler, io_result_]()
             {
               auto cb = handler.lock();
               if (cb) try { cb->on_event(detail::oob_event::failure, translate_error(io_result_)); } catch (...) { }
@@ -1402,14 +1445,14 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
   auto ex = m_executor.lock();
   if (!ex)  //
   {
-    // this is serious stuff, need to disconnect the stream and ceased work
-    (*cp_)->close_context(cp_);
+    // this is serious stuff, need to disconnect the stream and cease work
+    // (*cp_)->close_context(cp_);
     return;
   }
 
   if  (io_result_ != NO_ERROR || num_transferred_ == 0)
   {
-    (*cp_)->close_context(cp_);
+    // (*cp_)->close_context(cp_);
 
     exec_for_io* exe_ctx;
     auto handler = m_handler;
@@ -1419,7 +1462,7 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
       case NO_ERROR:
       case ERROR_NETNAME_DELETED:
       case ERROR_CONNECTION_ABORTED:
-        exe_ctx = new exec_for_io(
+        exe_ctx = new exec_for_io(m_pool->get_environ(),
           [handler] ()
           {
             auto cb = handler.lock();
@@ -1429,7 +1472,7 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
         break;
 
       default:
-        exe_ctx = new exec_for_io(
+        exe_ctx = new exec_for_io(m_pool->get_environ(),
           [handler, io_result_] ()
           {
             auto cb = handler.lock();
@@ -1447,7 +1490,7 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
   auto handler = m_handler;
   auto capture_data = (*cp_)->m_rd_data;
   context::wptr wctx = *cp_;
-  auto exe_ctx = new exec_for_io(
+  auto exe_ctx = new exec_for_io(&(*cp_)->m_environ,
     [handler, capture_data, num_transferred_, wctx, cp_]()
     {
       void* data = capture_data;
@@ -1460,15 +1503,22 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
       if (!cb)
       {
         // TODO: this is serious stuff, need to close the stream
+        return;
       }
       try { cb->on_read(data, size); } catch (...) { }
 
       // check if user changed the buffere and restart read operation
-      if (data != ctx->m_rd_data || size != ctx->m_rd_size)
+      if (data != ctx->m_rd_data || size > ctx->m_rd_size)
       {
         // release current buffer if allocated by me
         if (ctx->m_rd_is_mine)
+        {
+          // if "data" points to our internal buffer, make sure it is invalidated,
+          // so that it will be properly reallocated
+          if (data == ctx->m_rd_data)
+            data = nullptr;
           delete [] static_cast<uint8_t*>(ctx->m_rd_data);
+        }
 
         // there are some special values that requeire different considerations
         //  - if size is zero revert to bufffer specified at the creation
@@ -1519,7 +1569,7 @@ void stream::process_event_write(context::sptr* cp_, ULONG_PTR num_transferred_,
       auto handler = m_handler;
       auto data = (*cp_)->m_wr_data;
       auto size = (*cp_)->m_wr_size;
-      auto exe_ctx = new exec_for_io(
+      auto exe_ctx = new exec_for_io(&(*cp_)->m_environ,
         [handler, data, size]()
         {
           auto cb = handler.lock();

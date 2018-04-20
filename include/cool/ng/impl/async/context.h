@@ -36,7 +36,7 @@ class runner;
 namespace detail {
 
 enum class work_type {
-  task_work, event_work
+  task_work, event_work, cleanup_work
 };
 
 class work
@@ -54,7 +54,18 @@ class event_context : public work
     return work_type::event_work;
   }
   virtual void entry_point() = 0;
+  virtual void* environment() = 0;
 };
+
+class cleanup_context : public event_context
+{
+public:
+  work_type type() const override
+  {
+    return work_type::cleanup_work;
+  }
+};
+
 // ---- execution context interface
 class context
 {
