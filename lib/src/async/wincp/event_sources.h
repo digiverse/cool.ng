@@ -203,7 +203,6 @@ class stream : public detail::itf::connected_writable
     context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, void* buf, std::size_t sz_);
     ~context();
     void set_handle(context::sptr* ctxptr, cool::ng::net::handle h_);
-    bool close_context(context::sptr* cp_);
 
     // threadpool callback from completion port
     static void CALLBACK on_event(

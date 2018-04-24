@@ -824,17 +824,6 @@ stream::context::~context()
   TRACE(m_stream->name(), "context deleted");
 }
 
-bool stream::context::close_context(context::sptr* cp_)
-{
-  bool ret = m_stream->m_context.compare_exchange_strong(cp_, nullptr);
-  if (ret)
-  {
-    TRACE(m_stream->name(), "submitting work object to close context");
-    m_stream->start_cleanup(cp_);
-  }
-  return ret;
-}
-
 void stream::context::on_event(
       PTP_CALLBACK_INSTANCE instance_
     , PVOID context_
@@ -1451,8 +1440,8 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
   auto ex = m_executor.lock();
   if (!ex)  //
   {
-    // this is serious stuff, need to disconnect the stream and cease work
-    // (*cp_)->close_context(cp_);
+    // CHECKME: what do we do here? executor is down, so the cleanup work cannot
+    // be submitted... it's also possible it already had been submitted (via disconnect())
     return;
   }
 
@@ -1471,7 +1460,6 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
         break;
     }
 
-    // start_cleanup(cp_);
     return;
   }
 
