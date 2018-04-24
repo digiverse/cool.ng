@@ -284,6 +284,7 @@ class stream : public detail::itf::connected_writable
   state get_state() const;
 
   void start_cleanup(context::sptr* cp);
+  void start_cleanup_from_io(context::sptr* cp);
 
   void report_error(const detail::oob_event& event, const std::error_code& error_code);
 

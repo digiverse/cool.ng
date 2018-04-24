@@ -1040,7 +1040,8 @@ void stream::start_cleanup(context::sptr *cp)
   if (!ex)
     return;
 
-  // signal the runner/poolmgr to clean up the stream
+  // signal the runner/poolmgr to clean up the stream,
+  // wait until threadpool cleanup is finished, then cleanup the context
   std::atomic<bool> finished{false};
   std::condition_variable cv;
   std::mutex mutex;
@@ -1066,6 +1067,31 @@ void stream::start_cleanup(context::sptr *cp)
 
     delete cp;
   }
+}
+
+void stream::start_cleanup_from_io(context::sptr *cp)
+{
+  if (!(*cp)->m_cleanup)
+    return;
+
+  auto ex = m_executor.lock();
+  if (!ex)
+    return;
+
+  // signal the runner/poolmgr to clean up the stream, don't wait for the result
+  context::wptr wself = *cp;
+  auto exe_ctx = new exec_for_cleanup(&(*cp)->m_environ,
+    [wself, cp]()
+    {
+      auto self = wself.lock();
+      if (self)
+      {
+        CloseThreadpoolCleanupGroupMembers((*cp)->m_cleanup, TRUE, cp);
+        delete cp;
+      }
+    }
+  );
+  ex->run(exe_ctx);
 }
 
 void stream::report_error(const detail::oob_event& event, const std::error_code& error_code)
@@ -1196,7 +1222,7 @@ void stream::start_read_source(context::sptr* cp)
           if (m_context.compare_exchange_strong(cp, nullptr))
           {
             report_error(detail::oob_event::failure, translate_error(err));
-            start_cleanup(cp);
+            start_cleanup_from_io(cp);
           }
           break;
       }
@@ -1427,7 +1453,7 @@ void stream::process_event_connecting(context::sptr* cp_, ULONG_PTR num_transfer
       if (m_context.compare_exchange_strong(cp_, nullptr))
       {
         report_error(detail::oob_event::failure, translate_error(io_result_));
-        start_cleanup(cp_);
+        start_cleanup_from_io(cp_);
       }
       break;
   }
