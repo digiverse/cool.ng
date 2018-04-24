@@ -690,6 +690,27 @@ void server::install_handle(cool::ng::async::net::stream& s_, cool::ng::net::han
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 
+std::error_code translate_error(ULONG result)
+{
+  std::error_code err;
+
+  switch (result)
+  {
+    case ERROR_OPERATION_ABORTED:
+      return error::make_error_code(error::errc::request_aborted);
+
+    case ERROR_HOST_UNREACHABLE:
+    case ERROR_NETWORK_UNREACHABLE:
+    case ERROR_CONNECTION_REFUSED:
+    case ERROR_PORT_UNREACHABLE:
+      return error::make_error_code(error::errc::request_failed);
+    default:
+      break;
+  }
+  return std::error_code(result, std::system_category());
+}
+
+
 // ---
 // Execution context for a task submitterd to specified async::executor. This
 // task will do actual callback into the user code
@@ -753,7 +774,6 @@ stream::context::context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, vo
     m_cleanup = CreateThreadpoolCleanupGroup();
     if (m_cleanup == nullptr)
       throw exc::threadpool_failure();
-    // SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, context::on_cleanup);
     SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, NULL);
 
     TRACE(s_->name(), "context created, env=" << &m_environ);
@@ -828,15 +848,6 @@ void stream::context::on_event(
   auto cp = static_cast<context::sptr*>(context_);
   TRACE((*cp)->m_stream->name(), "context::on_event - result " << io_result_ << ", num_transferred " << num_transferred_);
   (*cp)->m_stream->process_event(cp, overlapped_, io_result_, num_transferred_);
-}
-
-// on_cleanup is called by CloseThreadpoolCleanupGroupMembers() for *each* member, not just once(!)
-// actual cleanup of m_context is performed after CloseThreadpoolCleanupGroupMembers() finishes
-// in start_cleanup()
-void stream::context::on_cleanup(void* context_, void* cleanup_)
-{
-  auto cp = static_cast<context::sptr*>(cleanup_);
-  TRACE((*cp)->m_stream->name(), "context::on_cleanup for " << context_);
 }
 
 stream::stream(const std::weak_ptr<async::impl::executor>& ex_
@@ -1074,6 +1085,8 @@ void stream::start_cleanup(context::sptr *cp)
 
 void stream::disconnect()
 {
+  bool is_connecting = false;
+
   switch (set_state(state::connected, state::disconnecting))
   {
     case state::disconnected:
@@ -1083,6 +1096,7 @@ void stream::disconnect()
 
     case state::connecting:
       TRACE(name(), "disconnect called in state 'connecting'");
+      is_connecting = true;
       break;
 
     case state::connected:
@@ -1102,6 +1116,24 @@ void stream::disconnect()
   if (h != invalid_handle)
   {
     closesocket(h);
+  }
+
+  // disconnect() while connect is pending -> report failure
+  if (is_connecting)
+  {
+    auto ex = m_executor.lock();
+    if (ex)
+    {
+      auto handler = m_handler;
+      auto exe_ctx = new exec_for_io(m_pool->get_environ(),
+        [handler]()
+        {
+          auto cb = handler.lock();
+          if (cb) try { cb->on_event(detail::oob_event::failure, error::make_error_code(error::errc::request_aborted)); } catch (...) { }
+        }
+      );
+      ex->run(exe_ctx);
+    }
   }
 
   // cancel all pending IO callbacks + prevent further ones
@@ -1169,7 +1201,24 @@ void stream::start_read_source(context::sptr* cp)
         }
 
         default:
-          (*cp)->close_context(cp);
+          if (m_context.compare_exchange_strong(cp, nullptr))
+          {
+            auto ex = m_executor.lock();
+            if (ex)
+            {
+              auto handler = m_handler;
+              auto exe_ctx = new exec_for_io(m_pool->get_environ(),
+                [handler, err]()
+                {
+                  auto cb = handler.lock();
+                  if (cb) try { cb->on_event(detail::oob_event::failure, translate_error(err)); } catch (...) { }
+                }
+              );
+              ex->run(exe_ctx);
+            }
+
+            start_cleanup(cp);
+          }
           break;
       }
     }
@@ -1207,25 +1256,6 @@ void stream::start_write_source(context::sptr* cp)
 }
 
 
-std::error_code translate_error(ULONG result)
-{
-  std::error_code err;
-
-  switch (result)
-  {
-    case ERROR_OPERATION_ABORTED:
-      return error::make_error_code(error::errc::request_aborted);
-
-    case ERROR_HOST_UNREACHABLE:
-    case ERROR_NETWORK_UNREACHABLE:
-    case ERROR_CONNECTION_REFUSED:
-    case ERROR_PORT_UNREACHABLE:
-      return error::make_error_code(error::errc::request_failed);
-    default:
-      break;
-  }
-  return std::error_code(result, std::system_category());
-}
 #if 0
 void stream::process_connecting_event(ULONG io_result_)
 {
@@ -1415,11 +1445,7 @@ void stream::process_event_connecting(context::sptr* cp_, ULONG_PTR num_transfer
       }  // !!!!NOTE: fall through if !ex, but not if state wasn't 'connecting'
 
     default:
-      // NOTE: CloseThreadpoolCleanupGroupMembers must not be called from
-      //       the ThreadpoolIo callback as it would block waiting on
-      //       this callback to complete. Hence call to close_context()
-      //       that will send work to do that to thread pool
-      // if ((*cp_)->close_context(cp_))
+      if (m_context.compare_exchange_strong(cp_, nullptr))
       {
         if (ex)
         {
@@ -1433,6 +1459,8 @@ void stream::process_event_connecting(context::sptr* cp_, ULONG_PTR num_transfer
           );
           ex->run(exe_ctx);
         }
+
+        start_cleanup(cp_);
       }
       break;
   }

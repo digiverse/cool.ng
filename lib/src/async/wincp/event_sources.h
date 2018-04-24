@@ -214,9 +214,6 @@ class stream : public detail::itf::connected_writable
       , ULONG_PTR num_transferred_
       , PTP_IO io_);
 
-    // callback from CloseThreadpoolCleanupGroupMembers
-    static void CALLBACK on_cleanup(void* context_, void* cleanup_);
-
     stream::ptr           m_stream;
     cool::ng::net::handle m_handle;
     std::atomic<state>    m_state;
