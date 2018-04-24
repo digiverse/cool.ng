@@ -286,6 +286,9 @@ class stream : public detail::itf::connected_writable
 
   void start_cleanup(context::sptr* cp);
 
+  void report_error(const detail::oob_event& event, const std::error_code& error_code);
+
+
 private:
   std::weak_ptr<async::impl::executor> m_executor;      // to get the diapatch queue
   async::impl::poolmgr::ptr            m_pool;

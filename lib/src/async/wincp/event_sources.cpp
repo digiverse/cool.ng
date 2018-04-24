@@ -1079,6 +1079,23 @@ void stream::start_cleanup(context::sptr *cp)
   }
 }
 
+void stream::report_error(const detail::oob_event& event, const std::error_code& error_code)
+{
+  auto ex = m_executor.lock();
+  if (!ex)
+    return;
+
+  auto handler = m_handler;
+  auto exe_ctx = new exec_for_io(m_pool->get_environ(),
+    [handler, event, error_code]()
+    {
+      auto cb = handler.lock();
+      if (cb) try { cb->on_event(event, error_code); } catch (...) { }
+    }
+  );
+  ex->run(exe_ctx);
+}
+
 // ---
 // shutdown and disconnect are similar when in connected state. But shutdown
 // has to handle other states, too
@@ -1120,21 +1137,7 @@ void stream::disconnect()
 
   // disconnect() while connect is pending -> report failure
   if (is_connecting)
-  {
-    auto ex = m_executor.lock();
-    if (ex)
-    {
-      auto handler = m_handler;
-      auto exe_ctx = new exec_for_io(m_pool->get_environ(),
-        [handler]()
-        {
-          auto cb = handler.lock();
-          if (cb) try { cb->on_event(detail::oob_event::failure, error::make_error_code(error::errc::request_aborted)); } catch (...) { }
-        }
-      );
-      ex->run(exe_ctx);
-    }
-  }
+    report_error(detail::oob_event::failure, error::make_error_code(error::errc::request_aborted));
 
   // cancel all pending IO callbacks + prevent further ones
   WaitForThreadpoolIoCallbacks((*cp)->m_tpio, TRUE);
@@ -1203,20 +1206,7 @@ void stream::start_read_source(context::sptr* cp)
         default:
           if (m_context.compare_exchange_strong(cp, nullptr))
           {
-            auto ex = m_executor.lock();
-            if (ex)
-            {
-              auto handler = m_handler;
-              auto exe_ctx = new exec_for_io(m_pool->get_environ(),
-                [handler, err]()
-                {
-                  auto cb = handler.lock();
-                  if (cb) try { cb->on_event(detail::oob_event::failure, translate_error(err)); } catch (...) { }
-                }
-              );
-              ex->run(exe_ctx);
-            }
-
+            report_error(detail::oob_event::failure, translate_error(err));
             start_cleanup(cp);
           }
           break;
@@ -1447,19 +1437,7 @@ void stream::process_event_connecting(context::sptr* cp_, ULONG_PTR num_transfer
     default:
       if (m_context.compare_exchange_strong(cp_, nullptr))
       {
-        if (ex)
-        {
-          auto handler = m_handler;
-          auto exe_ctx = new exec_for_io(m_pool->get_environ(),
-            [handler, io_result_]()
-            {
-              auto cb = handler.lock();
-              if (cb) try { cb->on_event(detail::oob_event::failure, translate_error(io_result_)); } catch (...) { }
-            }
-          );
-          ex->run(exe_ctx);
-        }
-
+        report_error(detail::oob_event::failure, translate_error(io_result_));
         start_cleanup(cp_);
       }
       break;
@@ -1478,39 +1456,22 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
     return;
   }
 
-  if  (io_result_ != NO_ERROR || num_transferred_ == 0)
+  if (io_result_ != NO_ERROR || num_transferred_ == 0)
   {
-    // (*cp_)->close_context(cp_);
-
-    exec_for_io* exe_ctx;
-    auto handler = m_handler;
-
     switch (io_result_)
     {
       case NO_ERROR:
       case ERROR_NETNAME_DELETED:
       case ERROR_CONNECTION_ABORTED:
-        exe_ctx = new exec_for_io(m_pool->get_environ(),
-          [handler] ()
-          {
-            auto cb = handler.lock();
-            if (cb) try { cb->on_event(detail::oob_event::disconnect, no_error()); } catch (...) { }
-          }
-        );
+        report_error(detail::oob_event::disconnect, no_error());
         break;
 
       default:
-        exe_ctx = new exec_for_io(m_pool->get_environ(),
-          [handler, io_result_] ()
-          {
-            auto cb = handler.lock();
-            if (cb) try { cb->on_event(detail::oob_event::disconnect, std::error_code(io_result_, std::system_category())); } catch (...) { }
-          }
-        );
+        report_error(detail::oob_event::disconnect, std::error_code(io_result_, std::system_category()));
         break;
     }
 
-    ex->run(exe_ctx);
+    // start_cleanup(cp_);
     return;
   }
 
