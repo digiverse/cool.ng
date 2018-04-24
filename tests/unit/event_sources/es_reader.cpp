@@ -652,7 +652,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
             {
               srv_written = true;
             }
-          , [&srv_connected] (const std::shared_ptr<test_runner>&, oob_event evt, const std::error_code& e)
+          , [&srv_connected, &srv_stream] (const std::shared_ptr<test_runner>&, oob_event evt, const std::error_code& e)
             {
               switch (evt)
               {
@@ -662,6 +662,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
 
                 case oob_event::disconnect:
                   srv_connected = false;
+                  srv_stream = async::net::stream();
                   break;
 
                 default:
@@ -692,7 +693,7 @@ BOOST_AUTO_TEST_CASE(read_write_test_1)
           }
         , [&clt_written] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
           {
-              clt_written = true;;
+            clt_written = true;
           }
         , [&client_connected] (const std::shared_ptr<test_runner>& r, oob_event evt, const std::error_code& e)
           {
@@ -1194,7 +1195,7 @@ BOOST_AUTO_TEST_CASE(long_connect_interrupted)
     rep_fail = false;
 
 //std::cout << "**** about to connect first time \n";
-    clt_stream->connect(ipv4::host("94.103.67.4"), 12345);
+    clt_stream->connect(ipv4::host("10.17.0.0"), 12345);
     spin_wait(100, [] () { return false; });     // wait 100ms
     BOOST_CHECK_EQUAL(false, rep_conn.load());
     BOOST_CHECK_EQUAL(false, rep_disconn.load());
@@ -1218,7 +1219,7 @@ BOOST_AUTO_TEST_CASE(long_connect_interrupted)
     // second attempt will destroy stream - no callback expected as user callback
     // will no longer exist
 //std::cout << "**** about to connect second time \n";
-    clt_stream->connect(ipv4::host("94.103.67.4"), 12345);
+    clt_stream->connect(ipv4::host("10.17.0.0"), 12345);
     spin_wait(100, [] () { return false; });
     BOOST_CHECK_EQUAL(false, rep_conn.load());
     BOOST_CHECK_EQUAL(false, rep_disconn.load());
