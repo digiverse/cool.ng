@@ -78,6 +78,9 @@ timer::context::~context()
 
 VOID CALLBACK timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
 {
+  if (ctx_ == nullptr)
+    return;
+
   auto self = static_cast<context*>(ctx_);
   switch (self->m_timer->m_state)
   {

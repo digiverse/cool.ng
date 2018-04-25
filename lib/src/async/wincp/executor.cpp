@@ -172,9 +172,9 @@ executor::~executor()
   TRACE(name(), "deleted");
 }
 
-VOID CALLBACK executor::task_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_)
+VOID CALLBACK executor::event_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_)
 {
-  TRACE("executor", "task_cb for work: " << work_);
+  TRACE("executor", "event_cb for work: " << work_);
   auto event = static_cast<cool::ng::async::detail::event_context*>(static_cast<void *>(pv_));
   try { event->entry_point(); } catch (...) { /* noop */ }
   delete event;
@@ -213,13 +213,16 @@ void executor::task_executor(PTP_WORK w_)
   DWORD        cmd;
   ULONG_PTR    key;
 
-  if (!GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 0))
+  if (!GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 100))
   {
     PTP_WORK expect = nullptr;
     // somebody else must have created new work or, more likely, invalid_work has
     // been set to signal end of execution
     if (!m_work.compare_exchange_strong(expect, w_))
+    {
+      WaitForThreadpoolWorkCallbacks(w_, FALSE);
       CloseThreadpoolWork(w_);
+    }
     return;
   }
 
@@ -242,7 +245,7 @@ void executor::task_executor(PTP_WORK w_)
         return;
       }
 
-      PTP_WORK w = CreateThreadpoolWork(task_cb, event, static_cast<PTP_CALLBACK_ENVIRON>(env));
+      PTP_WORK w = CreateThreadpoolWork(event_cb, event, static_cast<PTP_CALLBACK_ENVIRON>(env));
       TRACE(name(), "event[" << env << "]: " << w);
       SubmitThreadpoolWork(w);
 

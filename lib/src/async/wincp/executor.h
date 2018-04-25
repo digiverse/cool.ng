@@ -74,7 +74,7 @@ class executor : public ::cool::ng::util::named
  private:
   static VOID CALLBACK task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
   void task_executor(PTP_WORK w_);
-  static VOID CALLBACK task_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
+  static VOID CALLBACK event_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
   static VOID CALLBACK cleanup_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
 
  private:
