@@ -268,11 +268,7 @@ BOOST_AUTO_TEST_CASE(many_stacks)
 #if TEST4==1
 BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
 {
-#if defined(WINDOWS_TARGET)
-  const int NUM_TASKS = 10000;
-#else
   const int NUM_TASKS = 100000;
-#endif
   const int NUM_THREADS = 10;
 
   auto runner = std::make_shared<cool::ng::async::runner>();

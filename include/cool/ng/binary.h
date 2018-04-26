@@ -102,6 +102,7 @@ template <std::size_t Size> class binary
     }
     return *this;
   }
+#if 0
   /**
    * Returns reference to the byte at the specified index.
    *
@@ -124,6 +125,7 @@ template <std::size_t Size> class binary
       throw exception::out_of_range();
     return m_data[index];
   }
+#endif
   /**
    * Returns raw pointer to the array of bytes of this binary buffer.
    */

@@ -100,11 +100,8 @@ void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
 
 
 #if 1
-// Just creates and destroys server to check that everything completes
-// gracefully.
 BOOST_AUTO_TEST_CASE(basic)
 {
-
   auto r1 = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
 
@@ -137,7 +134,7 @@ BOOST_AUTO_TEST_CASE(basic)
 
     BOOST_CHECK_EQUAL(3, r1->counter());
   }
-  std::this_thread::sleep_for(ms(100)); // give time for cleanup
+  std::this_thread::sleep_for(ms(200)); // give time for cleanup
 }
 #endif
 

@@ -29,10 +29,13 @@
 
 #include <atomic>
 #include <memory>
+#include <unordered_set>
+
 #include "cool/ng/bases.h"
 #include "cool/ng/async/runner.h"
 #include "cool/ng/impl/async/context.h"
 #include "critical_section.h"
+
 
 namespace cool { namespace ng { namespace async { namespace impl {
 
@@ -71,6 +74,8 @@ class executor : public ::cool::ng::util::named
  private:
   static VOID CALLBACK task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
   void task_executor(PTP_WORK w_);
+  static VOID CALLBACK event_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
+  static VOID CALLBACK cleanup_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
 
  private:
   std::atomic<PTP_WORK> m_work;
@@ -79,6 +84,9 @@ class executor : public ::cool::ng::util::named
 
   std::atomic<bool> m_work_in_progress;
   std::atomic<bool> m_active;
+
+  SRWLOCK m_lock;
+  std::unordered_set<void*> m_cleanup_environments;
 };
 
 } } } }// namespace

@@ -192,7 +192,7 @@ namespace ipv6 {
 
 bool is_assigned(list_t const list[], std::size_t size, const ip::address& addr)
 {
-  for (int i = 0; i < size; ++i)
+  for (size_t i = 0; i < size; ++i)
   {
     switch (static_cast<list_t::value_t>(list[i]).kind())
     {

@@ -63,7 +63,8 @@ class timer : public cool::ng::util::named
     context(const timer::ptr& s_);
     ~context();
 
-    static void on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_);
+    static void CALLBACK on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_);
+    
 
     timer::ptr                m_timer;
     async::impl::poolmgr::ptr m_pool;
@@ -202,7 +203,6 @@ class stream : public detail::itf::connected_writable
     context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, void* buf, std::size_t sz_);
     ~context();
     void set_handle(context::sptr* ctxptr, cool::ng::net::handle h_);
-    bool close_context(context::sptr* cp_);
 
     // threadpool callback from completion port
     static void CALLBACK on_event(
@@ -212,11 +212,6 @@ class stream : public detail::itf::connected_writable
       , ULONG io_result_
       , ULONG_PTR num_transferred_
       , PTP_IO io_);
-
-    // callback from CloseThreadpoolCleanupGroupMembers
-    static void CALLBACK on_cleanup(void* context_, void* cleanup_);
-    // work executor for closing cleanup group members
-    static VOID CALLBACK task_executor(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_);
 
     stream::ptr           m_stream;
     cool::ng::net::handle m_handle;
@@ -243,9 +238,6 @@ class stream : public detail::itf::connected_writable
     // threadpool stuff
     TP_CALLBACK_ENVIRON m_environ;
     PTP_CLEANUP_GROUP   m_cleanup;
-
-    // need own work object to close cleanup group from callback
-    PTP_WORK            m_work;
   };
 
  public:
@@ -291,11 +283,17 @@ class stream : public detail::itf::connected_writable
   state set_state(state e_, state s_);
   state get_state() const;
 
- private:
-  std::weak_ptr<async::impl::executor> m_executor; // to get the diapatch queue
+  void start_cleanup(context::sptr* cp);
+  void start_cleanup_from_io(context::sptr* cp);
+
+  void report_error(const detail::oob_event& event, const std::error_code& error_code);
+
+
+private:
+  std::weak_ptr<async::impl::executor> m_executor;      // to get the diapatch queue
   async::impl::poolmgr::ptr            m_pool;
-  cb::stream::weak_ptr                 m_handler;  // handler for user events
-  std::atomic<context::sptr*>          m_context;  // threadpool I/O context
+  cb::stream::weak_ptr                 m_handler;       // handler for user events
+  std::atomic<context::sptr*>          m_context;       // threadpool I/O context
 
   // Win32 weirdness support
   LPFN_CONNECTEX                       m_connect_ex;
@@ -303,7 +301,6 @@ class stream : public detail::itf::connected_writable
   // reader part - original parameters
   std::size_t                          m_rd_size;
   void*                                m_rd_data;
-
 };
 
 } } } } } // namespace

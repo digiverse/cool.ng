@@ -23,8 +23,18 @@
 #include "executor.h"
 
 #include <mutex>
+#include <iostream>
 #include "cool/ng/async/runner.h"
 #include "cool/ng/exception.h"
+
+#define DO_TRACE 0
+// #define DO_TRACE 1
+
+#if DO_TRACE == 1
+#define TRACE(a, b) std::cout << "---- [" << __LINE__ << "] " << a << ": " << b << "\n"
+#else
+#define TRACE(a, b)
+#endif
 
 namespace cool { namespace ng { namespace async { namespace impl {
 
@@ -48,18 +58,25 @@ poolmgr::poolmgr() : m_pool(nullptr)
 
   // Associate the callback environment with our thread pool.
   SetThreadpoolCallbackPool(&m_environ, m_pool);
+
+  TRACE("poolmgr", "this=" << this << ", env=" << &m_environ);
 }
 
 poolmgr::~poolmgr()
 {
+  TRACE("poolmgr", "to delete poolmgr " << this);
+
   if (m_pool != nullptr)
     CloseThreadpool(m_pool);
 
   DestroyThreadpoolEnvironment(&m_environ);
+
+  TRACE("poolmgr", "deleted");
 }
 
 void poolmgr::add_environ(PTP_CALLBACK_ENVIRON e_)
 {
+  TRACE("poolmgr", "pool " << this << " for callback env " << e_);
   SetThreadpoolCallbackPool(e_, m_pool);
 }
 // Use critical section to safely create thread pool - these are expected to be
@@ -80,6 +97,18 @@ poolmgr::ptr poolmgr::get_poolmgr()
 }
 
 
+struct executor_cleanup
+{
+  executor_cleanup(executor* e_, cool::ng::async::detail::cleanup_context* cc_)
+    : ex(e_)
+    , cc(cc_)
+  { /* NOP */ }
+
+  executor* ex;
+  cool::ng::async::detail::cleanup_context* cc;
+};
+
+
 executor::executor(RunPolicy policy_)
     : named("runner") // named("si.digiverse.ng.cool.runner")
     , m_work(nullptr)
@@ -87,7 +116,10 @@ executor::executor(RunPolicy policy_)
     , m_pool(poolmgr::get_poolmgr())
     , m_work_in_progress(false)
     , m_active(true)
+    , m_lock(SRWLOCK_INIT)
 {
+  TRACE(name(), "new " << this);
+
   m_fifo = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1000);
   if (m_fifo == nullptr)
     throw exception::cp_failure();
@@ -108,11 +140,14 @@ executor::executor(RunPolicy policy_)
 
 executor::~executor()
 {
+  TRACE(name(), "to delete executor " << this);
 
   PTP_WORK expect = m_work.load();
-  if (m_work.compare_exchange_strong(expect, invalid_work))
-    if (expect != nullptr)
-      CloseThreadpoolWork(expect);
+  if (m_work.compare_exchange_strong(expect, invalid_work) && expect != nullptr)
+  {
+    WaitForThreadpoolWorkCallbacks(expect, TRUE);
+    CloseThreadpoolWork(expect);
+  }
 
   if (m_fifo != nullptr)
   {
@@ -123,15 +158,47 @@ executor::~executor()
 
     while(GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 0))
     {
-    // NOTE: it is assumed that the non-empty context_stack will delete all its
-    // elements still left on the stack
-      delete static_cast<cool::ng::async::detail::context_stack*>(static_cast<void*>(aux));
+      // NOTE: it is assumed that the non-empty context_stack will delete all its
+      // elements still left on the stack
+
+      // CHECKME: is this enough?
+      delete static_cast<void*>(aux);
     }
 
     // now close the completion port
     CloseHandle(m_fifo);
   }
 
+  TRACE(name(), "deleted");
+}
+
+VOID CALLBACK executor::event_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_)
+{
+  TRACE("executor", "event_cb for work: " << work_);
+  auto event = static_cast<cool::ng::async::detail::event_context*>(static_cast<void *>(pv_));
+  try { event->entry_point(); } catch (...) { /* noop */ }
+  delete event;
+
+  CloseThreadpoolWork(work_);
+}
+
+VOID CALLBACK executor::cleanup_cb(PTP_CALLBACK_INSTANCE instance_, PVOID pv_, PTP_WORK work_)
+{
+  TRACE("executor", "cleanup_cb for work: " << work_);
+  auto excc = static_cast<executor_cleanup*>(static_cast<void*>(pv_));
+
+  auto cleanup = excc->cc;
+  auto env = cleanup->environment();
+  try { cleanup->entry_point(); } catch (...) { /* noop */ }
+
+  AcquireSRWLockExclusive(&excc->ex->m_lock);
+  excc->ex->m_cleanup_environments.erase(env);
+  ReleaseSRWLockExclusive(&excc->ex->m_lock);
+
+  delete cleanup;
+  delete excc;
+
+  CloseThreadpoolWork(work_);
 }
 
 // executor for task::run() that runs in the thread pool
@@ -146,13 +213,16 @@ void executor::task_executor(PTP_WORK w_)
   DWORD        cmd;
   ULONG_PTR    key;
 
-  if (!GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 0))
+  if (!GetQueuedCompletionStatus(m_fifo, &cmd, &key, &aux, 100))
   {
     PTP_WORK expect = nullptr;
     // somebody else must have created new work or, more likely, invalid_work has
     // been set to signal end of execution
     if (!m_work.compare_exchange_strong(expect, w_))
+    {
+      WaitForThreadpoolWorkCallbacks(w_, FALSE);
       CloseThreadpoolWork(w_);
+    }
     return;
   }
 
@@ -161,9 +231,50 @@ void executor::task_executor(PTP_WORK w_)
   {
     case cool::ng::async::detail::work_type::event_work:
     {
+      // submit a new work to caller's environment, so that when CloseThreadpoolCleanupGroupMembers()
+      // is called, it will clean up all items
+      AcquireSRWLockShared(&m_lock);
+      
       auto event = static_cast<cool::ng::async::detail::event_context*>(static_cast<void*>(aux));
-      try { event->entry_point(); } catch (...) { /* noop */ }
-      delete event;
+      auto env = event->environment();
+      TRACE(name(), "new work[" << env << "]: " << work);
+      if (m_cleanup_environments.find(env) != m_cleanup_environments.end())
+      {
+        TRACE(name(), "environment " << env << " is being cleaned up, not submitting new work " << work);
+        ReleaseSRWLockShared(&m_lock);
+        return;
+      }
+
+      PTP_WORK w = CreateThreadpoolWork(event_cb, event, static_cast<PTP_CALLBACK_ENVIRON>(env));
+      TRACE(name(), "event[" << env << "]: " << w);
+      SubmitThreadpoolWork(w);
+
+      ReleaseSRWLockShared(&m_lock);
+      break;
+    }
+
+    case cool::ng::async::detail::work_type::cleanup_work:
+    {
+      // submit the cleanup work to executor's environment
+      AcquireSRWLockExclusive(&m_lock);
+
+      auto cleanup = static_cast<cool::ng::async::detail::cleanup_context*>(static_cast<void*>(aux));
+      auto env = cleanup->environment();
+      if (m_cleanup_environments.find(env) != m_cleanup_environments.end())
+      {
+        TRACE(name(), "environment " << env << " is already being cleaned up, ignoring cleanup request " << work);
+        ReleaseSRWLockExclusive(&m_lock);
+        return;
+      }
+
+      m_cleanup_environments.insert(env);
+      TRACE(name(), "new work[" << env << "]: " << work);
+
+      PTP_WORK w = CreateThreadpoolWork(cleanup_cb, new executor_cleanup(this, cleanup), m_pool->get_environ());
+      TRACE(name(), "cleanup[" << env << "]: " << w);
+      SubmitThreadpoolWork(w);
+
+      ReleaseSRWLockExclusive(&m_lock);
       break;
     }
 
@@ -200,6 +311,8 @@ void executor::task_executor(PTP_WORK w_)
 
 void executor::run(cool::ng::async::detail::work* ctx_)
 {
+  TRACE(name(), "run: " << ctx_);
+
   PostQueuedCompletionStatus(m_fifo, TASK, NULL, reinterpret_cast<LPOVERLAPPED>(ctx_));
 
   PTP_WORK w = m_work;

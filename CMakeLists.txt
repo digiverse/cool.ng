@@ -118,9 +118,11 @@ elseif (MSVC)
   # libraries are used, resulting in invalid builds:
   # > fatal error LNK1112: module machine type 'x64' conflicts with target machine type 'X86'
   # (ref. https://public.kitware.com/Bug/view.php?id=15496)
-  set( CMAKE_EXE_LINKER_FLAGS    "/machine:X64" )
-  set( CMAKE_MODULE_LINKER_FLAGS "/machine:X64" )
-  set( CMAKE_SHARED_LINKER_FLAGS "/machine:X64" )
+  if (CMAKE_GENERATOR MATCHES "Win64")
+    set( CMAKE_EXE_LINKER_FLAGS    "/machine:X64" )
+    set( CMAKE_MODULE_LINKER_FLAGS "/machine:X64" )
+    set( CMAKE_SHARED_LINKER_FLAGS "/machine:X64" )
+  endif()
 
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 /MTd -D_SCL_SECURE_NO_WARNINGS")
   add_definitions("-DCOOL_ASYNC_PLATFORM_WINCP")
