@@ -36,6 +36,7 @@
 
 #else
 
+# include <cstdint>
 # include <execinfo.h>
 # include <errno.h>
 
@@ -111,7 +112,7 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
       {
         for (std::size_t i = 0; i < m_traces.size(); ++i)
           ret.push_back(syms[i]);
-        ::free(syms);
+        std::free(syms);
       }
 
 #endif
