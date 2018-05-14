@@ -32,58 +32,6 @@ cmake_minimum_required(VERSION 3.5)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# --- top of source tree
-if( NOT DEFINED COOL_NG_HOME )
-  set( COOL_NG_HOME ${CMAKE_SOURCE_DIR} )
-endif()
-
-# --- build directory
-if( NOT DEFINED COOL_NG_BUILD_DIR )
-  set( COOL_NG_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR} )
-endif()
-
-# --- enable/disable and control unit tests
-if( NOT DEFINED COOL_NG_UNIT_TESTS )
-  set( COOL_NG_UNIT_TESTS true)
-endif()
-
-# --- enable/disable documentation build
-if( NOT DEFINED COOL_NG_BUILD_DOC )
-  set( COOL_NG_BUILD_DOC true )
-endif()
-
-# --- library and binary directories
-if( NOT DEFINED COOL_NG_LIB_DIR )
-  set( COOL_NG_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
-endif()
-
-if( NOT DEFINED COOL_NG_BIN_DIR)
-  set( COOL_NG_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
-endif()
-
-if( NOT DEFINED COOL_NG_DOC_DIR)
-  set( COOL_NG_DOC_DIR ${CMAKE_CURRENT_BINARY_DIR}/doc)
-endif()
-
-# --- test programs location
-if( COOL_NG_UNIT_TESTS )
-  if( NOT DEFINED COOL_NG_TEST_DIR )
-    set( COOL_NG_TEST_DIR ${COOL_NG_BIN_DIR} )
-  endif()
-endif()
-
-# --- Boost root, needed for unit tests
-if ( NOT DEFINED BOOST_ROOT )
-  if ( COOL_NG_UNIT_TESTS )
-    message("BOOST_ROOT is not set, will use internal hardcoded location")
-  endif()
-endif()
-
-# --- whether to compile development library versions or not
-if( NOT DEFINED COOL_NG_DEV_LIBS )
-  set ( COOL_NG_DEV_LIBS true)
-endif()
-
 # ### ##################################################
 # ###
 # ### Platform identification and compiler setup
@@ -93,7 +41,6 @@ endif()
 if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
 
 # --- Apple OS/X
-  set( BUILD_TARGET OSX_TARGET)
   set( OSX true)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
   set( CMAKE_EXE_LINKER_FLAGS "-w" )
@@ -103,15 +50,11 @@ if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
 elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
 
 # --- Linux
-  set( BUILD_TARGET LINUX_TARGET )
   set( LINUX true )
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC" )
-  add_definitions("-DCOOL_ASYNC_PLATFORM_GCD")
-  set( COOL_NG_PLATFORM_LIBRARIES pthread dispatch)
 elseif (MSVC)
 
 # --- Windows
-  set( BUILD_TARGET WINDOWS_TARGET )
   set( WINDOWS true )
 
   # CMake incorrectly appends "/machine:X86" to all linker flags when static
@@ -125,18 +68,6 @@ elseif (MSVC)
   endif()
 
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 /MTd -D_SCL_SECURE_NO_WARNINGS")
-  add_definitions("-DCOOL_ASYNC_PLATFORM_WINCP")
-  set( COOL_NG_PLATFORM_LIBRARIES DbgHelp.dll Ws2_32.dll)
-
-  if( ${MSVC_VERSION} MATCHES "1800")
-    set( COOL_MSVC "12" )
-  elseif( ${MSVC_VERSION} MATCHES "1900" )
-    set( COOL_MSVC "14" )
-  elseif( ${MSVC_VERSION} MATCHES "1910" )
-    set( COOL_MSVC "15" )
-  else()
-    message( FATAL "unsupported visual studio compiler version ${MSVC_VERSION}" )
-  endif()
 else()
 
 # --- unknown target
@@ -144,166 +75,8 @@ else()
 
 endif()
 
-add_definitions( "-D${BUILD_TARGET}" )
-include_directories(${COOL_NG_HOME}/include ${COOL_NG_HOME}/lib ${COOL_NG_HOME}/lib/include)
+include( Component.cmake )
 
-# ### ##################################################
-# ###
-# ### Library names
-# ###
-# ### ##################################################
-
-if( NOT WINDOWS )
-  set( COOL_NG_LIB_STATIC      cool.ng)
-  set( COOL_NG_LIB_DYNAMIC     cool.ng)
-  set( COOL_NG_LIB_STATIC_DEV  cool.ng-dev)
-  set( COOL_NG_LIB_DYNAMIC_DEV cool.ng-dev)
-else()
-  set( COOL_NG_LIB_STATIC      libcool.ng-vc${COOL_MSVC})
-  set( COOL_NG_LIB_DYNAMIC     cool.ng-vc${COOL_MSVC})
-  set( COOL_NG_LIB_STATIC_DEV  libcool.ng-dev-vc${COOL_MSVC})
-  set( COOL_NG_LIB_DYNAMIC_DEV cool.ng-dev-vc${COOL_MSVC})
-endif()
-
-# ### ##################################################
-# ###
-# ### Library source files
-# ###
-# ### ##################################################
-
-
-set( COOL_NG_API_HEADERS
-    include/cool/ng/async.h
-    include/cool/ng/error.h
-    include/cool/ng/exception.h
-    include/cool/ng/traits.h
-    include/cool/ng/bases.h
-    include/cool/ng/ip_address.h
-    include/cool/ng/binary.h
-    include/cool/ng/async/task.h
-    include/cool/ng/async/runner.h
-    include/cool/ng/async/event_sources.h
-    include/cool/ng/async/net/server.h
-    include/cool/ng/async/net/stream.h
-)
-
-set( COOL_NG_IMPL_HEADERS
-    include/cool/ng/impl/platform.h
-    include/cool/ng/impl/ip_address.h
-    include/cool/ng/impl/async/task_traits.h
-    include/cool/ng/impl/async/context.h
-    include/cool/ng/impl/async/task.h
-    include/cool/ng/impl/async/simple_impl.h
-    include/cool/ng/impl/async/sequential_impl.h
-    include/cool/ng/impl/async/intercept_impl.h
-    include/cool/ng/impl/async/conditional_impl.h
-    include/cool/ng/impl/async/repeat_impl.h
-    include/cool/ng/impl/async/loop_impl.h
-    include/cool/ng/impl/async/event_sources.h
-    include/cool/ng/impl/async/event_sources_types.h
-    include/cool/ng/impl/async/net_server.h
-    include/cool/ng/impl/async/net_stream.h
-)
-
-# ### ##################################################
-# ###
-# ### Cool library
-# ###
-# ### ##################################################
-
-set( COOL_NG_LIB_HEADERS
-  lib/include/lib/async/executor.h
-)
-
-set( COOL_NG_LIB_SRCS
-  lib/src/bases.cpp
-  lib/src/exception.cpp
-  lib/src/error.cpp
-  lib/src/ip_address.cpp
-  lib/src/async/runner.cpp
-  lib/src/async/event_sources.cpp
-)
-
-# --- executor sources
-set (COOL_NG_GCD_EVENT_SOURCES_SRCS    lib/src/async/gcd/event_sources.cpp )
-set (COOL_NG_GCD_EVENT_SOURCES_HEADERS lib/src/async/gcd/event_sources.h )
-set (COOL_NG_GCD_EXECUTOR_SRCS         lib/src/async/gcd/executor.cpp )
-set (COOL_NG_GCD_EXECUTOR_HEADERS      lib/src/async/gcd/executor.h)
-
-set (COOL_NG_WINCP_EVENT_SOURCES_SRCS    lib/src/async/wincp/event_sources.cpp )
-set (COOL_NG_WINCP_EVENT_SOURCES_HEADERS lib/src/async/wincp/event_sources.h )
-set (COOL_NG_WINCP_EXECUTOR_SRCS         lib/src/async/wincp/executor.cpp)
-set (COOL_NG_WINCP_EXECUTOR_HEADERS      lib/src/async/wincp/executor.h lib/src/async/wincp/critical_section.h)
-
-if ( NOT WINDOWS )
-  set (COOL_NG_EXECUTOR_FILES ${COOL_NG_GCD_EXECUTOR_SRCS} ${COOL_NG_GCD_EXECUTOR_HEADERS})
-  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_GCD_EVENT_SOURCES_SRCS} ${COOL_NG_GCD_EVENT_SOURCES_HEADERS})
-else()
-  set (COOL_NG_EXECUTOR_FILES ${COOL_NG_WINCP_EXECUTOR_SRCS} ${COOL_NG_WINCP_EXECUTOR_HEADERS})
-  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_WINCP_EVENT_SOURCES_SRCS} ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS})
-endif()
-
-set( COOL_NG_GCD_IMPL_HEADERS
-  ${COOL_NG_GCD_EXECUTOR_HEADERS}
-  ${COOL_NG_GCD_EVENT_SOURCES_HEADERS}
-)
-
-set( COOL_NG_GCD_IMPL_SRCS
-  ${COOL_NG_GCD_EXECUTOR_SRCS}
-  ${COOL_NG_GCD_EVENT_SOURCES_SRCS}
-)
-
-set( COOL_NG_WINCP_IMPL_HEADERS
-  ${COOL_NG_WINCP_EXECUTOR_HEADERS}
-  ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS}
-)
-set( COOL_NG_WINCP_IMPL_SRCS
-  ${COOL_NG_WINCP_EXECUTOR_SRCS}
-  ${COOL_NG_WINCP_EVENT_SOURCES_SRCS}
-)
-
-# -- cool library sources
-set( COOL_NG_LIB_FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
-if( WINDOWS )
-  set( COOL_NG_LIB_FILES ${COOL_NG_LIB_FILES} ${COOL_NG_WINCP_IMPL_HEADERS} ${COOL_NG_WINCP_IMPL_SRCS} )
-else()
-  set( COOL_NG_LIB_FILES ${COOL_NG_LIB_FILES} ${COOL_NG_GCD_IMPL_HEADERS} ${COOL_NG_GCD_IMPL_SRCS} )
-endif()
-message(" ====== ${COOL_NG_LIB_FILES}")
-
-# --- developmen libraries
-
-add_library( cool.ng-dyn-dev SHARED ${COOL_NG_LIB_FILES} )
-add_library( cool.ng-dev STATIC ${COOL_NG_LIB_FILES} )
-target_compile_definitions(cool.ng-dev PUBLIC -DCOOL_NG_BUILD -DCOOL_NG_STATIC_LIBRARY)
-target_compile_definitions(cool.ng-dyn-dev PUBLIC -DCOOL_NG_BUILD)
-
-# --- now set file names and locations
-if( NOT WINDOWS )
-  set_target_properties( cool.ng-dyn-dev PROPERTIES
-    PREFIX "lib"
-    OUTPUT_NAME "${COOL_NG_LIB_DYNAMIC_DEV}"
-    LIBRARY_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
-  )
-  set_target_properties( cool.ng-dev PROPERTIES
-    PREFIX "lib"
-    OUTPUT_NAME "${COOL_NG_LIB_STATIC_DEV}"
-    ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
-  )
-else()
-  set_target_properties( cool.ng-dyn-dev PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "${COOL_NG_LIB_DYNAMIC_DEV}"
-    RUNTIME_OUTPUT_DIRECTORY "${COOL_NG_BIN_DIR}"
-  )
-  target_link_libraries( cool.ng-dyn-dev ${COOL_NG_PLATFORM_LIBRARIES} )
-  set_target_properties( cool.ng-dev PROPERTIES
-    PREFIX "lib"
-    OUTPUT_NAME "${COOL_NG_LIB_STATIC_DEV}"
-    ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
-  )
-  target_link_libraries( cool.ng-dev ${COOL_NG_PLATFORM_LIBRARIES} )
-endif()
 
 # ### ##################################################
 # ###
@@ -390,6 +163,8 @@ macro(header_unit_test TestName)
       RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
       FOLDER "Unit Tests/Header"
   )
+  target_include_directories( ${TestName}-test PUBLIC ${COOL_NG_COMPONENT_INCLUDE_DIRECTORIES})
+
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
@@ -399,16 +174,20 @@ macro(internal_unit_test TestName)
 
   if( WINDOWS )
     target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
+    set_target_properties( ${TestName}-test PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+      FOLDER "Unit Tests/Internal"
+    )
   else()
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
+    set_target_properties( ${TestName}-test PROPERTIES
+      COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
+      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+      FOLDER "Unit Tests/Internal"
+    )
   endif()
   target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
-  set_target_properties( ${TestName}-test PROPERTIES
-    COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
-    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-    FOLDER "Unit Tests/Internal"
-  )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
@@ -418,15 +197,19 @@ macro(api_unit_test TestName)
 
   if( WINDOWS )
     target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
+    set_target_properties( ${TestName}-test PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+      FOLDER "Unit Tests/API"
+    )
   else()
     # --- on windows we use autolink feature
     target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
+    set_target_properties( ${TestName}-test PROPERTIES
+      COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
+      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+      FOLDER "Unit Tests/API"
+    )
   endif()
-  set_target_properties( ${TestName}-test PROPERTIES
-    COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
-    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-    FOLDER "Unit Tests/API"
-  )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
