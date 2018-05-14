@@ -164,7 +164,7 @@ set (COOL_NG_GCD_EXECUTOR_HEADERS         ${COOL_NG_HOME}/lib/src/async/gcd/exec
 set (COOL_NG_WINCP_EVENT_SOURCES_SRCS     ${COOL_NG_HOME}/lib/src/async/wincp/event_sources.cpp )
 set (COOL_NG_WINCP_EVENT_SOURCES_HEADERS  ${COOL_NG_HOME}/lib/src/async/wincp/event_sources.h )
 set (COOL_NG_WINCP_EXECUTOR_SRCS          ${COOL_NG_HOME}/lib/src/async/wincp/executor.cpp)
-set (COOL_NG_WINCP_EXECUTOR_HEADERS       ${COOL_NG_HOME}/lib/src/async/wincp/executor.h lib/src/async/wincp/critical_section.h)
+set (COOL_NG_WINCP_EXECUTOR_HEADERS       ${COOL_NG_HOME}/lib/src/async/wincp/executor.h ${COOL_NG_HOME}/lib/src/async/wincp/critical_section.h)
 
 if ( NOT WINDOWS )
   set (COOL_NG_EXECUTOR_FILES ${COOL_NG_GCD_EXECUTOR_SRCS} ${COOL_NG_GCD_EXECUTOR_HEADERS})
