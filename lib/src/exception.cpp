@@ -36,7 +36,7 @@
 
 #else
 
-# include <cstdint>
+# include <cstdlib>
 # include <execinfo.h>
 # include <errno.h>
 
