@@ -268,9 +268,9 @@ else()
   )
   target_link_libraries( cool.ng-dev ${COOL_NG_PLATFORM_LIBRARIES} )
 
-  target_compile_options( cool.ng-dyn-dev PUBLIC /EHsc /bigobj /Zm750 /MTd )
+  target_compile_options( cool.ng-dyn-dev PUBLIC /EHsc /bigobj /Zm750 )
   target_compile_definitions( cool.ng-dyn-dev PUBLIC _SCL_SECURE_NO_WARNINGS WINDOWS_TARGET COOL_ASYNC_PLATFORM_WINCP )
-  target_compile_options( cool.ng-dev PUBLIC /EHsc /bigobj /Zm750 /MTd )
+  target_compile_options( cool.ng-dev PUBLIC /EHsc /bigobj /Zm750 )
   target_compile_definitions( cool.ng-dev PUBLIC _SCL_SECURE_NO_WARNINGS WINDOWS_TARGET COOL_ASYNC_PLATFORM_WINCP )
 
 endif()

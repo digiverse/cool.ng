@@ -44,8 +44,6 @@ if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
   set( OSX true)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
   set( CMAKE_EXE_LINKER_FLAGS "-w" )
-  add_definitions( "-DOS_OBJECT_USE_OBJC=0" )
-  add_definitions( "-DCOOL_ASYNC_PLATFORM_GCD" )
 
 elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
 
@@ -67,7 +65,7 @@ elseif (MSVC)
     set( CMAKE_SHARED_LINKER_FLAGS "/machine:X64" )
   endif()
 
-  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 /MTd -D_SCL_SECURE_NO_WARNINGS")
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 -D_SCL_SECURE_NO_WARNINGS")
 else()
 
 # --- unknown target
@@ -152,12 +150,8 @@ set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
-  if( WINDOWS )
-    target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
-  else()
-    # --- on windows we use autolink feature
-    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
-  endif()
+
+  target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   set_target_properties( ${TestName}-test PROPERTIES
       COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
       RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
@@ -170,46 +164,28 @@ endmacro()
 
 macro(internal_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
-  target_link_libraries(${TestName}-test cool.ng-dev)
 
-  if( WINDOWS )
-    target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
-    set_target_properties( ${TestName}-test PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-      FOLDER "Unit Tests/Internal"
-    )
-  else()
-    # --- on windows we use autolink feature
-    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
-    set_target_properties( ${TestName}-test PROPERTIES
-      COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
-      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-      FOLDER "Unit Tests/Internal"
-    )
-  endif()
+  target_link_libraries( ${TestName}-test cool.ng-dev ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
+  set_target_properties( ${TestName}-test PROPERTIES
+    COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
+    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    FOLDER "Unit Tests/Internal"
+  )
   target_compile_definitions(${TestName}-test PUBLIC "-DCOOL_NG_STATIC_LIBRARY")
+
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
 macro(api_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
-  target_link_libraries(${TestName}-test cool.ng-dyn-dev)
 
-  if( WINDOWS )
-    target_link_libraries( ${TestName}-test ${COOL_NG_PLATFORM_LIBRARIES} )
-    set_target_properties( ${TestName}-test PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-      FOLDER "Unit Tests/API"
-    )
-  else()
-    # --- on windows we use autolink feature
-    target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
-    set_target_properties( ${TestName}-test PROPERTIES
-      COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
-      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-      FOLDER "Unit Tests/API"
-    )
-  endif()
+  target_link_libraries( ${TestName}-test cool.ng-dyn-dev ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
+  set_target_properties( ${TestName}-test PROPERTIES
+    COMPILE_FLAGS -DBOOST_TEST_DYN_LINK
+    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    FOLDER "Unit Tests/API"
+  )
+
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
 
