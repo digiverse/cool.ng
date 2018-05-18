@@ -51,13 +51,15 @@ template <typename T> struct arg_info
   using arg_type = T;
   using naked_type = typename naked_type<T>::type;
   using is_lref = std::is_lvalue_reference<T>;
+  using is_rref = std::is_rvalue_reference<T>;
   using is_const = std::is_const<T>;
 };
 template <typename T> struct arg_info<const T>
 {
   using arg_type = T;
   using naked_type = typename naked_type<T>::type;
-  using is_lref = std::true_type;
+  using is_lref = std::false_type;
+  using is_rref = std::false_type;
   using is_const = std::true_type;
 };
 template <typename T> struct arg_info<const T&>
@@ -65,6 +67,7 @@ template <typename T> struct arg_info<const T&>
   using arg_type = T;
   using naked_type = typename naked_type<T>::type;
   using is_lref = std::true_type;
+  using is_rref = std::false_type;
   using is_const = std::true_type;
 };
 
