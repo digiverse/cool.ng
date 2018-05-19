@@ -775,9 +775,9 @@ class task
   * Schedule task for execution.
   */
   template <typename T = InputT>
-  void run(const typename std::enable_if<!std::is_same<T, void>::value, T>::type& arg_)
+  void run(typename std::enable_if<!std::is_same<T, void>::value, T>::type arg_)
   {
-    m_impl->run(m_impl, arg_);
+    m_impl->run(m_impl, std::move(arg_));
   }
 
  /**
@@ -911,9 +911,8 @@ struct factory {
 
     // ... but neither passed as rvalue reference ...
     static_assert(
-        !std::is_rvalue_reference<typename traits::functional<CallableT>::template arg<0>::type>::value
+        !traits::functional<CallableT>::template arg<0>::info::is_rref::value
       , "The first parameter to user Callable must not be rvalue reference");
-
     // ... nor as non-const lvalue reference
     static_assert(
         !traits::functional<CallableT>::template arg<0>::info::is_lref::value

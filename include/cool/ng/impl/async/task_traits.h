@@ -146,7 +146,7 @@ struct is_chain<T, Y>
 template <typename RunT, typename InpT, typename RetT>
 struct run_signature
 {
-  using type = std::function<RetT(const std::shared_ptr<RunT>&, const InpT&)>;
+  using type = std::function<RetT(const std::shared_ptr<RunT>&, InpT)>;
 };
 
 template <typename RunT, typename RetT>

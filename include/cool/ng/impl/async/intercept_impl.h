@@ -59,7 +59,7 @@ template <typename E> class catcher_impl : public catcher
     }
     catch ( const E& ex)
     {
-      boost::any input = ex;
+      any input = ex;
       auto ctx = m_task->create_context(stack_, m_task, input);
       ctx->set_res_reporter(res_);
       ctx->set_exc_reporter(exc_);
@@ -91,7 +91,7 @@ template <> class catcher_impl<std::exception_ptr> : public catcher
     , const context::result_reporter& res_
     , const context::exception_reporter& exc_) override
   {
-    boost::any input = e_;
+    any input = e_;
     auto ctx = m_task->create_context(stack_, m_task, input);
     ctx->set_res_reporter(res_);
     ctx->set_exc_reporter(exc_);
@@ -135,7 +135,7 @@ class taskinfo<tag::intercept, default_runner_type, InputT, ResultT> : public de
       const std::shared_ptr<this_type>& self_
     , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
   {
-    boost::any input = i_;
+    any input = i_;
     auto stack = new default_task_stack();
     create_context(stack, self_, input);
     kickstart(stack);
@@ -152,7 +152,7 @@ class taskinfo<tag::intercept, default_runner_type, InputT, ResultT> : public de
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_
-    , const boost::any& input_) const override
+    , const any& input_) const override
   {
     auto aux = context_type::create(stack_, self_, m_subtask, m_catchers, input_);
     return aux;
@@ -206,7 +206,7 @@ class task_context<tag::intercept, RunnerT, InputT, ResultT>
     , const std::shared_ptr<task>& task_
     , const std::shared_ptr<task>& subtask_
     , const typename task_type::catch_vector_type& catchers_
-    , const boost::any& input_)
+    , const any& input_)
   {
     auto aux = new this_type(stack_, task_, catchers_);
     stack_->push(aux);
@@ -233,7 +233,7 @@ class task_context<tag::intercept, RunnerT, InputT, ResultT>
     return true;
   }
 
-  void result_report(const boost::any& res_)
+  void result_report(const any& res_)
   {
     m_stack->pop();
     if (m_res_reporter)

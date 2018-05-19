@@ -35,11 +35,11 @@ namespace {
 template <typename R> class reporter
 {
  public:
-  static void report(const context::result_reporter& r_, const boost::any& res_)
+  static void report(const context::result_reporter& r_, const any& res_)
   {
     if (res_.empty())
     {
-      boost::any aux = R();
+      any aux = R();
       r_(aux);
     }
     else
@@ -50,7 +50,7 @@ template <typename R> class reporter
 template <> class reporter<void>
 {
  public:
-  static void report(const context::result_reporter& r_, const boost::any& res_)
+  static void report(const context::result_reporter& r_, const any& res_)
   {
     r_(res_);
   }
@@ -103,7 +103,7 @@ class task_context<tag::repeat, default_runner_type, std::size_t, ResultT>
     return true;
   }
 
-  void result_report(const boost::any& res_)
+  void result_report(const any& res_)
   {
     ++m_counter;
     if (m_counter < m_limit)
@@ -175,9 +175,9 @@ class taskinfo<tag::repeat, default_runner_type, std::size_t, ResultT> : public 
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_
-    , const boost::any& input_) const override
+    , const any& input_) const override
   {
-    auto aux = context_type::create(stack_, self_, boost::any_cast<std::size_t>(input_));
+    auto aux = context_type::create(stack_, self_, any_cast<std::size_t>(input_));
     return aux;
   }
 

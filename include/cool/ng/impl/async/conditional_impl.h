@@ -58,7 +58,7 @@ class taskinfo<tag::conditional, default_runner_type, InputT, ResultT> : public 
       const std::shared_ptr<this_type>& self_
     , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
   {
-    boost::any input = i_;
+    any input = i_;
     auto stack = new default_task_stack();
     create_context(stack, self_, input);
     kickstart(stack);
@@ -68,14 +68,14 @@ class taskinfo<tag::conditional, default_runner_type, InputT, ResultT> : public 
   typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
   {
     auto stack = new default_task_stack();
-    create_context(stack, self_, boost::any());
+    create_context(stack, self_, any());
     kickstart(stack);
   }
 
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_
-    , const boost::any& input_) const override
+    , const any& input_) const override
   {
     auto aux = context_type::create(stack_, self_, m_predicate, m_if, m_else, input_);
     return aux;
@@ -131,7 +131,7 @@ class task_context<tag::conditional, RunnerT, InputT, ResultT>
     , const std::shared_ptr<task>& predicate_
     , const std::shared_ptr<task>& if_
     , const std::shared_ptr<task>& else_
-    , const boost::any& input_)
+    , const any& input_)
   {
     auto aux = new this_type(stack_, task_, if_, else_);
     stack_->push(aux);
@@ -156,7 +156,7 @@ class task_context<tag::conditional, RunnerT, InputT, ResultT>
     return true;
   }
 
-  void result_report(const boost::any& res_)
+  void result_report(const any& res_)
   {
     if (!m_predicate_result)
     {
@@ -169,7 +169,7 @@ class task_context<tag::conditional, RunnerT, InputT, ResultT>
     }
 
     m_predicate_result = false; // next report will come from one of branches
-    if (boost::any_cast<bool>(res_))
+    if (any_cast<bool>(res_))
     {
       prepare_next_task(m_if);
     }
@@ -184,7 +184,7 @@ class task_context<tag::conditional, RunnerT, InputT, ResultT>
         // else part is missing
         m_stack->pop();
         if (m_res_reporter)
-          m_res_reporter(boost::any());
+          m_res_reporter(any());
         delete this;
         return;
       }

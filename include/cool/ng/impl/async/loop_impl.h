@@ -58,7 +58,7 @@ class taskinfo<tag::loop, default_runner_type, InputT, ResultT> : public detail:
       const std::shared_ptr<this_type>& self_
     , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
   {
-    boost::any input = i_;
+    any input = i_;
     auto stack = new default_task_stack();
     create_context(stack, self_, input);
     kickstart(stack);
@@ -68,14 +68,14 @@ class taskinfo<tag::loop, default_runner_type, InputT, ResultT> : public detail:
   typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
   {
     auto stack = new default_task_stack();
-    create_context(stack, self_, boost::any());
+    create_context(stack, self_, any());
     kickstart(stack);
   }
 
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_
-    , const boost::any& input_) const override
+    , const any& input_) const override
   {
     auto aux = context_type::create(stack_, self_, input_);
     return aux;
@@ -134,7 +134,7 @@ class task_context<tag::loop, default_runner_type, InputT, ResultT>
   inline static this_type* create(
       context_stack* stack_
     , const std::shared_ptr<task>& task_
-    , const boost::any& input_)
+    , const any& input_)
   {
     auto aux = new this_type(stack_, task_);
     stack_->push(aux);
@@ -159,9 +159,9 @@ class task_context<tag::loop, default_runner_type, InputT, ResultT>
     return true;
   }
 
-  void predicate_result_report(const boost::any& res_)
+  void predicate_result_report(const any& res_)
   {
-    m_predicate_result = boost::any_cast<bool>(res_);
+    m_predicate_result = any_cast<bool>(res_);
     if (!m_predicate_result)   // predicate evaluated to false, terminate loop
     {
       m_stack->pop();
@@ -175,7 +175,7 @@ class task_context<tag::loop, default_runner_type, InputT, ResultT>
       prepare_predicate_task();
   }
 
-  void body_result_report(const boost::any& r_)
+  void body_result_report(const any& r_)
   {
     set_input(r_);
     prepare_predicate_task();

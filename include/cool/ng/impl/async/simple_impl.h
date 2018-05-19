@@ -51,23 +51,23 @@ class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
   template <typename T = InputT>
   inline void run(
       const std::shared_ptr<this_type>& self_
-    , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
+    , typename std::enable_if<!std::is_same<T, void>::value, T>::type i_)
   {
-    auto aux = create_context(nullptr, self_, boost::any(i_));
+    auto aux = create_context(nullptr, self_, any(std::move(i_)));
     kickstart(dynamic_cast<context_stack*>(aux));
   }
 
   template <typename T = InputT>
   typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
   {
-    auto aux = create_context(nullptr, self_, boost::any());
+    auto aux = create_context(nullptr, self_, any());
     kickstart(dynamic_cast<context_stack*>(aux));
   }
 
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_
-    , const boost::any& input_) const override
+    , const any& input_) const override
   {
     return context_type::create(stack_, self_, m_user_func, input_);
   }
@@ -117,7 +117,7 @@ class task_context<tag::simple, RunnerT, InputT, ResultT>
       context_stack* stack_
     , const std::shared_ptr<task>& task_
     , const typename task_type::function_type& f_
-    , const boost::any& i_)
+    , const any& i_)
   {
     auto aux = new this_type(stack_, task_, f_);
     aux->set_input(i_);
@@ -168,10 +168,10 @@ struct invoker
   template<typename EntryPointT, typename RunnerT, typename ReporterT>
   static void invoke(const EntryPointT& ep_,
               const std::shared_ptr<RunnerT>& r_,
-              const boost::any& i_,
+              const any& i_,
               const ReporterT& rep_)
   {
-    boost::any res = ep_(r_, boost::any_cast<InputT>(i_));
+    any res = ep_(r_, any_cast<InputT>(i_));
     if (rep_)
       rep_(res);
   }
@@ -182,10 +182,10 @@ struct invoker<void, ResultT>
   template<typename EntryPointT, typename RunnerT, typename ReporterT>
   static void invoke(const EntryPointT& ep_,
               const std::shared_ptr<RunnerT>& r_,
-              const boost::any& i_,
+              const any& i_,
               const ReporterT& rep_)
   {
-    boost::any res = ep_(r_);
+    any res = ep_(r_);
     if (rep_)
       rep_(res);
   }
@@ -196,12 +196,12 @@ struct invoker<InputT, void>
   template<typename EntryPointT, typename RunnerT, typename ReporterT>
   static void invoke(const EntryPointT& ep_,
                      const std::shared_ptr<RunnerT>& r_,
-                     const boost::any& i_,
+                     const any& i_,
                      const ReporterT& rep_)
   {
-    ep_(r_, boost::any_cast<InputT>(i_));
+    ep_(r_, any_cast<InputT>(i_));
     if (rep_)
-      rep_(boost::any());
+      rep_(any());
   }
 };
 template <>
@@ -210,12 +210,12 @@ struct invoker<void, void>
   template<typename EntryPointT, typename RunnerT, typename ReporterT>
   static void invoke(const EntryPointT& ep_,
                      const std::shared_ptr<RunnerT>& r_,
-                     const boost::any& i_,
+                     const any& i_,
                      const ReporterT& rep_)
   {
     ep_(r_);
     if (rep_)
-      rep_(boost::any());
+      rep_(any());
   }
 };
 

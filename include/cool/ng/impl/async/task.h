@@ -29,7 +29,8 @@
 #include <type_traits>
 #include <vector>
 #include <stack>
-#include <boost/any.hpp>
+#include <typeinfo>
+#include <stdexcept>
 
 #include "cool/ng/async/runner.h"
 #include "context.h"
@@ -59,8 +60,6 @@ using default_runner_type = cool::ng::async::runner;
 // ---- needless specializations for void result types
 // ---- ----
 
-//using any_value = boost::any;
-
 // ---- Value container that can hold value of any type, including void
 template <typename T>
 struct any_value
@@ -82,6 +81,7 @@ inline any_value<void> get_value_container()
 {
   return any_value<void>();
 }
+
 
 // --- Result reporter that can will call user Callable with or without
 // --- input parameter, depending on the user Callable declaration and will
@@ -165,7 +165,7 @@ class task
   virtual context* create_context(
         context_stack* stack_
       , const std::shared_ptr<task>& self_
-      , const boost::any& input_) const = 0;
+      , const any& input_) const = 0;
 };
 
 // ---- task static information
@@ -194,7 +194,7 @@ class task_context_base : public context
   {
     m_exc_reporter = arg_;
   }
-  void set_input(const boost::any& input_) override
+  void set_input(const any& input_) override
   {
     m_input = input_;
   }
@@ -207,7 +207,7 @@ class task_context_base : public context
  protected:
   std::shared_ptr<task> m_task;         // Reference to static task data
   context_stack*        m_stack;        // Reference to context stack
-  boost::any            m_input;        // Input to pass to task
+  any                   m_input;        // Input to pass to task
   result_reporter       m_res_reporter; // result reporter if set
   exception_reporter    m_exc_reporter; // exception reporter if set
 };
