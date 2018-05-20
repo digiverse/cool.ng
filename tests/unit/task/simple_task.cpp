@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(basic_with_exception)
 
   auto task = cool::ng::async::factory::create(
       runner
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, int value)
+    , [&counter] (const std::shared_ptr<my_runner>&, int value)
       {
         counter = value;
         throw std::runtime_error("something");
@@ -196,20 +196,53 @@ BOOST_AUTO_TEST_CASE(rvalue_reference)
 
   auto task = cool::ng::async::factory::create(
       runner
-    , [] (const std::shared_ptr<my_runner>&, no_copy_ctor&& val_)
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, no_copy_ctor&& val_)
       {
+        std::unique_lock<std::mutex> l(m);
+        counter = val_.m_value;
+        cv.notify_one();
       }
   );
-/*
+  no_copy_ctor a(42);
+  std::unique_lock<std::mutex> l(m);
+  task.run(std::move(a));
+  cv.wait_for(l, ms(100), [&counter] { return counter == 23; });
+
+  BOOST_CHECK_EQUAL(42, counter);
+}
+
+BOOST_AUTO_TEST_CASE(movable_only_ret_value)
+{
+  auto runner = std::make_shared<my_runner>();
+  std::mutex m;
+  std::condition_variable cv;
+  int counter = 0;
+
+  auto task = cool::ng::async::factory::create(
+      runner
+    , [] (const std::shared_ptr<my_runner>&)
+      {
+        return no_copy_ctor(23);
+      }
+  );
+
   auto task2 = cool::ng::async::factory::create(
       runner
-    , [] (const std::shared_ptr<my_runner>&, no_copy_ctor val_)
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, no_copy_ctor val_)
       {
+        std::unique_lock<std::mutex> l(m);
+        counter = val_.m_value;
+        cv.notify_one();
       }
   );
-  */
-  no_copy_ctor a(42);
-  task.run(std::move(a));
+
+  auto f_task = cool::ng::async::factory::sequence(task, task2);
+
+  std::unique_lock<std::mutex> l(m);
+  f_task.run();
+  cv.wait_for(l, ms(100), [&counter] { return counter == 23; });
+
+  BOOST_CHECK_EQUAL(23, counter);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

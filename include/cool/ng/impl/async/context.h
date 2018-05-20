@@ -27,6 +27,12 @@
 #include <cstddef>
 #include <memory>
 #include <functional>
+#include <type_traits>
+
+// Visual Studio has broken std::is_copy_constructible trait
+#if _MSC_VER == 1800
+#include "boost/type_traits.hpp"
+#endif
 
 namespace cool { namespace ng {  namespace async {
 
@@ -104,6 +110,7 @@ class any
   // -- observers
   bool empty() const
   { return static_cast<bool>(m_value); }
+
   // -- modifiers
   any& swap(any& other_)
   { std::swap(m_value, other_.m_value); return *this; }
@@ -158,15 +165,27 @@ template <typename T> inline T any_cast(any & v_)
 }
 
 template <typename T> inline T any_cast(const any& v_
-  , typename std::enable_if<!std::is_rvalue_reference<T>::value, void>::type * = 0)
+  , typename std::enable_if<!std::is_rvalue_reference<T>::value
+// Visual Studio has broken std::is_copy_constructible trait
+#if _MSC_VER == 1800
+    && boost::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
+#else
+    && std::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
+#endif
 {
   using nonref = typename std::remove_reference<T>::type;
 //  return any_cast<const nonref&>(const_cast<any&>(v_));
-  return any_cast<const nonref&>(const_cast<any&>(v_));
+  return  any_cast<const nonref&>(const_cast<any&>(v_));
 }
 
 template <typename T> inline T any_cast(const any& v_
-  , typename std::enable_if<std::is_rvalue_reference<T>::value, void>::type * = 0)
+  , typename std::enable_if<std::is_rvalue_reference<T>::value
+// Visual Studio has broken std::is_copy_constructible trait
+#if _MSC_VER == 1800
+    || !boost::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
+#else
+    || !std::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
+#endif
 {
   using nonref = typename std::remove_reference<T>::type;
 //  return any_cast<const nonref&>(const_cast<any&>(v_));
