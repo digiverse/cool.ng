@@ -121,7 +121,7 @@ BOOST_AUTO_TEST_CASE(basic_non_void)
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, std::size_t value) -> int
+    , [&counter] (const std::shared_ptr<my_runner>& r, std::size_t value) -> int
       {
         ++counter;
         return static_cast<int>(value);

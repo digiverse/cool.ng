@@ -175,14 +175,14 @@ BOOST_AUTO_TEST_CASE(basic_with_exception)
   BOOST_CHECK_EQUAL(10, counter);
 }
 
-class no_copy_ctor
+class nocopy
 {
   public:
-   no_copy_ctor(int v ) { m_value = v; }
-   no_copy_ctor(no_copy_ctor&& o) { m_value = o.m_value; o.m_value = 0;}
-   no_copy_ctor& operator =(no_copy_ctor&& o) { m_value = o.m_value; o.m_value = 0; return *this; };
-   no_copy_ctor(const no_copy_ctor&) = delete;
-   no_copy_ctor& operator =(const no_copy_ctor&); // = delete;
+   nocopy(int v ) { m_value = v; }
+   nocopy(nocopy&& o) { m_value = o.m_value; o.m_value = 0;}
+   nocopy& operator =(nocopy&& o) { m_value = o.m_value; o.m_value = 0; return *this; };
+   nocopy(const nocopy&) = delete;
+   nocopy& operator =(const nocopy&) = delete;
 
    int m_value;
 };
@@ -196,14 +196,14 @@ BOOST_AUTO_TEST_CASE(rvalue_reference)
 
   auto task = cool::ng::async::factory::create(
       runner
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, no_copy_ctor&& val_)
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, nocopy&& val_)
       {
         std::unique_lock<std::mutex> l(m);
         counter = val_.m_value;
         cv.notify_one();
       }
   );
-  no_copy_ctor a(42);
+  nocopy a(42);
   std::unique_lock<std::mutex> l(m);
   task.run(std::move(a));
   cv.wait_for(l, ms(100), [&counter] { return counter == 23; });
@@ -222,13 +222,13 @@ BOOST_AUTO_TEST_CASE(movable_only_ret_value)
       runner
     , [] (const std::shared_ptr<my_runner>&)
       {
-        return no_copy_ctor(23);
+        return nocopy(23);
       }
   );
 
   auto task2 = cool::ng::async::factory::create(
       runner
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, no_copy_ctor val_)
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, nocopy val_)
       {
         std::unique_lock<std::mutex> l(m);
         counter = val_.m_value;

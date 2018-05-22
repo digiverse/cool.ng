@@ -51,7 +51,21 @@ class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
   template <typename T = InputT>
   inline void run(
       const std::shared_ptr<this_type>& self_
-    , typename std::enable_if<!std::is_same<T, void>::value, T>::type i_)
+    , const typename std::decay<typename std::enable_if<
+          !std::is_same<T, void>::value && !std::is_rvalue_reference<T>::value
+        , T>::type>::type& i_)
+  {
+    auto aux = create_context(nullptr, self_, any(i_));
+    kickstart(dynamic_cast<context_stack*>(aux));
+  }
+
+  // rvalue reference argument
+  template <typename T = InputT>
+  inline void run(
+      const std::shared_ptr<this_type>& self_
+    , typename std::enable_if<
+        !std::is_same<T, void>::value && std::is_rvalue_reference<T>::value
+      , T>::type i_)
   {
     auto aux = create_context(nullptr, self_, any(std::move(i_)));
     kickstart(dynamic_cast<context_stack*>(aux));

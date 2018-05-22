@@ -133,9 +133,25 @@ class taskinfo<tag::intercept, default_runner_type, InputT, ResultT> : public de
   template <typename T = InputT>
   inline void run(
       const std::shared_ptr<this_type>& self_
-    , const typename std::enable_if<!std::is_same<T, void>::value, T>::type& i_)
+    , const typename std::decay<typename std::enable_if<
+          !std::is_same<T, void>::value && !std::is_rvalue_reference<T>::value
+        , T>::type>::type& i_)
   {
     any input = i_;
+    auto stack = new default_task_stack();
+    create_context(stack, self_, input);
+    kickstart(stack);
+  }
+
+  // rvalue reference argument
+  template <typename T = InputT>
+  inline void run(
+      const std::shared_ptr<this_type>& self_
+    , typename std::enable_if<
+        !std::is_same<T, void>::value && std::is_rvalue_reference<T>::value
+      , T>::type i_)
+  {
+    any input(std::move(i_));
     auto stack = new default_task_stack();
     create_context(stack, self_, input);
     kickstart(stack);

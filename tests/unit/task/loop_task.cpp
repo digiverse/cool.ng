@@ -251,4 +251,100 @@ BOOST_AUTO_TEST_CASE(no_body)
   }
 }
 
+class nocopy
+{
+  public:
+   nocopy(int v ) { m_value = v; }
+   nocopy(nocopy&& o) { m_value = o.m_value; o.m_value = 0;}
+   nocopy& operator =(nocopy&& o) { m_value = o.m_value; o.m_value = 0; return *this; };
+   nocopy(const nocopy&) = delete;
+   nocopy& operator =(const nocopy&) = delete;
+
+   int m_value;
+};
+
+BOOST_AUTO_TEST_CASE(nocopy_with_body)
+{
+  auto runner_1 = std::make_shared<my_runner>();
+  auto runner_2 = std::make_shared<my_runner>();
+  auto runner_3 = std::make_shared<my_runner>();
+
+  std::atomic<int> counter(-1);
+  std::atomic<bool> done(false);
+
+  auto wakeup = cool::ng::async::factory::create(
+      runner_3
+    , [&counter, &done] (const std::shared_ptr<my_runner>& r, nocopy&& input)
+      {
+        counter = input.m_value;
+        done = true;
+        return std::move(input);
+      }
+  );
+  auto body = cool::ng::async::factory::create(
+      runner_2
+    , [] (const std::shared_ptr<my_runner>& r, nocopy&& input) -> nocopy&&
+      {
+        r->inc();
+        return std::move(nocopy(input.m_value + 1));
+      }
+  );
+
+  {
+    auto predicate = cool::ng::async::factory::create(
+        runner_1
+      , [] (const std::shared_ptr<my_runner>& r, nocopy&& input)
+        {
+          r->inc();
+          return false;
+        }
+    );
+
+    auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::loop(predicate, body), wakeup);
+
+    nocopy a(0);
+    task.run(std::move(a));
+    spin_wait(1000, [&done] { return done.load(); });
+    BOOST_CHECK_EQUAL(1, runner_1->counter);
+    BOOST_CHECK_EQUAL(0, runner_2->counter);
+    BOOST_CHECK_EQUAL(0, counter);
+  }
+
+  runner_1->clear();
+  runner_2->clear();
+  counter = -1;
+  done = false;
+
+  {
+    auto predicate = cool::ng::async::factory::create(
+        runner_1
+      , [] (const std::shared_ptr<my_runner>& r, nocopy&& input)
+      {
+        r->inc();
+        return input.m_value < 100;
+      }
+      );
+
+    auto loop_task = cool::ng::async::factory::loop(predicate, body);
+    auto task = cool::ng::async::factory::sequence(loop_task, wakeup);
+
+    nocopy b(0);
+    task.run(std::move(b));
+    spin_wait(1000, [&done] { return done.load(); });
+    BOOST_CHECK_EQUAL(101, runner_1->counter);
+    BOOST_CHECK_EQUAL(100, runner_2->counter);
+    BOOST_CHECK_EQUAL(100, counter);
+
+    nocopy c(10);
+    loop_task.run(std::move(c));
+    done = false;
+    spin_wait(200, [&done] { return done.load(); });
+  }
+
+  // and now run loop task just to see if it compiles
+
+}
+
+
+
 BOOST_AUTO_TEST_SUITE_END()
