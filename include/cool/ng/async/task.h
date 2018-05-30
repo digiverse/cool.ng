@@ -771,6 +771,14 @@ class task
     , typename std::decay<TaskT>::type::impl_type...>;
 
  public:
+  task() { /* noop */ }
+ /**
+  * Predicate to check whether the task is empty.
+  */
+  explicit operator bool () const
+  {
+    return !!m_impl;
+  }
  /**
   * Schedule task for execution.
   */
