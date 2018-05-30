@@ -241,6 +241,7 @@ if( NOT WINDOWS )
   target_compile_options( cool.ng-dev PUBLIC -g -std=c++11 -fPIC )
 
   if (OSX)
+    set_target_properties( cool.ng-dyn-dev PROPERTIES LINK_FLAGS "-undefined dynamic_lookup" )
     target_compile_options( cool.ng-dyn-dev PUBLIC -fbracket-depth=10000 )
     target_compile_definitions( cool.ng-dyn-dev PUBLIC OSX_TARGET OS_OBJECT_USE_OBJC=0 )
     target_compile_options( cool.ng-dev PUBLIC -fbracket-depth=10000 )
