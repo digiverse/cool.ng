@@ -147,7 +147,7 @@ private:
 // ---- -----------------------------------------------------------------------
 
 template <typename ResultT>
-class taskinfo<tag::repeat, default_runner_type, std::size_t, ResultT> : public detail::task
+class taskinfo<tag::repeat, default_runner_type, std::size_t, ResultT> : public base::taskinfo<std::size_t, ResultT>
 {
  public:
   using tag           = tag::repeat;
@@ -163,15 +163,6 @@ class taskinfo<tag::repeat, default_runner_type, std::size_t, ResultT> : public 
       : m_task(task_)
   { /* noop */ }
   
-  inline void run(
-      const std::shared_ptr<this_type>& self_
-    , const std::size_t i_)
-  {
-    auto stack = new default_task_stack();
-    create_context(stack, self_, i_);
-    kickstart(stack);
-  }
-
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_

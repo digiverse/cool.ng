@@ -32,7 +32,7 @@
 #endif
 
 template <typename RunnerT, typename InputT, typename ResultT>
-class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
+class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public base::taskinfo<InputT, ResultT>
 {
  public:
   using type          = tag::simple;
@@ -48,35 +48,6 @@ class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public detail::task
       : m_runner(r_), m_user_func(f_)
   { /* noop */ }
 
-  template <typename T = InputT>
-  inline void run(
-      const std::shared_ptr<this_type>& self_
-    , const typename std::decay<typename std::enable_if<
-          !std::is_same<T, void>::value && !std::is_rvalue_reference<T>::value
-        , T>::type>::type& i_)
-  {
-    auto aux = create_context(nullptr, self_, any(i_));
-    kickstart(dynamic_cast<context_stack*>(aux));
-  }
-
-  // rvalue reference argument
-  template <typename T = InputT>
-  inline void run(
-      const std::shared_ptr<this_type>& self_
-    , typename std::enable_if<
-        !std::is_same<T, void>::value && std::is_rvalue_reference<T>::value
-      , T>::type i_)
-  {
-    auto aux = create_context(nullptr, self_, any(std::move(i_)));
-    kickstart(dynamic_cast<context_stack*>(aux));
-  }
-
-  template <typename T = InputT>
-  typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
-  {
-    auto aux = create_context(nullptr, self_, any());
-    kickstart(dynamic_cast<context_stack*>(aux));
-  }
 
   inline context* create_context(
       context_stack* stack_

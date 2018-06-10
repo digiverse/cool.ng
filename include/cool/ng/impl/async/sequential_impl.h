@@ -32,7 +32,7 @@
 // ---- -----------------------------------------------------------------------
 
 template <typename InputT, typename ResultT>
-class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public detail::task
+class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public base::taskinfo<InputT, ResultT>
 {
  public:
   using tag           = tag::sequential;
@@ -45,47 +45,74 @@ class taskinfo<tag::sequential, default_runner_type, InputT, ResultT> : public d
   using subtasks_vector_type = std::vector<std::shared_ptr<detail::task>>;
 
  public:
+#if !defined(WINDOWS_TARGET) || (_MSC_VER > 1800)
   template <typename... TaskT>
   explicit inline taskinfo(const std::shared_ptr<TaskT>&... tasks_)
       : m_subtasks( { tasks_ ... } )
   { /* noop */ }
-
-
-  template <typename T = InputT>
-  inline void run(
-      const std::shared_ptr<this_type>& self_
-    , const typename std::decay<typename std::enable_if<
-          !std::is_same<T, void>::value && !std::is_rvalue_reference<T>::value
-        , T>::type>::type& i_)
+#else
+  // Visual Studio 2013 has hickups with the above arg pack ctor - it
+  // requires separate ctors for each number of arguments. Hence a sequence of
+  // up to 5 tasks is supported
+  template <
+      typename T1
+    , typename T2
+  > explicit inline taskinfo(
+      const std::shared_ptr<T1>& t1
+    , const std::shared_ptr<T2>& t2)
   {
-    any input = i_;
-    auto stack = new default_task_stack();
-    create_context(stack, self_, input);
-    kickstart(stack);
+    m_subtasks.push_back(t1);
+    m_subtasks.push_back(t2);
   }
-
-  // rvalue reference argument
-  template <typename T = InputT>
-  inline void run(
-      const std::shared_ptr<this_type>& self_
-    , typename std::enable_if<
-        !std::is_same<T, void>::value && std::is_rvalue_reference<T>::value
-      , T>::type i_)
+  template <
+      typename T1
+    , typename T2
+    , typename T3
+  > explicit inline taskinfo(
+      const std::shared_ptr<T1>& t1
+    , const std::shared_ptr<T2>& t2
+    , const std::shared_ptr<T3>& t3)
   {
-    any input(std::move(i_));
-    auto stack = new default_task_stack();
-    create_context(stack, self_, input);
-    kickstart(stack);
+    m_subtasks.push_back(t1);
+    m_subtasks.push_back(t2);
+    m_subtasks.push_back(t3);
   }
-
-  template <typename T = InputT>
-  typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
+  template <
+      typename T1
+    , typename T2
+    , typename T3
+    , typename T4
+  > explicit inline taskinfo(
+      const std::shared_ptr<T1>& t1
+    , const std::shared_ptr<T2>& t2
+    , const std::shared_ptr<T3>& t3
+    , const std::shared_ptr<T4>& t4)
   {
-    auto stack = new default_task_stack();
-    create_context(stack, self_, any());
-    kickstart(stack);
+    m_subtasks.push_back(t1);
+    m_subtasks.push_back(t2);
+    m_subtasks.push_back(t3);
+    m_subtasks.push_back(t4);
   }
-
+  template <
+      typename T1
+    , typename T2
+    , typename T3
+    , typename T4
+    , typename T5
+  > explicit inline taskinfo(
+      const std::shared_ptr<T1>& t1
+    , const std::shared_ptr<T2>& t2
+    , const std::shared_ptr<T3>& t3
+    , const std::shared_ptr<T4>& t4
+    , const std::shared_ptr<T5>& t5)
+  {
+    m_subtasks.push_back(t1);
+    m_subtasks.push_back(t2);
+    m_subtasks.push_back(t3);
+    m_subtasks.push_back(t4);
+    m_subtasks.push_back(t5);
+  }
+#endif
   inline context* create_context(
       context_stack* stack_
     , const std::shared_ptr<task>& self_

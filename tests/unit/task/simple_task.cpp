@@ -210,7 +210,7 @@ BOOST_AUTO_TEST_CASE(rvalue_reference)
 
   BOOST_CHECK_EQUAL(42, counter);
 }
-
+#if 0
 BOOST_AUTO_TEST_CASE(movable_only_ret_value)
 {
   auto runner = std::make_shared<my_runner>();
@@ -244,5 +244,5 @@ BOOST_AUTO_TEST_CASE(movable_only_ret_value)
 
   BOOST_CHECK_EQUAL(23, counter);
 }
-
+#endif
 BOOST_AUTO_TEST_SUITE_END()

@@ -172,6 +172,7 @@ class task
 template <typename TagT, typename RunnerT, typename InputT, typename ResultT, typename... TaskT>
 class taskinfo { };
 
+
 // ---- task runtime information
 template <typename TagT, typename RunnerT, typename InputT, typename ResultT, typename... TaskT>
 class task_context : public context { };
@@ -232,6 +233,57 @@ public:
 private:
   std::stack<context*> m_stack;
 };
+
+
+
+namespace base {
+
+template <typename InputT, typename ResultT>
+class taskinfo : public detail::task
+{
+ public:
+  using this_type     = taskinfo;
+  using result_type   = ResultT;
+  using input_type    = InputT;
+
+  template <typename T = InputT>
+  inline void run(
+      const std::shared_ptr<this_type>& self_
+    , const typename std::decay<typename std::enable_if<
+          !std::is_same<T, void>::value && !std::is_rvalue_reference<T>::value
+        , T>::type>::type& i_)
+  {
+    any input = i_;
+    auto stack = new default_task_stack();
+    create_context(stack, self_, input);
+    kickstart(stack);
+  }
+
+  // rvalue reference argument
+  template <typename T = InputT>
+  inline void run(
+      const std::shared_ptr<this_type>& self_
+    , typename std::enable_if<
+        !std::is_same<T, void>::value && std::is_rvalue_reference<T>::value
+      , T>::type i_)
+  {
+    any input(std::move(i_));
+    auto stack = new default_task_stack();
+    create_context(stack, self_, input);
+    kickstart(stack);
+  }
+
+  template <typename T = InputT>
+  typename std::enable_if<std::is_same<T, void>::value, void>::type run(const std::shared_ptr<this_type>& self_)
+  {
+    auto stack = new default_task_stack();
+    create_context(stack, self_, any());
+    kickstart(stack);
+  }
+};
+
+} // namespace
+
 
 #define __COOL_INCLUDE_TASK_IMPL_FILES__
 
