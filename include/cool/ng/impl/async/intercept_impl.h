@@ -122,6 +122,7 @@ class taskinfo<tag::intercept, default_runner_type, InputT, ResultT> :public bas
   using context_type  = task_context<tag, runner_type, input_type, result_type>;
 
  public:
+#if !defined(WINDOWS_TARGET) || (_MSC_VER > 1800)
   template <typename TryT, typename... CatchT>
   explicit inline taskinfo(
       const std::shared_ptr<TryT>& task_
@@ -129,6 +130,85 @@ class taskinfo<tag::intercept, default_runner_type, InputT, ResultT> :public bas
         : m_subtask(task_)
         , m_catchers( { std::make_shared<catcher_impl<typename CatchT::input_type>>(catchers_)... } )
   { /* noop */ }
+
+#else
+  // Visual Studio 2013 has hickups with the above arg pack ctor - it
+  // requires separate ctors for each number of arguments. Hence a sequence of
+  // up to 5 catchers is supported
+  template <typename TryT
+    , typename C1
+  > explicit inline taskinfo(const std::shared_ptr<TryT>& task_
+    , const std::shared_ptr<C1>& c1_
+  ) : m_subtask(task_)
+  {
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C1::input_type>>(c1_));
+  }
+  template <typename TryT
+    , typename C1
+    , typename C2
+  > explicit inline taskinfo(const std::shared_ptr<TryT>& task_
+    , const std::shared_ptr<C1>& c1_
+    , const std::shared_ptr<C2>& c2_
+  ) : m_subtask(task_)
+  {
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C1::input_type>>(c1_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C2::input_type>>(c2_));
+  }
+  template <typename TryT
+    , typename C1
+    , typename C2
+    , typename C3
+  > explicit inline taskinfo(const std::shared_ptr<TryT>& task_
+    , const std::shared_ptr<C1>& c1_
+    , const std::shared_ptr<C2>& c2_
+    , const std::shared_ptr<C3>& c3_
+  ) : m_subtask(task_)
+  {
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C1::input_type>>(c1_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C2::input_type>>(c2_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C3::input_type>>(c3_));
+  }
+  template <typename TryT
+    , typename C1
+    , typename C2
+    , typename C3
+    , typename C4
+  > explicit inline taskinfo(const std::shared_ptr<TryT>& task_
+    , const std::shared_ptr<C1>& c1_
+    , const std::shared_ptr<C2>& c2_
+    , const std::shared_ptr<C3>& c3_
+    , const std::shared_ptr<C4>& c4_
+  ) : m_subtask(task_)
+  {
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C1::input_type>>(c1_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C2::input_type>>(c2_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C3::input_type>>(c3_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C4::input_type>>(c4_));
+  }
+  template <typename TryT
+    , typename C1
+    , typename C2
+    , typename C3
+    , typename C4
+    , typename C5
+  > explicit inline taskinfo(const std::shared_ptr<TryT>& task_
+    , const std::shared_ptr<C1>& c1_
+    , const std::shared_ptr<C2>& c2_
+    , const std::shared_ptr<C3>& c3_
+    , const std::shared_ptr<C4>& c4_
+    , const std::shared_ptr<C5>& c5_
+  ) : m_subtask(task_)
+  {
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C1::input_type>>(c1_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C2::input_type>>(c2_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C3::input_type>>(c3_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C4::input_type>>(c4_));
+    m_catchers.push_back(std::make_shared<catcher_impl<typename C5::input_type>>(c5_));
+  }
+
+
+#endif
+
 
   inline context* create_context(
       context_stack* stack_

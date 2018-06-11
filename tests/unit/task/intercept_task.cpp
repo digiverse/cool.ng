@@ -213,4 +213,99 @@ BOOST_AUTO_TEST_CASE(catch_all)
   BOOST_CHECK_EQUAL(84, counter);
 }
 
+
+
+BOOST_AUTO_TEST_CASE(catch_all_second_try)
+{
+  auto runner = std::make_shared<my_runner>();
+  std::mutex m;
+  std::condition_variable cv;
+  std::atomic<int> counter;
+  counter = 0;
+
+  auto t1 = cool::ng::async::factory::create(
+      runner
+    , [] (const std::shared_ptr<my_runner>&) -> int
+      {
+        return 42;
+      }
+  );
+  auto t2 = cool::ng::async::factory::create(
+      runner
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, const abc& e) -> int
+      {
+        counter = 42;
+        std::unique_lock<std::mutex> l(m);
+        cv.notify_one();
+        return counter + 1;
+      }
+  );
+  auto t3 = cool::ng::async::factory::create(
+      runner
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, const std::exception_ptr& e) -> int
+      {
+        counter = 84;
+        std::unique_lock<std::mutex> l(m);
+        cv.notify_one();
+        return counter + 1;
+      }
+  );
+
+  auto t4 = cool::ng::async::factory::create(
+      runner
+    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>&, const fgh& e) -> int
+      {
+        counter = 168;
+        std::unique_lock<std::mutex> l(m);
+        cv.notify_one();
+        return counter + 1;
+      }
+  );
+
+  auto task = cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::try_catch(t1, t2, t3)
+    , t4);
+
+}
+
+
+
+BOOST_AUTO_TEST_CASE(stupid_vs_wont_compile)
+{
+  auto runner = std::make_shared<my_runner>();
+
+  auto c_t = cool::ng::async::factory::create(
+      runner
+    , [](const std::shared_ptr<my_runner>& r) -> void
+    {
+
+    }
+  );
+
+  auto r_t = cool::ng::async::factory::create(
+      runner
+    , [](const std::shared_ptr<my_runner>& r, const  char* ptr) -> void
+    {
+
+    }
+  );
+
+  auto catch_t = cool::ng::async::factory::create(
+              runner
+            , [] (const std::shared_ptr<my_runner>& r_, const std::exception_ptr& ex_) -> void
+              {
+              }
+          );
+
+auto outer = cool::ng::async::factory::try_catch(
+          c_t
+        , catch_t
+      );
+
+  auto task = cool::ng::async::factory::sequence(
+      r_t
+    , outer);
+
+
+}
 BOOST_AUTO_TEST_SUITE_END()
