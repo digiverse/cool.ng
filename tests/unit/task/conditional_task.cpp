@@ -51,6 +51,17 @@ class my_runner : public cool::ng::async::runner
   int counter = 0;
 };
 
+void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+{
+  auto start = std::chrono::system_clock::now();
+  while (!lambda())
+  {
+    auto now = std::chrono::system_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
+      return;
+  }
+}
+
 class abc { };
 class cde { };
 class fgh { };
@@ -59,72 +70,64 @@ BOOST_AUTO_TEST_CASE(basic)
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
   counter = 0;
 
+  int global_value = 5;
+
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, int value) -> bool
+    , [&counter, &global_value] (const std::shared_ptr<my_runner>& r) -> bool
       {
         r->inc();
         counter = 0;
-        return value == 5;
+        return global_value == 5;
       }
   );
   auto t2 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, int value) -> int
+    , [&counter] (const std::shared_ptr<my_runner>& r, int value) -> int
       {
         r->inc();
         counter += 42 + value;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
         return counter;
       }
   );
   auto t3 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, int value) -> int
+    , [&counter] (const std::shared_ptr<my_runner>& r, int value) -> int
       {
         r->inc();
         counter += 84 + value;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
         return counter;
       }
   );
 
   auto task = cool::ng::async::factory::conditional(t1, t2, t3);
 
-  std::unique_lock<std::mutex> l(m);
   task.run(5);
-  cv.wait_for(l, ms(100), [&counter] { return counter == 47; });
+  spin_wait(100, [&counter] { return counter != 0; });
   BOOST_CHECK_EQUAL(47, counter);
   BOOST_CHECK_EQUAL(1, runner_1->counter);
   BOOST_CHECK_EQUAL(1, runner_2->counter);
 
   task.run(10);
-  cv.wait_for(l, ms(100), [&counter] { return counter == 94; });
+  spin_wait(100, [&counter] { return counter == 94; });
   BOOST_CHECK_EQUAL(94, counter);
   BOOST_CHECK_EQUAL(3, runner_1->counter);
   BOOST_CHECK_EQUAL(1, runner_2->counter);
-
 }
-
+#if 0
 BOOST_AUTO_TEST_CASE(basic_void_param)
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
   counter = 0;
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r) -> bool
+    , [&counter] (const std::shared_ptr<my_runner>& r) -> bool
       {
         r->inc();
         return counter == 5;
@@ -132,23 +135,19 @@ BOOST_AUTO_TEST_CASE(basic_void_param)
   );
   auto t2 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r) -> int
+    , [&counter] (const std::shared_ptr<my_runner>& r) -> int
       {
         r->inc();
         counter += 42;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
         return counter;
       }
   );
   auto t3 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r) -> int
+    , [&counter] (const std::shared_ptr<my_runner>& r) -> int
       {
         r->inc();
         counter += 84;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
         return counter;
       }
   );
@@ -156,28 +155,25 @@ BOOST_AUTO_TEST_CASE(basic_void_param)
   auto task = cool::ng::async::factory::conditional(t1, t2, t3);
 
   counter = 5;
-  std::unique_lock<std::mutex> l(m);
   task.run();
-  cv.wait_for(l, ms(100), [&counter] { return counter == 47; });
+  spin_wait(100, [&counter] { return counter != 5; });
   BOOST_CHECK_EQUAL(47, counter);
   BOOST_CHECK_EQUAL(1, runner_1->counter);
   BOOST_CHECK_EQUAL(1, runner_2->counter);
 
   counter = 10;
   task.run();
-  cv.wait_for(l, ms(100), [&counter] { return counter == 94; });
+  spin_wait(100, [&counter] { return counter != 10; });
   BOOST_CHECK_EQUAL(94, counter);
   BOOST_CHECK_EQUAL(3, runner_1->counter);
   BOOST_CHECK_EQUAL(1, runner_2->counter);
 
   auto t4 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, int value) -> int
+    , [&counter] (const std::shared_ptr<my_runner>& r, int value) -> int
       {
         r->inc();
         counter += value - 5;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
         return counter;
       }
   );
@@ -186,14 +182,14 @@ BOOST_AUTO_TEST_CASE(basic_void_param)
 
   counter = 5;
   task2.run();
-  cv.wait_for(l, ms(100), [&counter] { return counter == 94; });
+  spin_wait(100, [&counter] { return counter == 89; });
   BOOST_CHECK_EQUAL(89, counter);
   BOOST_CHECK_EQUAL(4, runner_1->counter);
   BOOST_CHECK_EQUAL(3, runner_2->counter);
 
   counter = 10;
   task2.run();
-  cv.wait_for(l, ms(100), [&counter] { return counter == 183; });
+  spin_wait(100, [&counter] { return counter == 183; });
   BOOST_CHECK_EQUAL(183, counter);
   BOOST_CHECK_EQUAL(6, runner_1->counter);
   BOOST_CHECK_EQUAL(4, runner_2->counter);
@@ -204,14 +200,12 @@ BOOST_AUTO_TEST_CASE(basic_no_else)
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
   counter = 0;
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, int value) -> bool
+    , [&counter] (const std::shared_ptr<my_runner>& r, int value) -> bool
       {
         r->inc();
         counter = 0;
@@ -220,7 +214,7 @@ BOOST_AUTO_TEST_CASE(basic_no_else)
   );
   auto t2 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r, int value)
+    , [&counter] (const std::shared_ptr<my_runner>& r, int value)
       {
         r->inc();
         counter += 42 + value;
@@ -229,12 +223,10 @@ BOOST_AUTO_TEST_CASE(basic_no_else)
 
   auto t4 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r)
+    , [&counter] (const std::shared_ptr<my_runner>& r)
       {
         r->inc();
         counter += 100;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
       }
   );
 
@@ -242,16 +234,14 @@ BOOST_AUTO_TEST_CASE(basic_no_else)
       cool::ng::async::factory::conditional(t1, t2)
     , t4);
 
-  std::unique_lock<std::mutex> l(m);
   task.run(5);
-  cv.wait_for(l, ms(100), [&counter] { return counter == 147; });
+  spin_wait(100, [&counter] { return counter == 147; });
   BOOST_CHECK_EQUAL(147, counter);
   BOOST_CHECK_EQUAL(1, runner_1->counter);
   BOOST_CHECK_EQUAL(2, runner_2->counter);
 
   task.run(10);
-
-  cv.wait_for(l, ms(100), [&counter] { return counter == 100; });
+  spin_wait(100, [&counter] { return counter == 100; });
 
   BOOST_CHECK_EQUAL(100, counter);
   BOOST_CHECK_EQUAL(2, runner_1->counter);
@@ -263,14 +253,12 @@ BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
   counter = 0;
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r) -> bool
+    , [&counter] (const std::shared_ptr<my_runner>& r) -> bool
       {
         r->inc();
         return counter == 5;
@@ -278,7 +266,7 @@ BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
   );
   auto t2 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r)
+    , [&counter] (const std::shared_ptr<my_runner>& r)
       {
         r->inc();
         counter += 42;
@@ -287,12 +275,10 @@ BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
 
   auto t4 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &counter] (const std::shared_ptr<my_runner>& r)
+    , [&counter] (const std::shared_ptr<my_runner>& r)
       {
         r->inc();
         counter += 100;
-        std::unique_lock<std::mutex> l(m);
-        cv.notify_one();
       }
   );
 
@@ -300,10 +286,9 @@ BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
       cool::ng::async::factory::conditional(t1, t2)
     , t4);
 
-  std::unique_lock<std::mutex> l(m);
   counter = 5;
   task.run();
-  cv.wait_for(l, ms(100), [&counter] { return counter == 147; });
+  spin_wait(100, [&counter] { return counter == 147; });
   BOOST_CHECK_EQUAL(147, counter);
   BOOST_CHECK_EQUAL(1, runner_1->counter);
   BOOST_CHECK_EQUAL(2, runner_2->counter);
@@ -311,12 +296,12 @@ BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
   counter = 0;
   task.run();
 
-  cv.wait_for(l, ms(100), [&counter] { return counter == 100; });
+  spin_wait(100, [&counter] { return counter == 100; });
 
   BOOST_CHECK_EQUAL(100, counter);
   BOOST_CHECK_EQUAL(2, runner_1->counter);
   BOOST_CHECK_EQUAL(3, runner_2->counter);
 
 }
-
+#endif
 BOOST_AUTO_TEST_SUITE_END()

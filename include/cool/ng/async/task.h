@@ -778,7 +778,7 @@ class task
   template <typename T = InputT>
   void run(const typename std::decay<typename std::enable_if<
       !std::is_same<T, void>::value && !std::is_rvalue_reference<T>::value
-    , T>::type>::type& arg_)
+    , T>::type>::type& arg_) const
   {
     m_impl->run(m_impl, arg_);
   }
@@ -787,7 +787,7 @@ class task
   template <typename T = InputT>
   void run(typename std::enable_if<
       !std::is_same<T, void>::value && std::is_rvalue_reference<T>::value
-    , T>::type arg_)
+    , T>::type arg_) const
   {
     m_impl->run(m_impl, std::move(arg_));
   }
@@ -795,7 +795,7 @@ class task
   * Schedule task for execution.
   */
   template <typename T = InputT>
-  typename std::enable_if<std::is_same<T, void>::value, void>::type run()
+  typename std::enable_if<std::is_same<T, void>::value, void>::type run() const
   {
     m_impl->run(m_impl);
   }
