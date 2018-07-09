@@ -1515,7 +1515,6 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
       // 2. user can request the implementation to allocated new buffer (on_read buf == nullptr, size is ignored,
       //    last known buffer size will be used)
       // 3. user can provide new buffer (and size) in on_read()
-      auto prev_size = size;
       try { cb->on_read(buf, size); } catch (...) { }
 
       // buffer needs to be changed
