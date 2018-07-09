@@ -30,6 +30,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <cassert>
 #include "cool/ng/error.h"
 #include "cool/ng/exception.h"
 
@@ -696,32 +697,38 @@ void stream::on_rd_event(void* ctx)
     auto aux = self->m_stream->m_handler.lock();
     if (aux)
     {
+      // 1. user can provide initial buffer in constructor (the implementation does not remember it)
+      // 2. user can request the implementation to allocated new buffer (on_read buf == nullptr, size is ignored,
+      //    last known buffer size will be used)
+      // 3. user can provide new buffer (and size) in on_read()
+      auto prev_size = size;
       try { aux->on_read(buf, size); } catch (...) { /* noop */ }
 
-      // check if callback modified buffer or size parameters
-      if (buf != self->m_rd_data || size != self->m_rd_size)
+      // buffer needs to be changed
+      if (buf != self->m_rd_data)
       {
         // release current buffer if allocated by me
         if (self->m_rd_is_mine)
-          delete [] static_cast<uint8_t*>(self->m_rd_data);
-
-        // there are some special values that requeire different considerations
-        //  - if size is zero revert to bufffer specified at the creation
-        //  - if buf is nullptr allocate buffer of specified size
-        if (size == 0)
         {
-          self->m_rd_size = self->m_stream->m_size;
-          self->m_rd_data = self->m_stream->m_buf;
+          delete[] static_cast<uint8_t *>(self->m_rd_data);
+        }
+
+        if (buf == nullptr)
+        {
+          self->m_rd_data = new uint8_t[self->m_rd_size];
+          self->m_rd_is_mine = true;
         }
         else
         {
+          // user provided own buffer, size must be > 0
+          if ( size <= 0 ) {
+            // todo: shutdown stream
+            try { aux->on_event(detail::oob_event::internal, error::make_error_code(error::errc::out_of_range)); } catch (...) { /* noop */ }
+          }
           self->m_rd_data = buf;
           self->m_rd_size = size;
+          self->m_rd_is_mine = false;
         }
-        self->m_rd_is_mine = self->m_rd_data == nullptr;
-
-        if (self->m_rd_is_mine)
-          self->m_rd_data = new uint8_t[self->m_rd_size];
       }
     }
   }

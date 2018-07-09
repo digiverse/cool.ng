@@ -77,11 +77,11 @@ BOOST_AUTO_TEST_CASE(basic)
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&counter, &global_value] (const std::shared_ptr<my_runner>& r) -> bool
+    , [&counter, &global_value] (const std::shared_ptr<my_runner>& r, int value) -> bool
       {
         r->inc();
         counter = 0;
-        return global_value == 5;
+        return global_value == value;
       }
   );
   auto t2 = cool::ng::async::factory::create(

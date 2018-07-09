@@ -112,7 +112,7 @@ class stream;
 
 namespace detail {
 
-enum class oob_event { connect, disconnect, failure };
+enum class oob_event { connect, disconnect, failure, internal };
 
 namespace ip = cool::ng::net::ip;
 

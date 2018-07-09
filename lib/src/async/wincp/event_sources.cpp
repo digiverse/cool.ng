@@ -1499,10 +1499,10 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
   auto exe_ctx = new exec_for_io(&(*cp_)->m_environ,
     [handler, capture_data, num_transferred_, wctx, cp_]()
     {
-      void* data = capture_data;
+      void* buf = capture_data;
       std::size_t size = num_transferred_;
-      auto ctx = wctx.lock();
-      if (!ctx)
+      auto self = wctx.lock();
+      if (!self)
         return;
 
       auto cb = handler.lock();
@@ -1511,45 +1511,40 @@ void stream::process_event_read(context::sptr* cp_, ULONG_PTR num_transferred_, 
         // TODO: this is serious stuff, need to close the stream
         return;
       }
-      try { cb->on_read(data, size); } catch (...) { }
+      // 1. user can provide initial buffer in constructor (the implementation does not remember it)
+      // 2. user can request the implementation to allocated new buffer (on_read buf == nullptr, size is ignored,
+      //    last known buffer size will be used)
+      // 3. user can provide new buffer (and size) in on_read()
+      auto prev_size = size;
+      try { cb->on_read(buf, size); } catch (...) { }
 
-      // check if user changed the buffere and restart read operation
-      if (data != ctx->m_rd_data || size > ctx->m_rd_size)
+      // buffer needs to be changed
+      if (buf != self->m_rd_data)
       {
         // release current buffer if allocated by me
-        if (ctx->m_rd_is_mine)
+        if (self->m_rd_is_mine)
         {
-          // if "data" points to our internal buffer, make sure it is invalidated,
-          // so that it will be properly reallocated
-          if (data == ctx->m_rd_data)
-            data = nullptr;
-          delete [] static_cast<uint8_t*>(ctx->m_rd_data);
+          delete[] static_cast<uint8_t *>(self->m_rd_data);
         }
 
-        // there are some special values that requeire different considerations
-        //  - if size is zero revert to bufffer specified at the creation
-        //  - if buf is nullptr allocate buffer of specified size
-        if (size == 0)
+        if (buf == nullptr)
         {
-          ctx->m_rd_size = ctx->m_stream->m_rd_size;
-          ctx->m_rd_data = ctx->m_stream->m_rd_data;
+          self->m_rd_data = new uint8_t[self->m_rd_size];
+          self->m_rd_is_mine = true;
         }
         else
         {
-          ctx->m_rd_data = data;
-          ctx->m_rd_size = size;
+          // user provided own buffer, size must be > 0
+          if ( size <= 0 ) {
+            // todo: shutdown stream
+            try { cb->on_event(detail::oob_event::internal, error::make_error_code(error::errc::out_of_range)); } catch (...) { /* noop */ }
+          }
+          self->m_rd_data = buf;
+          self->m_rd_size = size;
+          self->m_rd_is_mine = false;
         }
-        ctx->m_rd_is_mine = ctx->m_rd_data == nullptr;
-
-        try
-        {
-          if (ctx->m_rd_is_mine)
-            ctx->m_rd_data = new uint8_t[ctx->m_rd_size];
-        }
-        catch (...)   // TODO: out-of-memory, shutdown the stream
-        { }
       }
-      ctx->m_stream->start_read_source(cp_);
+      self->m_stream->start_read_source(cp_);
     }
   );
   ex->run(exe_ctx);

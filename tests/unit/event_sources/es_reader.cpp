@@ -994,6 +994,7 @@ BOOST_AUTO_TEST_CASE(invalid_custom_read_buffer)
 
     cool::ng::async::net::stream srv_stream;
     std::atomic<bool> connected(false);
+    std::atomic<bool> buf_usage_error(false);
 
     auto server = async::net::server(
         std::weak_ptr<test_runner>(r)
@@ -1016,7 +1017,7 @@ BOOST_AUTO_TEST_CASE(invalid_custom_read_buffer)
 
     server.start();
 
-    // buf moved 6 characters ahead, cnt set to zero - should revert to creation time params
+    // buf moved 6 characters ahead, cnt set to zero - not valid; if buf is changed, size must be specified!
     {
       memset(receive, 'X', sizeof(receive));
       auto clt_stream = std::make_shared<async::net::stream>(
@@ -1031,54 +1032,22 @@ BOOST_AUTO_TEST_CASE(invalid_custom_read_buffer)
                 s_ = 0;
               }
               else
-               boolean_flag = true;
+                boolean_flag = true;
             }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
-          , [&connected] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
+          , [&connected, &buf_usage_error] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
             {
-              connected = true;
-            }
-          , reinterpret_cast<void*>(receive)
-          , 6
-        );
-
-      boolean_flag = false;
-      clt_stream->connect(cool::ng::net::ipv4::loopback, 12122);
-      spin_wait(2000, [&connected]() { return boolean_flag.load() && connected.load();});
-      BOOST_CHECK_EQUAL(true, connected.load());
-      BOOST_CHECK_EQUAL(true, boolean_flag.load());
-
-      boolean_flag.store(false);
-      srv_stream.write(send, 10);
-
-      // wait until everything is read
-      spin_wait(2000, []() { return boolean_flag.load(); });
-      BOOST_CHECK_EQUAL(true, boolean_flag.load());
-      BOOST_CHECK_EQUAL(0, memcmp(receive,  "678945XXXX", 10));
-    }
-    // buf set to nullptr, cnt set to zero - should revert to creation time params
-    {
-      memset(receive, 'X', sizeof(receive));
-      auto clt_stream = std::make_shared<async::net::stream>(
-            std::weak_ptr<test_runner>(r2)
-          , [&receive] (const std::shared_ptr<test_runner>&, void*& b_, std::size_t& s_)
-            {
-              static int count = 0;
-
-              if (++count == 1)
+              // todo: check comparing of e_
+              if (evt_ == oob_event::internal && e_ == cool::ng::error::make_error_code(cool::ng::error::errc::out_of_range) )
               {
-                b_ = nullptr;
-                s_ = 0;
+                buf_usage_error = true;
               }
               else
-               boolean_flag = true;
-            }
-          , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
-            { }
-          , [&connected] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
-            {
-              connected = true;
+              {
+                connected = true;
+              }
+
             }
           , reinterpret_cast<void*>(receive)
           , 6
@@ -1090,15 +1059,14 @@ BOOST_AUTO_TEST_CASE(invalid_custom_read_buffer)
       BOOST_CHECK_EQUAL(true, connected.load());
       BOOST_CHECK_EQUAL(true, boolean_flag.load());
 
-      boolean_flag.store(false);
       srv_stream.write(send, 10);
 
       // wait until everything is read
-      spin_wait(2000, []() { return boolean_flag.load(); });
-      BOOST_CHECK_EQUAL(true, boolean_flag.load());
-      BOOST_CHECK_EQUAL(0, memcmp(receive,  "678945XXXX", 10));
+      spin_wait(2000, [&buf_usage_error]() { return buf_usage_error.load(); });
+      BOOST_CHECK_EQUAL(true, buf_usage_error);
     }
-    // buf nullptr, size unchanged, should allocate new buffer
+
+    // buf nullptr, should allocate new buffer
     {
       memset(receive, 'X', sizeof(receive));
       auto clt_stream = std::make_shared<async::net::stream>(
@@ -1112,7 +1080,7 @@ BOOST_AUTO_TEST_CASE(invalid_custom_read_buffer)
                 b_ = nullptr;
               }
               else
-               boolean_flag = true;
+                boolean_flag = true;
             }
           , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)
             { }
@@ -1162,6 +1130,7 @@ BOOST_AUTO_TEST_CASE(long_connect_interrupted)
   std::atomic<bool> rep_conn(false);
   std::atomic<bool> rep_disconn(false);
   std::atomic<bool> rep_fail(false);
+  std::atomic<bool> rep_internal(false);
 
   std::error_code err = cool::ng::error::no_error();
 
@@ -1171,7 +1140,7 @@ BOOST_AUTO_TEST_CASE(long_connect_interrupted)
         std::weak_ptr<test_runner>(r)
       , [] (const std::shared_ptr<test_runner>&, void*& b_, std::size_t& s_) { }
       , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)   { }
-      , [&rep_conn, &rep_disconn, &rep_fail, &err] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
+      , [&rep_conn, &rep_disconn, &rep_fail, &rep_internal, &err] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
         {
           std::cout << "got event " << static_cast<int>(evt_) << ", code " << e_.value() << " (" << e_.message() << ")\n";
           switch (evt_)
@@ -1182,6 +1151,9 @@ BOOST_AUTO_TEST_CASE(long_connect_interrupted)
               rep_disconn = true; break;
             case oob_event::failure:
               rep_fail = true; err = e_; break;
+            case oob_event::internal:
+              rep_internal = true; err = e_; break;
+
           }
         }
     );
@@ -1252,6 +1224,7 @@ BOOST_AUTO_TEST_CASE(no_service)
   std::atomic<bool> rep_conn(false);
   std::atomic<bool> rep_disconn(false);
   std::atomic<bool> rep_fail(false);
+  std::atomic<bool> rep_internal(false);
 
   std::error_code err = cool::ng::error::no_error();
 
@@ -1261,7 +1234,7 @@ BOOST_AUTO_TEST_CASE(no_service)
         std::weak_ptr<test_runner>(r)
       , [] (const std::shared_ptr<test_runner>&, void*& b_, std::size_t& s_) { }
       , [] (const std::shared_ptr<test_runner>&, const void*, std::size_t)   { }
-      , [&rep_conn, &rep_disconn, &rep_fail, &err] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
+      , [&rep_conn, &rep_disconn, &rep_fail, &rep_internal, &err] (const std::shared_ptr<test_runner>& r_, oob_event evt_, const std::error_code& e_)
         {
           std::cout << "got event " << static_cast<int>(evt_) << ", code " << e_.value() << " (" << e_.message() << ")\n";
           switch (evt_)
@@ -1272,6 +1245,9 @@ BOOST_AUTO_TEST_CASE(no_service)
               rep_disconn = true; break;
             case oob_event::failure:
               rep_fail = true; err = e_; break;
+            case oob_event::internal:
+              rep_internal = true; err = e_; break;
+
           }
         }
     );

@@ -113,7 +113,7 @@ class stream
    * @tparam EvtHandlerT <b>EvtHandlerT</b> is the actual type of the event handler.
    *         This type must be assignable to the following functional type:
    * ~~~{.c}
-   *     std::function<void(const std::shared_ptr<RunnerT>&, oob_event, uint32_t code)>
+   *     std::function<void(const std::shared_ptr<RunnerT>&, oob_event, const std::error_code& code)>
    * ~~~
    *         The first parameter is the shared pointer to the runner (which @em may
    *         be @c nullptr if the runner no longer exists). The second parameter is
