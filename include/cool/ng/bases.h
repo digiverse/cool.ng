@@ -102,12 +102,12 @@ class identified
    *
    * Creates a new @ref identified object with a unique numerical identification.
    */
-  identified() : m_number(++m_counter)
-  { /* noop */ }
+  dlldecl identified();
 
  private:
+  unsigned long next_number();
+
   unsigned long m_number;
-  static std::atomic<unsigned long> m_counter;
 };
 
 /**

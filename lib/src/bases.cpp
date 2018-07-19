@@ -32,8 +32,15 @@ namespace cool { namespace ng {
 namespace util
 {
 
+unsigned long identified::next_number()
+{
+  static std::atomic<unsigned long> counter(0);
+  return ++counter;
+}
 
-std::atomic<unsigned long> identified::m_counter(0);
+identified::identified()
+  : m_number(next_number())
+{ /* noop */ }
 
 identified::identified(identified&& original)
 {
