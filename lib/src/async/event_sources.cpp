@@ -52,6 +52,16 @@ namespace ip = cool::ng::net::ip;
 namespace ipv4 = cool::ng::net::ipv4;
 namespace ipv6 = cool::ng::net::ipv6;
 
+timer::timer(const task_type& task_, uint64_t period_, uint64_t leeway_)
+{
+  m_impl = impl::create_timer(task_, period_, leeway_);
+}
+
+timer::~timer()
+{
+  if (m_impl)
+    m_impl->shutdown();
+}
 void timer::start()
 {
   if (!*this)
@@ -85,25 +95,64 @@ timer::operator bool() const
   return !!m_impl;
 }
 
-namespace impl {
-// --------------------------------------------------------------------------
-// -----
-// ----- Factory methods
-// ------
+#if 0
+namespace detail {
 
-dlldecl std::shared_ptr<detail::itf::timer> create_timer(
-    const std::shared_ptr<runner>& r_
-  , const std::weak_ptr<cb::timer>& t_
-  , uint64_t p_
-  , uint64_t l_)
+timer::timer(const task& task_)  : m_task(task_)
+{ /* noop */}
+
+timer::~timer()
 {
-  auto ret = cool::ng::util::shared_new<timer>(t_, p_, l_);
-  ret->initialize(r_->impl());
-  return ret;
+  if (m_impl)
+    m_impl->shutdown();
 }
 
-} // namespace impl
+void timer::initialize(uint64_t p_, uint64_t l_)
+{
+  if (p_ == 0 || !m_task)
+    throw exception::illegal_argument();
+  m_impl = cool::ng::util::shared_new<impl::timer>(self(), p_, l_);
+}
 
+void timer::start()
+{
+  m_impl->start();
+}
+
+void timer::stop()
+{
+  m_impl->stop();
+}
+
+void timer::period(uint64_t p_, uint64_t l_)
+{
+  m_impl->period(p_, l_);
+}
+
+const std::string& timer::name() const
+{
+  return m_impl->name();
+}
+
+void timer::shutdown()
+{
+  /* noop */
+}
+
+void timer::expired()
+{
+  try
+  {
+    m_task.run();
+  }
+  catch (...)
+  {
+    /* noop */
+  }
+}
+
+} // namespace detail
+#endif
 // --------------------------------------------------------------------------
 // -----
 // ----- network sources

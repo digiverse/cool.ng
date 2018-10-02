@@ -74,7 +74,9 @@ timer::context::context(const timer::ptr& t_)
 }
 
 timer::context::~context()
-{ /* noop */ }
+{
+  TRACE("~~~", "timer::context::~context");
+}
 
 VOID CALLBACK timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
 {
@@ -96,15 +98,13 @@ VOID CALLBACK timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP
   }
 }
 
-timer::timer(const std::weak_ptr<cb::timer>& t_
-           , uint64_t p_
-           , uint64_t l_)
+timer::timer(const task_type& t_, uint64_t p_, uint64_t l_)
   : named("si.digiverse.ng.cool.timer")
   , m_state(state::running)
-  , m_callback(t_)
   , m_context(nullptr)
   , m_period((p_ + 500) / 1000)
   , m_leeway((l_ + 500) / 1000)
+  , m_task(t_)
 {
   if (m_period == 0)
     m_period = 1;
@@ -113,11 +113,12 @@ timer::timer(const std::weak_ptr<cb::timer>& t_
 }
 
 timer::~timer()
-{ }
-
-void timer::initialize(const std::shared_ptr<async::impl::executor>& ex_)
 {
-  m_executor = ex_;
+  TRACE("~~~", "timer::~timer");
+}
+
+void timer::initialize()
+{
   m_context = new context(self().lock());
 }
 
@@ -167,41 +168,25 @@ void timer::stop()
   SetThreadpoolTimer(m_context->m_source, &fdt, 0, 0);
 }
 
-// ---
-// Execution context for a task submitterd to specified async::executor. This
-// task will do actual callback into the user code
-class exec_for_timer : public cool::ng::async::detail::event_context
-{
- public:
-  exec_for_timer(PTP_CALLBACK_ENVIRON env, const std::weak_ptr<cb::timer>& cb_)
-    : m_handler(cb_)
-    , m_environ(env)
-  { /* noop */ }
-
-  void entry_point() override
-  {
-    auto cb = static_cast<exec_for_timer*>(static_cast<void*>(this))->m_handler.lock();
-    if (cb)
-      cb->expired();
-  }
-
-  void* environment() override { return m_environ; }
-
- private:
-  std::weak_ptr<cb::timer> m_handler;
-  PTP_CALLBACK_ENVIRON m_environ;
-};
-
 void timer::expired()
 {
   try
   {
-    auto r = m_executor.lock();
-    if (r)
-      r->run(new exec_for_timer(m_context->m_pool->get_environ(), m_callback));
+    m_task.run();
   }
   catch (...)
   { /* noop */ }
+}
+
+// --- factory
+std::shared_ptr<detail::itf::timer> create_timer(
+    const detail::itf::timer::task_type& t_
+  , uint64_t p_
+  , uint64_t l_)
+{
+  auto impl_ = cool::ng::util::shared_new<timer>(t_, p_, l_);
+  impl_->initialize();
+  return impl_;
 }
 
 } // namespace impl

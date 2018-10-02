@@ -106,14 +106,15 @@ BOOST_AUTO_TEST_CASE(basic)
   auto r2 = std::make_shared<test_runner>();
 
   {
-    async::timer timer(
-        std::weak_ptr<test_runner>(r1)
+    auto t = cool::ng::async::factory::create(
+        r1
       , [] (const std::shared_ptr<test_runner>& r)
         {
           r->inc();
         }
-      , ms(100)
     );
+
+    async::timer timer(t, ms(100));
 
     spin_wait(150, [&r1] () { return r1->counter() == 1; });
     BOOST_CHECK_EQUAL(0 , r1->counter());

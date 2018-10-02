@@ -31,6 +31,7 @@
 
 #include "cool/ng/ip_address.h"
 #include "cool/ng/async/runner.h"
+#include "cool/ng/async/task.h"
 
 namespace cool { namespace ng { namespace async {
 
@@ -62,6 +63,9 @@ class startable : public event_source
 //--- timer event source interface
 class timer : public startable
 {
+ public:
+  using task_type = cool::ng::async::task<void, void>;
+
  public:
   virtual void period(uint64_t, uint64_t) = 0;
 };
@@ -95,8 +99,7 @@ class timer
 // ---
 
 dlldecl std::shared_ptr<detail::itf::timer> create_timer(
-    const std::shared_ptr<runner>& r_
-  , const std::weak_ptr<cb::timer>& t_
+    const detail::itf::timer::task_type& t_
   , uint64_t p_
   , uint64_t l_
 );

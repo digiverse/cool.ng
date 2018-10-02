@@ -24,15 +24,17 @@
 #if !defined(cool_ng_f36defb0_dda1_4ce1_b25a_943f5deed23b)
 #define      cool_ng_f36defb0_dda1_4ce1_b25a_943f5deed23b
 
+#include <string>
 #include <memory>
 #include <cstdint>
 #include <functional>
+#include <chrono>
 
 #include "cool/ng/impl/platform.h"
 #include "cool/ng/ip_address.h"
 #include "cool/ng/impl/async/event_sources_types.h"
-#include "cool/ng/impl/async/event_sources.h"
 
+#include "task.h"
 #include "net/stream.h"
 #include "net/server.h"
 
@@ -40,10 +42,9 @@ namespace cool { namespace ng { namespace async {
 /**
  * Timer event source.
  *
- * Timer objects periodically, with a period @a p_, submit a task to @ref runner
- * @a r_ that calls the user @em Callable @a h_.
- * The internal resolution of @ref timer class is one microsecond. The actual
- * resolution is platform dependent, as follows:
+ * Timer objects periodically, with a specified period, schedule a user specified
+ * task for execution. The internal period resolution of @ref timer class is one
+ * microsecond. The actual resolution is platform dependent, as follows:
  *   Platform        | Actual Resolution
  *   ----------------|-----------------
  *    MacOS/OS X     | 1 microsecond
@@ -51,8 +52,8 @@ namespace cool { namespace ng { namespace async {
  *    MS Windows     | 1 millisecond
  * When transforming period and leeway values to the actual resolution, the
  * result is rounded to the nearest actual resolution unit, but is always at
- * least 1 resolution unit. Thus both 100 microsends and 12000 microseconds
- * would result in 1 millisecond on Microsoft Windows.
+ * least 1 resolution unit. Thus both 100 microseconds and 1200 microseconds
+ * would result in 1 millisecond actual period on Microsoft Windows.
  *
  * @note Upon creation the timer object is inactive and must be explicitly
  *   started using @ref start().
@@ -63,6 +64,19 @@ namespace cool { namespace ng { namespace async {
 class timer
 {
  public:
+  /**
+   * User task type.
+   *
+   * The type of the task the user shall specify to be run periodically. It
+   * corresponds to the following @ref cool::ng::async::task "task" type:
+   * ~~~
+   *    cool::ng::async::task<void, void>
+   * ~~~
+   */
+  using task_type = detail::itf::timer::task_type;
+
+ public:
+  dlldecl ~timer();
   /**
    * Default constructor to allow @ref timer "timers" to be stored in standard
    * library containers.
@@ -83,26 +97,16 @@ class timer
    *
    * Creates a timer object with the specified period.
    *
-   * @tparam RunnerT <b>RunnerT</b> is the actual type of the @ref runner to
-   *         use to schedule calls to user @em Callable.
-   * @tparam HandlerT <b>HandlerT</b> is the actual type of the user @em Callable
-   *         and must be assignable to the following functional type:
-   * ~~~{.c}
-   *     std::function<void(const std::shared_ptr<RunnerT>&)>
-   * ~~~
    * @tparam RepT <b>RepT</b> is mapped into @c Rep template parameter of
    *         @c std::chrono::duration class template.
    * @tparam PeriodT <b>PeriodT</b> is mapped into @c Period template parameter of
    *         @c std::chrono::duration class template.
    *
-   * @param r_ the @ref runner to use to shedule t he periodic task
-   * @param h_ the user @em Callable to be called from periodic task.
-   * @param p_ period of the timer.
+   * @param task_ the user @ref task to execute periodically
+   * @param period_ period of the timer.
    *
    * @throw exception::illegal_argument thrown if period, when converted
-   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
-   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
-   *        exists at the moment of construction
+   *        to microseconds, is equal to 0 or if the task @a task_ is empty
    * @throw exception::threadpool_failure if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
@@ -111,27 +115,20 @@ class timer
    * @note The leeway of the timer is set to 10% of the period or to at least
    *       1 microsecond.
    */
-  template <typename RunnerT, typename HandlerT, typename RepT, typename PeriodT>
-  timer(const std::weak_ptr<RunnerT>& r_
-      , const HandlerT& h_
-      , const std::chrono::duration<RepT, PeriodT>& p_)
-    : timer(r_
-          , h_
-          , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(p_).count()))
+  template <typename RepT, typename PeriodT>
+  timer(const task_type& task_
+      , const std::chrono::duration<RepT, PeriodT>& period_)
+    : timer(task_
+          , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(period_).count()))
   { /* noop */ }
 
   /**
    * Create a timer object.
    *
-   * Creates a timer object with the specified period.
+   * Creates a timer object with the specified period and the specified leeway.
    *
    * @tparam RunnerT <b>RunnerT</b> is the actual type of the @ref runner to
    *         use to schedule calls to user @em Callable.
-   * @tparam HandlerT <b>HandlerT</b> is the actual type of the user @em Callable
-   *         and must be assignable to the following functional type:
-   * ~~~{.c}
-   *     std::function<void(const std::shared_ptr<RunnerT>&)>
-   * ~~~
    * @tparam RepT <b>RepT</b> is mapped into @c Rep template parameter of
    *         @c std::chrono::duration class template.
    * @tparam PeriodT <b>PeriodT</b> is mapped into @c Period template parameter of
@@ -142,29 +139,24 @@ class timer
    *         @c std::chrono::duration class template.
    *
    * @throw exception::illegal_argument thrown if period, when converted
-   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
-   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
-   *        exists at the moment of construction
+   *        to microseconds, is equal to 0 or if the task @a task_ is empty
    * @throw exception::threadpool_failure if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
-   * @param r_ the @ref runner to use to shedule t he periodic task
-   * @param h_ the user @em Callable to be called from periodic task.
-   * @param p_ period of the timer.
-   * @param l_ leeway, the interval the system can defer the timer
+   * @param task_ the user @ref task to execute periodically
+   * @param period_ period of the timer.
+   * @param leeway_ leeway, the interval the system can defer the timer
    *
    * @note Upon creating the timer is inactive and must explicitly be activated
    *       via @ref start().
    */
-  template <typename RunnerT, typename HandlerT, typename RepT, typename PeriodT, typename Rep2T, typename Period2T>
-  timer(const std::weak_ptr<RunnerT>& r_
-      , const HandlerT& h_
-      , const std::chrono::duration<RepT, PeriodT>& p_
-      , const std::chrono::duration<RepT, PeriodT>& l_)
-    : timer(r_
-          , h_
-          , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(p_).count())
-          , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(l_).count()))
+  template <typename RepT, typename PeriodT, typename Rep2T, typename Period2T>
+  timer(const task_type& task_
+      , const std::chrono::duration<RepT, PeriodT>& period_
+      , const std::chrono::duration<RepT, PeriodT>& leeway_)
+    : timer(task_
+          , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(period_).count())
+          , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(leeway_).count()))
   { /* noop */  }
 
   /**
@@ -172,22 +164,11 @@ class timer
    *
    * Creates a timer object with the specified period.
    *
-   * @tparam RunnerT <b>RunnerT</b> is the actual type of the @ref runner to
-   *         use to schedule calls to user @em Callable.
-   * @tparam HandlerT <b>HandlerT</b> is the actual type of the user @em Callable
-   *         and must be assignable to the following functional type:
-   * ~~~{.c}
-   *     std::function<void(const std::shared_ptr<RunnerT>&)>
-   * ~~~
-   *
-   * @param r_ the @ref runner to use to shedule t he periodic task
-   * @param h_ the user @em Callable to be called from periodic task.
-   * @param p_ period of the timer, in microseconds.
+   * @param task_ the user @ref task to execute periodically
+   * @param period_ period of the timer, in microseconds.
    *
    * @throw exception::illegal_argument thrown if period, when converted
-   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
-   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
-   *        exists at the moment of construction
+   *        to microseconds, is equal to 0 or if the task @a task_ is empty
    * @throw exception::threadpool_failure if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
@@ -196,51 +177,28 @@ class timer
    * @note The leeway of the timer is set to 10% of the period or to at least
    *       1 microsecond.
    */
-  template <typename RunnerT, typename HandlerT>
-  timer(const std::weak_ptr<RunnerT>& r_
-      , const HandlerT& h_
-      , uint64_t p_)
-    : timer(r_, h_, p_, p_ / 10 == 0 ? 1 : p_ / 10)
+  timer(const task_type& task_, uint64_t period_)
+    : timer(task_, period_, period_ / 10 == 0 ? 1 : period_ / 10)
   { /* noop */  }
 
   /**
    * Create a timer object.
    *
-   * Creates a timer object with the specified period.
+   * Creates a timer object with the specified period and the specified leeway.
    *
-   * @tparam RunnerT <b>RunnerT</b> is the actual type of the @ref runner to
-   *         use to schedule calls to user @em Callable.
-   * @tparam HandlerT <b>HandlerT</b> is the actual type of the user @em Callable
-   *         and must be assignable to the following functional type:
-   * ~~~{.c}
-   *     std::function<void(const std::shared_ptr<RunnerT>&)>
-   * ~~~
-   *
-   * @param r_ the @ref runner to use to shedule t he periodic task
-   * @param h_ the user @em Callable to be called from periodic task.
-   * @param p_ period of the timer, in microseconds.
-   * @param l_ leeway, the interval the system can defer the timer, in microseconds
+   * @param task_ the user @ref task to execute periodically
+   * @param period_ period of the timer, in microseconds.
+   * @param leeway_ leeway, the interval the system can defer the timer, in microseconds
    *
    * @throw exception::illegal_argument thrown if period, when converted
-   *        to microseconds, is equal to 0 or if the handler @a h_ is empty
-   * @throw exception::runner_not_available thrown if the runner @a r_ no longer
-   *        exists at the moment of construction
+   *        to microseconds, is equal to 0 or if the task @a task_ is empty
    * @throw exception::threadpool_failure if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
    * @note Upon creating the timer is inactive and must explicitly be activated
    *       via @ref start().
    */
-  template <typename RunnerT, typename HandlerT>
-  timer(const std::weak_ptr<RunnerT>& r_
-      , const HandlerT& h_
-      , uint64_t p_
-      , uint64_t l_)
-  {
-    auto impl = cool::ng::util::shared_new<detail::timer<RunnerT>>(r_, h_);
-    impl->initialize(p_, l_);
-    m_impl = impl;
-  }
+  dlldecl timer(const task_type& task_, uint64_t period_, uint64_t leeway_);
   /**
    * Change the period of the timer.
    *
@@ -252,15 +210,15 @@ class timer
    * @tparam PeriodT <b>PeriodT</b> is mapped into @c Period template parameter of
    *         @c std::chrono::duration class template.
    *
-   * @param p_  The period of the timer.
+   * @param period_  The period of the timer.
    *
    * @note The leeway of the timer is set to 10% of the period or to at least
    *       1 microsecond..
    */
   template <typename RepT, typename PeriodT>
-  void period(const std::chrono::duration<RepT, PeriodT>& p_)
+  void period(const std::chrono::duration<RepT, PeriodT>& period_)
   {
-    period(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(p_).count()));
+    period(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(period_).count()));
   }
 
   /**
@@ -278,17 +236,17 @@ class timer
    * @tparam Period2T <b>Period2T</b> is mapped into @c Period template parameter of
    *         @c std::chrono::duration class template.
    *
-   * @param p_ the period of the timer. in microseconds
-   * @param l_ leeway, the amount of time the system can defer the timer, in microseconds
+   * @param period_ the period of the timer. in microseconds
+   * @param leeway_ leeway, the amount of time the system can defer the timer, in microseconds
    *
    * @exception cool::exception::illegal_argument Thrown if the period is set to 0.
    */
   template <typename RepT, typename PeriodT, typename Rep2T ,typename Period2T>
-  void period(const std::chrono::duration<RepT, PeriodT>& p_,
-                    const std::chrono::duration<Rep2T, Period2T>& l_)
+  void period(const std::chrono::duration<RepT, PeriodT>& period_,
+                    const std::chrono::duration<Rep2T, Period2T>& leeway_)
   {
-    period(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(p_).count())
-         , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(l_).count()));
+    period(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(period_).count())
+         , static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(leeway_).count()));
   }
 
   /**
@@ -297,8 +255,8 @@ class timer
    * When changing the period the new period becomes effective after the next
    * call to @ref start().
    *
-   * @param p_ The period of the timer in microseconds.
-   * @param l_ leeway, the amount of time, in microseconds, the system can defer
+   * @param period_ The period of the timer in microseconds.
+   * @param leeway_ leeway, the amount of time, in microseconds, the system can defer
    *           the timer.
    *
    * @exception cool::exception::illegal_argument Thrown if the period is set to 0.
@@ -306,7 +264,7 @@ class timer
    * @note The leeway parameter is optional. If not specified it is set to 10% of
    *   the period or to at least 1 microsecond.
    */
-  dlldecl void period(uint64_t p_, uint64_t l_ = 0);
+  dlldecl void period(uint64_t period_, uint64_t leeway_ = 0);
 
   /**
    * Start or restart the timer.

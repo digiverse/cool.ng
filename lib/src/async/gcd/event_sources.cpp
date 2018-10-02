@@ -59,10 +59,12 @@ namespace impl {
 // ======
 // ==========================================================================
 
-timer::context::context(const timer::ptr& t_, const std::shared_ptr<async::impl::executor>& ex_)
+timer::context::context(const timer::weak_ptr& t_)
     : m_timer(t_)
 {
-  m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0 , ex_->queue());
+  auto tm_ = t_.lock();
+  m_queue = ::dispatch_queue_create(tm_->name().c_str(), NULL);
+  m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0 , m_queue);
   m_source.cancel_handler(on_cancel);
   m_source.event_handler(on_event);
   m_source.context(this);
@@ -81,6 +83,7 @@ void timer::context::on_cancel(void* ctx)
 {
   auto self = static_cast<context*>(ctx);
   self->m_source.release();
+  ::dispatch_release(self->m_queue);
 
   delete self;
 }
@@ -88,29 +91,31 @@ void timer::context::on_cancel(void* ctx)
 void timer::context::on_event(void *ctx)
 {
   auto self = static_cast<context*>(ctx);
-  auto cb = self->m_timer->m_callback.lock();
-  if (cb)
-    cb->expired();
+  auto timer_ = self->m_timer.lock();
+  if (timer_)
+    timer_->m_task.run();
 }
 
-timer::timer(const std::weak_ptr<cb::timer>& t_
+timer::timer(const task_type& t_
            , uint64_t p_
            , uint64_t l_)
   : named("si.digiverse.ng.cool.timer")
-  , m_callback(t_)
   , m_context(nullptr)
   , m_period(p_ * 1000)
   , m_leeway(l_ * 1000)
+  , m_task(t_)
 {
+  if (m_leeway == 0 || !m_task)
+    throw exc::illegal_argument();
 }
 
 
 timer::~timer()
 { }
 
-void timer::initialize(const std::shared_ptr<async::impl::executor>& ex_)
+void timer::initialize()
 {
-  m_context = new context(self().lock(), ex_);
+  m_context = new context(self());
 }
 
 void timer::period(uint64_t p_, uint64_t l_)
@@ -139,6 +144,17 @@ void timer::start()
 void timer::stop()
 {
   m_context->m_source.suspend();
+}
+
+// --- factory
+std::shared_ptr<detail::itf::timer> create_timer(
+    const detail::itf::timer::task_type& t_
+  , uint64_t p_
+  , uint64_t l_)
+{
+  auto impl_ = cool::ng::util::shared_new<timer>(t_, p_, l_);
+  impl_->initialize();
+  return impl_;
 }
 
 } // namespace impl

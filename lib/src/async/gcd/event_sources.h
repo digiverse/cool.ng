@@ -31,8 +31,8 @@
 #include <dispatch/dispatch.h>
 #include "cool/ng/bases.h"
 #include "cool/ng/ip_address.h"
+#include "cool/ng/async/task.h"
 #include "cool/ng/impl/async/event_sources_types.h"
-#include "cool/ng/impl/async/event_sources.h"
 
 #include "executor.h"
 
@@ -143,27 +143,27 @@ class timer : public cool::ng::util::named
             , public detail::itf::timer
             , public cool::ng::util::self_aware<timer>
 {
+  using task_type = detail::itf::timer::task_type;
+
   struct context
   {
-    context(const timer::ptr& s_
-          , const std::shared_ptr<async::impl::executor>& ex_);
+    context(const timer::weak_ptr& s_);
     ~context();
 
     static void on_event(void* ctx);
     static void on_cancel(void* ctx);
     void shutdown();
 
-    timer::ptr      m_timer;
-    dispatch_source m_source;
+    timer::weak_ptr      m_timer;
+    dispatch_source      m_source;
+    dispatch_queue_t     m_queue;
   };
 
  public:
-  timer(const std::weak_ptr<cb::timer>& t_
-      , uint64_t p_
-      , uint64_t l_);
+  timer(const task_type& t_, uint64_t p_, uint64_t l_);
   ~timer();
 
-  void initialize(const std::shared_ptr<async::impl::executor>& ex_);
+  void initialize();
   // detail::itf::timer
   void start() override;
   void stop() override;
@@ -175,10 +175,10 @@ class timer : public cool::ng::util::named
   }
 
  private:
-  const std::weak_ptr<cb::timer> m_callback;
   context*                       m_context;
-  uint64_t m_period;
-  uint64_t m_leeway;
+  uint64_t                       m_period;
+  uint64_t                       m_leeway;
+  task_type                      m_task;
 };
 
 } // namespace impl
