@@ -92,8 +92,18 @@ VOID CALLBACK timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP
       return;
 
     case state::running:
-      if (self->m_active.load())
-        self->m_timer->expired();
+      try
+      {
+        if (self->m_active.load())
+          self->m_timer->expired();
+      }
+      catch (const cool::ng::exception::runner_not_available& )
+      { // since this task's runner does not exist anymore may as well stop the timer
+        self->m_timer->stop();
+      }
+      catch (...)
+      { /* noop */ }
+
       break;
   }
 }

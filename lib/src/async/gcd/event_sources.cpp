@@ -92,8 +92,17 @@ void timer::context::on_event(void *ctx)
 {
   auto self = static_cast<context*>(ctx);
   auto timer_ = self->m_timer.lock();
-  if (timer_)
-    timer_->m_task.run();
+  try
+  {
+    if (timer_)
+      timer_->m_task.run();
+  }
+  catch (const cool::ng::exception::runner_not_available& )
+  { // since this task's runner does not exist anymore may as well stop the timer
+    timer_->stop();
+  }
+  catch (...)
+  { /* noop */ }
 }
 
 timer::timer(const task_type& t_
