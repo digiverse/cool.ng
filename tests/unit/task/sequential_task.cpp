@@ -32,14 +32,21 @@
 #include <chrono>
 #include <condition_variable>
 
-#define BOOST_TEST_MODULE SequentialTask
+#define BOOST_TEST_MODULE Task
 #include <boost/test/unit_test.hpp>
+
+#if BOOST_VERSION < 106200
+#define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
+#else
+#define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a, b)
+namespace utf = boost::unit_test;
+#endif
 
 #include "cool/ng/async.h"
 
 using ms = std::chrono::milliseconds;
 
-BOOST_AUTO_TEST_SUITE(sequential_task)
+BOOST_AUTO_TEST_SUITE(sequential)
 
 
 class my_runner : public cool::ng::async::runner
@@ -50,19 +57,21 @@ class my_runner : public cool::ng::async::runner
   int counter = 0;
 };
 
-void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
 {
   auto start = std::chrono::system_clock::now();
   while (!lambda())
   {
     auto now = std::chrono::system_clock::now();
     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return;
+      return false;
   }
+  return true;
 }
 
 
-BOOST_AUTO_TEST_CASE(basic)
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("basic test with sequence of three tasks"))
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;
@@ -92,8 +101,63 @@ BOOST_AUTO_TEST_CASE(basic)
 
   auto seq = cool::ng::async::factory::sequence(t1, t2, t3);
   seq.run(5);
-  spin_wait(100, [&counter] { return counter != 0; });
 
+  BOOST_CHECK(spin_wait(100, [&counter] { return counter != 0; }));
+  BOOST_CHECK_EQUAL(8, counter);
+}
+
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("sequence with blocking task, not blocked runner must still run"))
+{
+  auto runner_a = std::make_shared<my_runner>();
+  auto runner_b = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  std::atomic<int> counter_b;
+  counter = 0;
+  counter_b = 0;
+
+  auto t1 = cool::ng::async::factory::create(
+      runner_a
+    , [] (const std::shared_ptr<my_runner>&, int value)
+      {
+        return value + 1;
+      }
+  );
+  auto t2 = cool::ng::async::factory::create(
+      runner_b
+    , [] (const std::shared_ptr<my_runner>&, int value)
+      {
+        std::this_thread::sleep_for(ms(500));
+        return value + 1;
+      }
+  );
+  auto t3 = cool::ng::async::factory::create(
+      runner_a
+    , [&counter] (const std::shared_ptr<my_runner>&, int value)
+      {
+        counter = value + 1;
+      }
+  );
+  auto t4 = cool::ng::async::factory::create(
+      runner_a
+    , [&counter_b] (const std::shared_ptr<my_runner>&, int value)
+      {
+        counter_b = value + 1;
+      }
+  );
+
+  auto seq = cool::ng::async::factory::sequence(t1, t2, t3);
+
+  seq.run(5);
+  t4.run(42);
+
+  // regardless of subtask t2 of task seq blocking runner_b for
+  // half a second, runner_a must still be running and should
+  // execute task t4 while seq waits for t2 to unblock
+  BOOST_CHECK(spin_wait(200, [&counter_b] { return counter_b != 0; }));
+  BOOST_CHECK_EQUAL(43, counter_b);
+
+  BOOST_CHECK(spin_wait(1000, [&counter] { return counter != 0; }));
   BOOST_CHECK_EQUAL(8, counter);
 }
 

@@ -87,15 +87,13 @@ struct tag
  *
  *  <table><tr><th>Member type <th>Declared as
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
- *    <tr><td><tt>runner_type</tt>     <td><tt>decltype(@em runner)::%element_type</tt>
- *    <tr><td><tt>tag</tt>             <td><tt>tag::simple</tt>
- *    <tr><td><tt>input_type</tt>      <td>type of the second arg to @em callable, @c void if none
- *    <tr><td><tt>result_type</tt>     <td>return type of @em callable
+ *    <tr><td><tt>input_type</tt>      <td>type of the second arg to @em Callable, @c void if none
+ *    <tr><td><tt>result_type</tt>     <td>return type of @em Callable
  *  </table>
  *
  * The following requirements are imposed on the user @em callable:
- *   - the first input parameter to @em callable must be of type <tt>const std::shared_ptr<decltype(@em runner)>&</tt>.
- *   - the user @em callable may accept one or two input parameters
+ *   - the first input parameter to @em Callable must be of type <tt>const std::shared_ptr<decltype(@em runner)>&</tt>.
+ *   - the user @em Callable may accept one or two input parameters
  *
  * <b>Examples</b>@n
  *
@@ -174,13 +172,9 @@ struct tag
  *
  *  <table><tr><th>Member type <th>Declared as
  *    <tr><td><tt>this_type</tt>       <td><tt>decltype(@em task)</tt>
- *    <tr><td><tt>runner_type</tt>     <td><tt>detail::default_runner_type</tt>
- *    <tr><td><tt>tag</tt>             <td><tt>tag::sequential</tt>
  *    <tr><td><tt>input_type</tt>      <td>decltype(@em task_1)::%input_type
  *    <tr><td><tt>result_type</tt>     <td>decltype(@em task_n)::%result_type
  *  </table>
- * Note that sequential task, as all compound tasks, is not associated with any
- * runner and uses @c detail::default_runner_type as a filler type.
  *
  * The following requirements are imposed on the subtasks of the sequential task:
  *  - sequential task must have at least two subtasks
