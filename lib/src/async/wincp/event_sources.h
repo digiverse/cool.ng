@@ -54,25 +54,7 @@ namespace cool { namespace ng { namespace async { namespace impl {
 
 class timer : public cool::ng::util::named
             , public detail::itf::timer
-            , public cool::ng::util::self_aware<timer>
 {
-  using task_type = detail::itf::timer::task_type;
-
-  enum class state { running, destroying };
-
-  struct context
-  {
-    context(const timer::ptr& s_);
-    ~context();
-
-    static void CALLBACK on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_);
-    
-
-    timer::ptr                m_timer;
-    async::impl::poolmgr::ptr m_pool;
-    PTP_TIMER                 m_source;
-    std::atomic<bool>         m_active;
-  };
 
  public:
   timer(const task_type& t_, uint64_t p_, uint64_t l_);
@@ -89,12 +71,15 @@ class timer : public cool::ng::util::named
     return named::name();
   }
 
+  static void CALLBACK on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_);
+
  private:
   void expired();
   
  private:
-  std::atomic<state> m_state;
-  context*           m_context;
+  async::impl::poolmgr::ptr m_pool;
+  std::atomic<bool>  m_active;
+  PTP_TIMER          m_source;
   uint64_t           m_period;
   uint64_t           m_leeway;
   task_type          m_task;

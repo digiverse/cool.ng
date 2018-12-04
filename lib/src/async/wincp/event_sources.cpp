@@ -62,56 +62,11 @@ namespace impl {
 // ==========================================================================
 
 
-timer::context::context(const timer::ptr& t_)
-    : m_timer(t_)
-    , m_pool(async::impl::poolmgr::get_poolmgr())
-    , m_source(nullptr)
-    , m_active(false)
-{
-  m_source = CreateThreadpoolTimer(on_event, this, m_pool->get_environ());
-  if (m_source == nullptr)
-    throw exc::threadpool_failure();
-}
-
-timer::context::~context()
-{
-  TRACE("~~~", "timer::context::~context");
-}
-
-VOID CALLBACK timer::context::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
-{
-  if (ctx_ == nullptr)
-    return;
-
-  auto self = static_cast<context*>(ctx_);
-  switch (self->m_timer->m_state)
-  {
-    case state::destroying:
-      CloseThreadpoolTimer(self->m_source);
-      delete self;
-      return;
-
-    case state::running:
-      try
-      {
-        if (self->m_active.load())
-          self->m_timer->expired();
-      }
-      catch (const cool::ng::exception::runner_not_available& )
-      { // since this task's runner does not exist anymore may as well stop the timer
-        self->m_timer->stop();
-      }
-      catch (...)
-      { /* noop */ }
-
-      break;
-  }
-}
-
 timer::timer(const task_type& t_, uint64_t p_, uint64_t l_)
   : named("si.digiverse.ng.cool.timer")
-  , m_state(state::running)
-  , m_context(nullptr)
+  , m_pool(async::impl::poolmgr::get_poolmgr())
+  , m_active(false)
+  , m_source(nullptr)
   , m_period((p_ + 500) / 1000)
   , m_leeway((l_ + 500) / 1000)
   , m_task(t_)
@@ -120,6 +75,10 @@ timer::timer(const task_type& t_, uint64_t p_, uint64_t l_)
     m_period = 1;
   if (m_leeway == 0)
     m_leeway = 1;
+
+  m_source = CreateThreadpoolTimer(on_event, this, m_pool->get_environ());
+  if (m_source == nullptr)
+    throw exc::threadpool_failure();
 }
 
 timer::~timer()
@@ -128,9 +87,7 @@ timer::~timer()
 }
 
 void timer::initialize()
-{
-  m_context = new context(self().lock());
-}
+{ /* noop */ }
 
 void timer::period(uint64_t p_, uint64_t l_)
 {
@@ -147,8 +104,11 @@ void timer::period(uint64_t p_, uint64_t l_)
 
 void timer::shutdown()
 {
-  m_state = state::destroying;
-  stop();  // make it fire once more to do cleanup
+  TRACE("~~~", "timer::shutdown");
+  m_active = false;
+  SetThreadpoolTimer(m_source, nullptr, 0, 0);
+  WaitForThreadpoolTimerCallbacks(m_source, true);
+  CloseThreadpoolTimer(m_source);
 }
 
 void timer::start()
@@ -162,20 +122,14 @@ void timer::start()
   fdt.dwHighDateTime = dt.HighPart;
   fdt.dwLowDateTime = dt.LowPart;
 
-  m_context->m_active = true;
-  SetThreadpoolTimer(m_context->m_source, &fdt, static_cast<DWORD>(m_period), static_cast<DWORD>(m_leeway));
+  m_active = true;
+  SetThreadpoolTimer(m_source, &fdt, static_cast<DWORD>(m_period), static_cast<DWORD>(m_leeway));
 }
 
 void timer::stop()
 {
-  m_context->m_active = false;
-  FILETIME fdt;
-
-  fdt.dwHighDateTime = 0;
-  fdt.dwLowDateTime = 0;
-  // cancel any previous settings - it will fire once but m_active
-  // flag should prevent propagation to user callback
-  SetThreadpoolTimer(m_context->m_source, &fdt, 0, 0);
+  m_active = false;
+  SetThreadpoolTimer(m_source, nullptr, 0, 0);
 }
 
 void timer::expired()
@@ -188,15 +142,35 @@ void timer::expired()
   { /* noop */ }
 }
 
+VOID CALLBACK timer::on_event(PTP_CALLBACK_INSTANCE i_, PVOID ctx_, PTP_TIMER t_)
+{
+  TRACE("timer", "timer expired");
+  if (ctx_ == nullptr)
+  {
+    TRACE("timer", "null context");
+    return;
+  }
+
+  auto self = static_cast<timer*>(ctx_);
+  if (self->m_active.load())
+  {
+    TRACE("timer", "active == true");
+    self->expired();
+  }
+  else
+  {
+    TRACE("timer", "active == false");
+  }
+}
+
+
 // --- factory
 std::shared_ptr<detail::itf::timer> create_timer(
     const detail::itf::timer::task_type& t_
   , uint64_t p_
   , uint64_t l_)
 {
-  auto impl_ = cool::ng::util::shared_new<timer>(t_, p_, l_);
-  impl_->initialize();
-  return impl_;
+  return std::make_shared<timer>(t_, p_, l_);
 }
 
 } // namespace impl

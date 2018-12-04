@@ -48,8 +48,17 @@
 #include <exception>
 
 
-#define BOOST_TEST_MODULE TimerEventSources
+#define BOOST_TEST_MODULE TimerEventSource
 #include <boost/test/unit_test.hpp>
+
+#if !defined(COOL_AUTO_TEST)
+#  if BOOST_VERSION < 106200
+#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
+#  else
+#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a, b)
+     namespace utf = boost::unit_test;
+#  endif
+#endif
 
 #include "cool/ng/bases.h"
 #include "cool/ng/async.h"
@@ -64,7 +73,7 @@ using std::placeholders::_4;
 
 #define DELAY 100000
 
-BOOST_AUTO_TEST_SUITE(timer_sources)
+BOOST_AUTO_TEST_SUITE(timer)
 
 namespace net = cool::ng::net;
 namespace ip = cool::ng::net::ip;
@@ -87,20 +96,22 @@ class test_runner : public cool::ng::async::runner
 
 std::atomic<bool> boolean_flag;
 
-void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
 {
   auto start = std::chrono::system_clock::now();
   while (!lambda())
   {
     auto now = std::chrono::system_clock::now();
     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return;
+      return false;
   }
+  return true;
 }
 
 
 #if 1
-BOOST_AUTO_TEST_CASE(basic)
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("basic timer test"))
 {
   auto r1 = std::make_shared<test_runner>();
   auto r2 = std::make_shared<test_runner>();
@@ -138,6 +149,125 @@ BOOST_AUTO_TEST_CASE(basic)
   std::this_thread::sleep_for(ms(200)); // give time for cleanup
 }
 #endif
+
+#if defined(_MSC_VER)
+const int INTERVAL = 20;
+#else
+const int INTERVAL = 5;
+#endif
+
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("hight frequency / short period  timer")
+  * utf::disabled())
+{
+  {
+    auto r = std::make_shared<test_runner>();
+
+    {
+      auto t = cool::ng::async::factory::create(
+          r
+        , [] (const std::shared_ptr<test_runner>& r)
+          {
+            r->inc();
+          }
+      );
+
+      async::timer timer(t, ms(INTERVAL));
+      timer.start();
+      BOOST_CHECK(spin_wait(2000 * INTERVAL, [&r]() { return r->counter() >= 100; }));
+      BOOST_CHECK_EQUAL(100, r->counter());
+      timer.stop();
+
+      spin_wait(5 * INTERVAL, [](){ return false; });
+      BOOST_CHECK_EQUAL(100, r->counter());
+
+    }
+  }
+}
+
+COOL_AUTO_TEST_CASE(T003,
+  * utf::description("original task destroyed before timer stops"))
+{
+  {
+    auto r = std::make_shared<test_runner>();
+    {
+      auto t = cool::ng::async::factory::create(
+          r
+        , [] (const std::shared_ptr<test_runner>& r)
+          {
+            r->inc();
+          }
+      );
+
+      async::timer timer(t, ms(50));
+      timer.start();
+      BOOST_CHECK(spin_wait(150, [&r]() { return r->counter() == 2; }));
+      t = cool::ng::async::task<void, void>();
+
+      BOOST_CHECK(spin_wait(150, [&r]() { return r->counter() == 3; }));
+
+      timer.stop();
+    }
+  }
+  spin_wait(100, [](){ return false; });
+}
+
+COOL_AUTO_TEST_CASE(T004,
+  * utf::description("original runner destroyed before timer stops")
+  * utf::disabled())
+{
+  std::atomic<int> counter;
+  counter.store(0);
+
+  {
+    auto r = std::make_shared<test_runner>();
+    {
+      auto t = cool::ng::async::factory::create(
+          r
+        , [&counter] (const std::shared_ptr<test_runner>& r)
+          {
+            int i = ++counter;  
+          }
+      );
+
+      async::timer timer(t, ms(50));
+      timer.start();
+      BOOST_CHECK(spin_wait(170, [&counter]() { return counter.load() == 3; }));
+      r.reset();
+
+      BOOST_CHECK(!spin_wait(70, [&counter]() { return counter.load() == 4; }));
+
+      timer.stop();
+    }
+  }
+  spin_wait(100, [](){ return false; });
+}
+
+COOL_AUTO_TEST_CASE(T005,
+  * utf::description("timer destroyed without stop"))
+{
+  {
+    auto r = std::make_shared<test_runner>();
+    {
+      auto t = cool::ng::async::factory::create(
+          r
+        , [] (const std::shared_ptr<test_runner>& r)
+          {
+            r->inc();
+          }
+      );
+
+      {
+        async::timer timer(t, ms(50));
+        timer.start();
+        BOOST_CHECK(spin_wait(150, [&r]() { return r->counter() == 2; }));
+      }
+
+      BOOST_CHECK(!spin_wait(150, [&r]() { return r->counter() == 3; }));
+    }
+  }
+  spin_wait(100, [](){ return false; });
+}
 
 
 BOOST_AUTO_TEST_SUITE_END()
