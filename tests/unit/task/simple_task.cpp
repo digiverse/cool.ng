@@ -34,32 +34,119 @@
 #include <exception>
 
 #define BOOST_TEST_MODULE SimpleTask
+#include <boost/version.hpp>
 #include <boost/test/unit_test.hpp>
+
+#if !defined(COOL_AUTO_TEST_CASE)
+#  if BOOST_VERSION < 106200
+#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
+#  else
+#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a, b)
+     namespace utf = boost::unit_test;
+#  endif
+#endif
 
 #include "cool/ng/async.h"
 
 using ms = std::chrono::milliseconds;
 
-BOOST_AUTO_TEST_SUITE(simple_task)
-
 
 class my_runner : public cool::ng::async::runner
 { };
 
-void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
 {
   auto start = std::chrono::system_clock::now();
   while (!lambda())
   {
     auto now = std::chrono::system_clock::now();
     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return;
+      return false;
   }
+  return true;
+}
+
+BOOST_AUTO_TEST_SUITE(mem)
+
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("single task, single runner, normal execution, check memory leaks")
+  * utf::disabled())
+{
+  try
+  {
+    std::atomic<int> counter;
+    counter = 0;
+
+    cool::ng::async::task<int, void> task;
+    auto runner = std::make_shared<my_runner>();
+
+    {
+      task = cool::ng::async::factory::create(
+          runner
+        , [&counter] (const std::shared_ptr<my_runner>&, int value)
+          {
+            counter = value + 1;
+          }
+      );
+    }
+
+    task.run(5);
+    BOOST_CHECK(spin_wait(50000, [&counter] { return counter == 6; }));
+
+  }
+  catch (const std::exception& e)
+  {
+    BOOST_CHECK(false);
+  }
+
+  spin_wait(100, [] { return false; });
 }
 
 
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("single task, single runner. runner gone before task exec, check leaks")
+  * utf::disabled())
+{
+  try
+  {
+    std::atomic<int> counter;
+    counter = 0;
 
-BOOST_AUTO_TEST_CASE(basic_void_int)
+    cool::ng::async::task<int, void> task;
+
+    {
+      auto runner = std::make_shared<my_runner>();
+
+      task = cool::ng::async::factory::create(
+          runner
+        , [&counter] (const std::shared_ptr<my_runner>&, int value)
+          {
+            counter = value + 1;
+          }
+      );
+    }
+
+    // run the task with the runner no longer being around. It should throw
+    // an exception and any external tool should report no memory leakage
+
+    task.run(5);
+    BOOST_CHECK(false);
+  }
+  catch(const std::exception& e)
+  {
+    BOOST_CHECK(true);
+  }
+
+  spin_wait(100, [] { return false; });
+}
+
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(simple)
+
+
+BOOST_AUTO_TEST_CASE(task_ind_void)
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;

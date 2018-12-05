@@ -60,8 +60,10 @@ void kickstart(context_stack* ctx_)
 
   auto aux = ctx_->top()->get_runner().lock();
   if (!aux)
+  {
+    delete ctx_;
     throw exception::runner_not_available();
-
+  }
   aux->impl()->run(ctx_);
 }
 
