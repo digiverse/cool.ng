@@ -52,7 +52,16 @@ using ms = std::chrono::milliseconds;
 
 
 class my_runner : public cool::ng::async::runner
-{ };
+{
+};
+
+class my_other_runner : public cool::ng::async::runner
+{
+ public:
+  my_other_runner(bool& flag) : m_on_destroy(flag) { }
+  ~my_other_runner() { m_on_destroy = true; }
+  bool& m_on_destroy;
+};
 
 bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
 {
@@ -140,6 +149,77 @@ COOL_AUTO_TEST_CASE(T002,
   spin_wait(100, [] { return false; });
 }
 
+class my_task
+{
+ public:
+  my_task(std::atomic<int>& cnt, int& rcnt) : m_count(cnt), m_run_count(rcnt) { }
+  ~my_task() { ++m_count; }
+  void operator () (const std::shared_ptr<my_other_runner>& self)
+  {
+    ++m_run_count;
+  }
+
+  std::atomic<int>& m_count;
+  int&              m_run_count;
+};
+
+COOL_AUTO_TEST_CASE(T003,
+  * utf::description("multiple tasks, one block, destroy runner must produce no leaks")
+  * utf::disabled())
+{
+  {
+    int t2_run = 0;
+    std::atomic<bool> t1_start;
+    std::atomic<bool> t1_unblocked;
+    std::atomic<int> t2_deleted;
+    bool deleted;
+    std::mutex m;
+    std::condition_variable cv;
+
+    t1_start = false;
+    t1_unblocked = false;
+    t2_deleted = 0;
+
+    auto r = std::make_shared<my_other_runner>(deleted);
+
+
+    // T1
+    cool::ng::async::factory::create(
+        r
+      , [&m, &cv, &t1_start, &t1_unblocked](const std::shared_ptr<my_other_runner>& self)
+        {
+          t1_start = true;
+          std::unique_lock<std::mutex> l(m);
+          cv.wait(l, [&t1_unblocked]() { return t1_unblocked.load(); });
+        }
+    ).run();
+
+    // three times T2
+    cool::ng::async::factory::create(r, my_task(t2_deleted, t2_run)).run();
+    cool::ng::async::factory::create(r, my_task(t2_deleted, t2_run)).run();
+    cool::ng::async::factory::create(r, my_task(t2_deleted, t2_run)).run();
+
+    // T2 delete count is > 0 because of copy construction so remember it
+    auto current_t2_delete_count = t2_deleted.load();
+
+    // now remove runner - note that T1 is still holding reference
+    r.reset();
+
+    // there is still one blocked task, unblock it now
+    {
+      std::unique_lock<std::mutex> l(m);
+      t1_unblocked = true;
+      cv.notify_one();
+    }
+
+    spin_wait(5000, [] { return false; });
+
+    BOOST_CHECK(deleted);
+    BOOST_CHECK_EQUAL(current_t2_delete_count + 3, t2_deleted.load());
+    BOOST_CHECK_EQUAL(0, t2_run);
+
+  }
+}
 
 BOOST_AUTO_TEST_SUITE_END()
 

@@ -161,8 +161,7 @@ executor::~executor()
       // NOTE: it is assumed that the non-empty context_stack will delete all its
       // elements still left on the stack
 
-      // CHECKME: is this enough?
-      delete static_cast<void*>(aux);
+      delete static_cast<cool::ng::async::detail::work*>(static_cast<void*>(aux));
     }
 
     // now close the completion port
