@@ -48,7 +48,9 @@ enum class errc
   request_aborted = 13,
   request_rejected = 14,
   destination_unreachable = 15,
-  request_failed = 16
+  request_failed = 16,
+  not_found = 17,
+  already_exists = 18
 };
 
 struct library_category : std::error_category

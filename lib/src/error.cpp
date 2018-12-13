@@ -67,6 +67,8 @@ std::string library_category::message(int ev) const
           "the destination rejected connection",
           "the destination is not reachable",
           "the request has failed",
+          "the item was not found",
+          "the item already exists"
   };
   static const char* const unknown = "unrecognized error";
 

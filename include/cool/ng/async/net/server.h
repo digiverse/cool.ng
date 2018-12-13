@@ -41,7 +41,7 @@ namespace cool { namespace ng {
 namespace async { namespace net {
 
 /**
- * Network server for conenction-oriented network communication.
+ * Network server for conection-oriented network communication.
  *
  * This class represents a network listener that listens at the specified network
  * address for an incomming connection requests from remote clients and
@@ -75,21 +75,8 @@ class server
    * Constructs new instance of server with error handler.
    *
    * @tparam RunnerT <b>RunnerT</b> is the concrete type of the @ref cool::ng::async::runner "runner"
-   *         to be used to schedule tasks that will call specified handlers.
-   *
-   * @tparam ConnectHandlerT <b>ConnectHandlerT</b> is the concrete type of the user provided
-   *         @em Callable that will be invoked each time a new client connects and the @ref
-   *         server has constructed new @ref stream. This type must be assignable to the
-   *         following functional type:
-   * ~~~{.c}
-   *     std::function<void(const std::shared_ptr<RunnerT>&, const stream&)>
-   * ~~~
-   *         The connect handler will be called from the task submitted by @ref server
-   *         to the task queue of the @ref server "server's" @ref runner.
-   *         The first parameter is a shared pointer to the server's @ref runner
-   *         and the second paramer is the new @ref stream itself. By passing the new
-   *         @ref stream to the connect handler the @ref server yields the ownership of
-   *         this stream to the user code.
+   *         to be used to schedule tasks that will call specified handlers. A shared pointer of this
+   *         type will be passed to the user @em Callables as the first parameter.
    *
    * @tparam StreamFactoryT <b>StreamFactoryT</b> is the concrete type of the user provided
    *         @em Callable that will create and return a new @ref stream. This type
@@ -106,6 +93,32 @@ class server
    *         in the required state or if it throws. The parameters to the factory
    *         @em Callable, in addition to the shared pointer to server's @ref runner,
    *         are remote IP address and network port of the new client.
+   *
+   * @tparam ConnectHandlerT <b>ConnectHandlerT</b> is the concrete type of the user provided
+   *         @em Callable that will be invoked each time a new client connects and the @ref
+   *         server has constructed new @ref stream. This type must be assignable to the
+   *         following functional type:
+   * ~~~{.c}
+   *     std::function<void(const std::shared_ptr<RunnerT>&, const stream&)>
+   * ~~~
+   *         The connect handler will be called from the task submitted by @ref server
+   *         to the task queue of the @ref server "server's" @ref runner.
+   *         The first parameter is a shared pointer to the server's @ref runner
+   *         and the second paramer is the new @ref stream itself. By passing the new
+   *         @ref stream to the connect handler the @ref server yields the ownership of
+   *         this stream to the user code and will remove its own reference to this stream.
+   *
+   * @tparam ErrorHandlerT <b>ErrorHandlerT</b> is the concrete type of an optional
+   *         user provided @em Callable that is invoked should the @ref server detect
+   *         an error condition. This type must be assignable to the following functional type:
+   * ~~~{.c}
+   *     std::function<void(const std::shared_ptr<RunnerT>&, const std::error_code&)>
+   * ~~~
+   *         The connect handler will be called from the task submitted by @ref server
+   *         to the task queue of the @ref server "server's" @ref runner.
+   *         The first parameter is a shared pointer to the server's @ref runner
+   *         and the second paramer is an error code characterizing the error condition.
+   *
    * @param r_  weak pointer to @ref cool::ng::async::runner "runner" to use to
    *            schedule asynchronous notifications for execution.
    * @param addr_ IP address of the network peer to bind to. This may be an
@@ -114,11 +127,11 @@ class server
    *            or one of @ref cool::ng::net::ipv4::any "ipv4::any" or
    *            @ref cool::ng::net::ipv6::any "ipv6::any" wildcards.
    * @param port_ TCP port on the network to listen to.
-   * @param hc_ read handler to be called from the scheduled task when a new connect
+   * @param hc_ a read handler to be called from the scheduled task when a new connect
    *            request has been detected.
-   * @param sf_ stream factory to use to spawn new @ref stream "streams" for
+   * @param sf_ a stream factory to use to spawn new @ref stream "streams" for
    *            connected peers
-   * @param he_ error handle to be called should the server detect network errors
+   * @param he_ an optional error handler to be called should the server detect network errors
    *
    * @throw cool::ng::exception::socket_failure if any network socket operations failed
    * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
@@ -128,6 +141,15 @@ class server
    * @note The server, when constructed, is in a stopped state and will not
    *       listen for the incomming connection requests. You'll need to call
    *       @ref start() method to activate the server.
+   * @note The user code @em must @em store the @ref stream it created during a
+   *       call to the stream factory @em Callable. The @ref server will only remember
+   *       the @ref stream until the call to the connection handler and will then
+   *       forget it.
+   * @note Template parameters of this constructor template are auto-deduced.
+   * @note The @ref server listening to the @ref cool::ng::net::ipv6::host "IPv6"
+   *       addresses will accept connections from the @ref cool::ng::net::ipv4::host "IPv4"
+   *       clients. In this case the client address will be mapped into
+   *       @ref cool::ng::net::ipv6::rfc_ipv4map "rfc_ipv4map" IPv6 network.
    */
   template <typename RunnerT
           , typename StreamFactoryT

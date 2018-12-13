@@ -261,6 +261,22 @@ class empty_object : public logic_fault
   { /* noop */ }
 };
 
+class not_found : public runtime_fault
+{
+ public:
+  not_found(std::size_t depth_ = default_bt_depth) NOEXCEPT_
+    : runtime_fault(cool::ng::error::errc::not_found, depth_)
+  { /* noop */ }
+};
+
+class already_exists : public runtime_fault
+{
+ public:
+  already_exists(std::size_t depth_ = default_bt_depth) NOEXCEPT_
+    : runtime_fault(cool::ng::error::errc::already_exists, depth_)
+  { /* noop */ }
+};
+
 class operation_failed : public runtime_fault
 {
  public:
@@ -268,8 +284,6 @@ class operation_failed : public runtime_fault
     : runtime_fault(ec_, depth_)
   { /* noop */ }
 };
-
-
 
 } } } // namespace
 
