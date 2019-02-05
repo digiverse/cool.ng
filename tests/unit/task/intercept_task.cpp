@@ -21,6 +21,8 @@
  * IN THE SOFTWARE.
  */
 
+#include <vector>
+#include <list>
 #include <iostream>
 #include <typeinfo>
 #include <memory>
@@ -33,6 +35,8 @@
 #include <condition_variable>
 #include <exception>
 
+#include <boost/any.hpp>
+
 #define BOOST_TEST_MODULE InterceptTask
 #include <boost/test/unit_test.hpp>
 
@@ -41,6 +45,18 @@
 using ms = std::chrono::milliseconds;
 
 BOOST_AUTO_TEST_SUITE(intercept_task)
+
+bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
+{
+  auto start = std::chrono::system_clock::now();
+  while (!lambda())
+  {
+    auto now = std::chrono::system_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
+      return false;
+  }
+  return true;
+}
 
 
 class my_runner : public cool::ng::async::runner
@@ -308,4 +324,316 @@ auto outer = cool::ng::async::factory::try_catch(
 
 
 }
+
+BOOST_AUTO_TEST_CASE(test_100)
+{
+  std::list<int> ints{1, 2, 3};
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+
+  auto t = cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter](const std::shared_ptr<my_runner>& self, const std::list<int>& b)
+          {
+            counter = b.size();
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  );
+
+  t.run(ints);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(3, counter);
+}
+
+struct my_struct
+{
+  my_struct() : a(0), b(0)                 { /* noop */ }
+  my_struct(int a_, int b_) : a(a_), b(b_) { /* noop */ }
+
+  int a;
+  int b;
+};
+
+BOOST_AUTO_TEST_CASE(test_101)
+{
+  my_struct a(2, 3);
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+
+
+  cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter](const std::shared_ptr<my_runner>& self, const my_struct& v)
+          {
+            counter = v.a + v.b;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  ).run(a);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(5, counter);
+}
+
+BOOST_AUTO_TEST_CASE(test_102)
+{
+  std::vector<my_struct> ints{ my_struct(1, 2), my_struct(3, 4), my_struct(5, 6) };
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+  std::atomic<int> sum;
+  sum = 0;
+
+  cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter, &sum](const std::shared_ptr<my_runner>& self, const std::vector<my_struct>& v)
+          {
+            counter = v.size();
+            for (auto&& item : v)
+              sum += item.a + item.b;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  ).run(ints);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(3, counter);
+  BOOST_CHECK_EQUAL(21, sum);
+}
+
+template <typename T>
+struct my_other_struct
+{
+  my_other_struct()                               { /* noop */ }
+  my_other_struct(int a_, int b_) : v({ a_, b_ }) { /* noop */ }
+
+  T v;
+};
+
+BOOST_AUTO_TEST_CASE(test_103)
+{
+  my_other_struct<std::vector<int>> a(2, 3);
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+  std::atomic<int> sum;
+  sum = 0;
+
+  cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter, &sum](const std::shared_ptr<my_runner>& self, const  my_other_struct<std::vector<int>>& v)
+          {
+            counter = v.v.size();
+            for (auto&& item : v.v)
+              sum += item;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  ).run(a);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(2, counter);
+  BOOST_CHECK_EQUAL(5, sum);
+}
+
+BOOST_AUTO_TEST_CASE(test_104)
+{
+  my_other_struct<std::list<int>> a(2, 3);
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+  std::atomic<int> sum;
+  sum = 0;
+
+  cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter, &sum](const std::shared_ptr<my_runner>& self, const  my_other_struct<std::list<int>>& v)
+          {
+            counter = v.v.size();
+            for (auto&& item : v.v)
+              sum += item;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  ).run(a);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(2, counter);
+  BOOST_CHECK_EQUAL(5, sum);
+}
+
+BOOST_AUTO_TEST_CASE(test_105)
+{
+  std::pair<int,int> a(2, 3);
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+  std::atomic<int> sum;
+  sum = 0;
+
+  cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter, &sum](const std::shared_ptr<my_runner>& self, const  std::pair<int, int>& v)
+          {
+            counter = 2;
+            sum = v.first + v.second;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  ).run(a);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(2, counter);
+  BOOST_CHECK_EQUAL(5, sum);
+}
+
+struct my_vector : public std::vector<int>
+{
+ public:
+  my_vector() : vector(), m_instance(++ counter)
+  {
+//    std::cout << "==================================== default ctor\n";
+  }
+  my_vector(int a_, int b_) : vector({ a_, b_ }),  m_instance(++counter)
+  {
+//    std::cout << "==================================== two values ctor\n";
+  }
+
+  my_vector(const my_vector& other) : vector(other),   m_instance(++counter)
+  {
+//    std::cout << "==================================== copy ctor from " << other.m_instance << " to " << m_instance << "\n";
+  }
+
+  my_vector(my_vector&& other) : vector(std::move(other)), m_instance(++counter)
+  {
+//    std::cout << "==================================== move ctor from " << other.m_instance << " to " << m_instance << "\n";
+
+  }
+  static int counter;
+  int m_instance;
+};
+
+int my_vector::counter = 0;
+
+BOOST_AUTO_TEST_CASE(test_106)
+{
+  my_vector a(2, 3);
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+  std::atomic<int> sum;
+  sum = 0;
+
+//  std::cout << "==================================== 1\n";
+
+  cool::ng::async::factory::try_catch(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter, &sum](const std::shared_ptr<my_runner>& self, const my_vector& v)
+          {
+  //          std::cout << "==================================== 2\n";
+            counter = v.size();
+            for (auto&& item : v)
+              sum += item;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self, const std::exception_ptr& ex)
+            {
+              counter = 1;
+            }
+        )
+  ).run(a);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(2, counter);
+  BOOST_CHECK_EQUAL(5, sum);
+}
+
+BOOST_AUTO_TEST_CASE(test_107)
+{
+  my_vector a(2, 3);
+  auto runner = std::make_shared<my_runner>();
+  std::atomic<int> counter;
+  counter = 0;
+  std::atomic<int> sum;
+  sum = 0;
+
+//  std::cout << "==================================== 1\n";
+
+  cool::ng::async::factory::sequence(
+      cool::ng::async::factory::create(
+          runner
+        , [&counter, &sum](const std::shared_ptr<my_runner>& self, const my_vector& v)
+          {
+  //          std::cout << "==================================== 2\n";
+            counter = v.size();
+            for (auto&& item : v)
+              sum += item;
+          }
+        )
+      , cool::ng::async::factory::create(
+            runner
+          , [&counter](const std::shared_ptr<my_runner>& self)
+            {
+              if (counter == 0)
+                counter = 1;
+            }
+        )
+  ).run(a);
+
+  spin_wait(100, [&counter] { return counter != 0; });
+  BOOST_CHECK_EQUAL(2, counter);
+  BOOST_CHECK_EQUAL(5, sum);
+}
+
+
+
 BOOST_AUTO_TEST_SUITE_END()

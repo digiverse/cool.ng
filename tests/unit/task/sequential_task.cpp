@@ -416,5 +416,4 @@ BOOST_AUTO_TEST_CASE(movable_only_return_input)
   BOOST_CHECK_EQUAL(42, counter);
 }
 
-
 BOOST_AUTO_TEST_SUITE_END()

@@ -272,7 +272,6 @@ class task_context<tag::intercept, RunnerT, InputT, ResultT>
     auto aux = new this_type(stack_, task_, catchers_);
     stack_->push(aux);
 
-    aux->set_input(input_);
     auto sub_ctx = subtask_->create_context(stack_, subtask_, input_);
     sub_ctx->set_res_reporter(std::bind(&this_type::result_report, aux, std::placeholders::_1));
     sub_ctx->set_exc_reporter(std::bind(&this_type::exception_report, aux, std::placeholders::_1));
