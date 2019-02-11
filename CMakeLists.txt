@@ -124,26 +124,35 @@ set( LIBRARY_UNIT_TESTS
 
 # api level unit tests, will use dynamic library
 set( API_UNIT_TESTS
-  simple_task
-  sequential_task
-  intercept_task
-  conditional_task
-  repeat_task
-  loop_task
+#  simple_task
+#  sequential_task
+#  intercept_task
+#  conditional_task
+#  repeat_task
+#  loop_task
+  task
   ip_address
   es_reader
   es_timer
 )
 
+set( task_SRCS tests/unit/task/task_common.h tests/unit/task/task_common.cpp
+  tests/unit/task/simple_task.cpp
+  tests/unit/task/intercept_task.cpp
+  tests/unit/task/sequential_task.cpp
+  tests/unit/task/conditional_task.cpp
+  tests/unit/task/repeat_task.cpp
+  tests/unit/task/loop_task.cpp
+)
 set( traits_SRCS tests/unit/traits/traits.cpp )
 set( task-traits_SRCS tests/unit/traits/task_traits.cpp )
 set( executor_SRCS tests/unit/executor/executor.cpp )
-set( simple_task_SRCS tests/unit/task/simple_task.cpp )
-set( sequential_task_SRCS tests/unit/task/sequential_task.cpp )
-set( intercept_task_SRCS tests/unit/task/intercept_task.cpp )
-set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
-set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
-set( loop_task_SRCS tests/unit/task/loop_task.cpp )
+#set( simple_task_SRCS tests/unit/task/simple_task.cpp )
+#set( sequential_task_SRCS tests/unit/task/sequential_task.cpp )
+#set( intercept_task_SRCS tests/unit/task/intercept_task.cpp )
+#set( conditional_task_SRCS tests/unit/task/conditional_task.cpp )
+#set( repeat_task_SRCS tests/unit/task/repeat_task.cpp )
+#set( loop_task_SRCS tests/unit/task/loop_task.cpp )
 set( ip_address_SRCS tests/unit/net/ip_address.cpp )
 set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp )
 set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )

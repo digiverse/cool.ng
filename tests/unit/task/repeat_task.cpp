@@ -33,91 +33,72 @@
 #include <condition_variable>
 #include <exception>
 
-#define BOOST_TEST_MODULE RepeatTask
-#include <boost/test/unit_test.hpp>
+#include "task_common.h"
 
-#include "cool/ng/async.h"
-
-using ms = std::chrono::milliseconds;
-
-BOOST_AUTO_TEST_SUITE(intercept_task)
+BOOST_AUTO_TEST_SUITE(repeat)
 
 using lock = std::unique_lock<std::mutex>;
 
-class my_runner : public cool::ng::async::runner
-{
- public:
-  void inc() { ++counter; }
-
-  int counter = 0;
-};
-
-BOOST_AUTO_TEST_CASE(basic_void)
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("basic repeat with task<std::size_t, void>"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
 
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
-  std::size_t result;
+  std::atomic<int> result;
+  std::atomic<bool> done;
   counter = 0;
+  result = 0;
+  done = false;
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
-    , [&m, &cv, &counter, &result] (const std::shared_ptr<my_runner>& r, std::size_t value) -> void
+    , [&counter, &result] (const std::shared_ptr<my_runner>& r, std::size_t value) -> void
       {
-        ++counter;
         result = value;
-       }
+        ++counter;
+      }
   );
 
   auto t2 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv] (const std::shared_ptr<my_runner>& r) -> void
+    , [&done] (const std::shared_ptr<my_runner>& r) -> void
       {
-        lock l(m);
-        cv.notify_one();
+        done =  true;
       }
   );
 
   auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::repeat(t1), t2);
 
-  {
-    lock l(m);
-
-    task.run(100);
-
-    cv.wait_for(l, ms(100), [&counter] () { return counter == 100; });
-  }
-
+  task.run(100);
+  spin_wait(100, [&done]() -> bool { return done; });
   BOOST_CHECK_EQUAL(100, counter);
   BOOST_CHECK_EQUAL(99, result);
+
   counter = 0;
   result = 0;
+  done = false;
 
-  {
-    lock l(m);
-
-    task.run(0);
-
-    cv.wait_for(l, ms(100), [&counter] () { return counter == 100; });
-  }
+  task.run(0);
+  spin_wait(100, [&done]() -> bool { return done; });
 
   BOOST_CHECK_EQUAL(0, counter);
   BOOST_CHECK_EQUAL(0, result);
 }
 
-BOOST_AUTO_TEST_CASE(basic_non_void)
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("basic repeat with task<std::size_t, non-void>"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
 
-  std::mutex m;
-  std::condition_variable cv;
   std::atomic<int> counter;
-  int result;
+  std::atomic<int> result;
+  std::atomic<bool> done;
   counter = 0;
+  result = 0;
+  done = false;
 
   auto t1 = cool::ng::async::factory::create(
       runner_1
@@ -130,37 +111,28 @@ BOOST_AUTO_TEST_CASE(basic_non_void)
 
   auto t2 = cool::ng::async::factory::create(
       runner_2
-    , [&m, &cv, &result] (const std::shared_ptr<my_runner>& r, int input) -> void
+    , [&done, &result] (const std::shared_ptr<my_runner>& r, int input) -> void
       {
         result = input;
-        lock l(m);
-        cv.notify_one();
+        done = true;
       }
   );
 
   auto task = cool::ng::async::factory::sequence(cool::ng::async::factory::repeat(t1), t2);
 
-  {
-    lock l(m);
-
-    task.run(100);
-
-    cv.wait_for(l, ms(100), [&counter] () { return counter == 100; });
-  }
-
+  task.run(100);
+  spin_wait(100, [&done]() -> bool { return done; });
   BOOST_CHECK_EQUAL(100, counter);
   BOOST_CHECK_EQUAL(99, result);
   counter = 0;
   result = 0;
 
-  {
-    lock l(m);
 
-    task.run(0);
+  task.run(0);
+  spin_wait(100, [&done]() -> bool { return done; });
 
-    cv.wait_for(l, ms(100), [&counter] () { return counter == 100; });
-  }
   BOOST_CHECK_EQUAL(0, counter);
+  BOOST_CHECK_EQUAL(0, result);
 
 }
 

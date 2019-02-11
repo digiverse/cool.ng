@@ -32,44 +32,13 @@
 #include <chrono>
 #include <condition_variable>
 
-#define BOOST_TEST_MODULE Task
-#include <boost/test/unit_test.hpp>
-
-#if !defined(COOL_AUTO_TEST)
-#  if BOOST_VERSION < 106200
-#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
-#  else
-#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a, b)
-     namespace utf = boost::unit_test;
-#  endif
-#endif
+#include "task_common.h"
 
 #include "cool/ng/async.h"
 
 using ms = std::chrono::milliseconds;
 
 BOOST_AUTO_TEST_SUITE(sequential)
-
-
-class my_runner : public cool::ng::async::runner
-{
- public:
-  void inc() { ++counter; }
-
-  int counter = 0;
-};
-
-bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
-{
-  auto start = std::chrono::system_clock::now();
-  while (!lambda())
-  {
-    auto now = std::chrono::system_clock::now();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return false;
-  }
-  return true;
-}
 
 
 COOL_AUTO_TEST_CASE(T001,
@@ -163,7 +132,8 @@ COOL_AUTO_TEST_CASE(T002,
   BOOST_CHECK_EQUAL(8, counter);
 }
 
-BOOST_AUTO_TEST_CASE(basic_two_runners)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("basic sequence using two different runners"))
 {
   auto runner1 = std::make_shared<my_runner>();
   auto runner2 = std::make_shared<my_runner>();
@@ -204,7 +174,8 @@ BOOST_AUTO_TEST_CASE(basic_two_runners)
   BOOST_CHECK_EQUAL(1, runner2->counter);
 }
 
-BOOST_AUTO_TEST_CASE(sequence_of_sequence)
+COOL_AUTO_TEST_CASE(T004,
+  *utf::description("sequence of sequences with reused tasks"))
 {
   auto runner1 = std::make_shared<my_runner>();
   auto runner2 = std::make_shared<my_runner>();
@@ -249,7 +220,8 @@ BOOST_AUTO_TEST_CASE(sequence_of_sequence)
   BOOST_CHECK_EQUAL(2, runner2->counter);
 }
 
-BOOST_AUTO_TEST_CASE(deep_sequence)
+COOL_AUTO_TEST_CASE(T005,
+ *utf::description("deep sequence (three levels)"))
 {
   auto runner1 = std::make_shared<my_runner>();
   auto runner2 = std::make_shared<my_runner>();
@@ -321,7 +293,8 @@ BOOST_AUTO_TEST_CASE(deep_sequence)
 
 }
 
-BOOST_AUTO_TEST_CASE(deep_sequence_exception)
+COOL_AUTO_TEST_CASE(T006,
+  *utf::description("deep sequence with exception thrown at mid-level"))
 {
   auto runner1 = std::make_shared<my_runner>();
   auto runner2 = std::make_shared<my_runner>();
@@ -373,6 +346,7 @@ BOOST_AUTO_TEST_CASE(deep_sequence_exception)
   BOOST_CHECK_EQUAL(1, runner2->counter);
 }
 
+
 class nocopy
 {
   public:
@@ -386,7 +360,8 @@ class nocopy
 };
 
 // Have first task return non-copyable object and the second task accept it
-BOOST_AUTO_TEST_CASE(movable_only_return_input)
+COOL_AUTO_TEST_CASE(T007,
+  * utf::description("sequence with first task returnin move-only object and second acception it as input"))
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;
@@ -414,6 +389,158 @@ BOOST_AUTO_TEST_CASE(movable_only_return_input)
   spin_wait(100, [&counter] { return counter != 0; });
 
   BOOST_CHECK_EQUAL(42, counter);
+}
+
+COOL_AUTO_TEST_CASE(T100,
+  * utf::description("custom struct with both move and copy ctor, ctor and dtor counters"))
+{
+  counted_moveable::clear();
+
+  {
+    counted_moveable a(2, 3);
+    auto runner = std::make_shared<my_runner>();
+    std::atomic<int> counter;
+    std::atomic<int> sum;
+    std::atomic<bool> done;
+    counter = 0;
+    sum = 0;
+    done = false;
+
+    cool::ng::async::factory::sequence(
+        cool::ng::async::factory::create(
+            runner
+          , [&counter, &sum](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+            {
+              counter = v.size();
+              for (auto&& item : v)
+                sum += item;
+            }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&done](const std::shared_ptr<my_runner>& self)
+              {
+                done = true;
+              }
+          )
+    ).run(a);
+
+    spin_wait(100, [&done] { return !!done; });
+    BOOST_CHECK_EQUAL(2, counter);
+    BOOST_CHECK_EQUAL(5, sum);
+  }
+
+  std::this_thread::sleep_for(ms(50));
+  BOOST_CHECK_EQUAL(5, counted_moveable::instance_counter);
+  BOOST_CHECK_EQUAL(2, counted_moveable::cnt_move_ctor);
+  BOOST_CHECK_EQUAL(2, counted_moveable::cnt_copy_ctor);
+  BOOST_CHECK_EQUAL(0, counted_moveable::cnt_def_ctor);
+  BOOST_CHECK_EQUAL(1, counted_moveable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(5, counted_moveable::cnt_dtor);
+
+  BOOST_CHECK_EQUAL(counted_moveable::instance_counter, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(counted_moveable::cnt_dtor, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+}
+
+COOL_AUTO_TEST_CASE(T101,
+  * utf::description("custom struct w/o move ctor, ctor and dtor counters"))
+{
+  counted_copyable::clear();
+
+  {
+    counted_copyable a(2, 3);
+    auto runner = std::make_shared<my_runner>();
+    std::atomic<int> counter;
+    std::atomic<int> sum;
+    std::atomic<bool> done;
+    counter = 0;
+    sum = 0;
+    done = false;
+
+    cool::ng::async::factory::sequence(
+        cool::ng::async::factory::create(
+            runner
+          , [&counter, &sum](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+            {
+              counter = v.size();
+              for (auto&& item : v)
+                sum += item;
+            }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&done](const std::shared_ptr<my_runner>& self)
+              {
+                done = true;
+              }
+          )
+    ).run(a);
+
+    spin_wait(100, [&done] { return !!done; });
+    BOOST_CHECK_EQUAL(2, counter);
+    BOOST_CHECK_EQUAL(5, sum);
+  }
+
+  std::this_thread::sleep_for(ms(50));
+  BOOST_CHECK_EQUAL(5, counted_copyable::instance_counter);
+  BOOST_CHECK_EQUAL(4, counted_copyable::cnt_copy_ctor);
+  BOOST_CHECK_EQUAL(0, counted_copyable::cnt_def_ctor);
+  BOOST_CHECK_EQUAL(1, counted_copyable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(5, counted_copyable::cnt_dtor);
+
+  BOOST_CHECK_EQUAL(counted_copyable::instance_counter, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(counted_copyable::cnt_dtor, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+}
+
+COOL_AUTO_TEST_CASE(T102,
+  * utf::description("custom struct with move ctor only, ctor and dtor counters"))
+{
+  counted_moveonly::clear();
+
+  {
+    counted_moveonly a(2, 3);
+    auto runner = std::make_shared<my_runner>();
+    std::atomic<int> counter;
+    std::atomic<int> sum;
+    std::atomic<bool> done;
+    counter = 0;
+    sum = 0;
+    done = false;
+
+    cool::ng::async::factory::sequence(
+        cool::ng::async::factory::create(
+            runner
+          , [&counter, &sum](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+            {
+              counter = v.size();
+              for (auto&& item : v)
+                sum += item;
+            }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&done](const std::shared_ptr<my_runner>& self)
+              {
+                done = true;
+              }
+          )
+    ).run(std::move(a));
+
+    spin_wait(100, [&done] { return !!done; });
+    BOOST_CHECK_EQUAL(2, counter);
+    BOOST_CHECK_EQUAL(5, sum);
+
+  }
+
+  std::this_thread::sleep_for(ms(100));
+  BOOST_CHECK_EQUAL(4, counted_moveonly::instance_counter);
+  BOOST_CHECK_EQUAL(3, counted_moveonly::cnt_move_ctor);
+  BOOST_CHECK_EQUAL(0, counted_moveonly::cnt_def_ctor);
+  BOOST_CHECK_EQUAL(1, counted_moveonly::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(4, counted_moveonly::cnt_dtor);
+
+  BOOST_CHECK_EQUAL(counted_moveonly::instance_counter, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor  + counted_moveonly::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(counted_moveonly::cnt_dtor, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

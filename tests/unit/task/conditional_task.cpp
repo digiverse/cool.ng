@@ -33,40 +33,20 @@
 #include <condition_variable>
 #include <exception>
 
-#define BOOST_TEST_MODULE ConditionalTask
-#include <boost/test/unit_test.hpp>
-
-#include "cool/ng/async.h"
+#include "task_common.h"
 
 using ms = std::chrono::milliseconds;
 
-BOOST_AUTO_TEST_SUITE(intercept_task)
+BOOST_AUTO_TEST_SUITE(conditional)
 
 
-class my_runner : public cool::ng::async::runner
-{
- public:
-  void inc() { ++counter; }
-
-  int counter = 0;
-};
-
-void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
-{
-  auto start = std::chrono::system_clock::now();
-  while (!lambda())
-  {
-    auto now = std::chrono::system_clock::now();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return;
-  }
-}
 
 class abc { };
 class cde { };
 class fgh { };
 
-BOOST_AUTO_TEST_CASE(basic)
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("basic conditional task"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
@@ -117,8 +97,9 @@ BOOST_AUTO_TEST_CASE(basic)
   BOOST_CHECK_EQUAL(3, runner_1->counter);
   BOOST_CHECK_EQUAL(1, runner_2->counter);
 }
-#if 0
-BOOST_AUTO_TEST_CASE(basic_void_param)
+
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("basic conditional task, no input"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
@@ -193,10 +174,10 @@ BOOST_AUTO_TEST_CASE(basic_void_param)
   BOOST_CHECK_EQUAL(183, counter);
   BOOST_CHECK_EQUAL(6, runner_1->counter);
   BOOST_CHECK_EQUAL(4, runner_2->counter);
-
 }
 
-BOOST_AUTO_TEST_CASE(basic_no_else)
+COOL_AUTO_TEST_CASE(T003,
+  * utf::description("basic conditional task, no 'else' part"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
@@ -249,7 +230,8 @@ BOOST_AUTO_TEST_CASE(basic_no_else)
 
 }
 
-BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
+COOL_AUTO_TEST_CASE(T004,
+  * utf::description("basic conditional task, no input parameter, no else part"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
@@ -303,5 +285,704 @@ BOOST_AUTO_TEST_CASE(basic_no_else_void_param)
   BOOST_CHECK_EQUAL(3, runner_2->counter);
 
 }
-#endif
+
+COOL_AUTO_TEST_CASE(T100,
+  * utf::description("custom struct with both move and copy ctor, ctor and dtor counters"))
+{
+  // Part A-1: both then/else tasks, predicate true
+  {
+    counted_moveable::clear();
+
+    {
+      counted_moveable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                return true;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+         , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 2;
+              }
+          )
+     ).run(a);
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(1, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(7, counted_moveable::instance_counter);
+    BOOST_CHECK_EQUAL(3, counted_moveable::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(3, counted_moveable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(7, counted_moveable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveable::instance_counter, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveable::cnt_dtor, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+  }
+  // Part A-2: both then/else tasks, predicate false
+  {
+    counted_moveable::clear();
+
+    {
+      counted_moveable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                return false;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+         , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 2;
+              }
+          )
+     ).run(a);
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(2, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(7, counted_moveable::instance_counter);
+    BOOST_CHECK_EQUAL(3, counted_moveable::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(3, counted_moveable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(7, counted_moveable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveable::instance_counter, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveable::cnt_dtor, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+  }
+  // Part B-1: only then task, predicate true
+  {
+    counted_moveable::clear();
+
+    {
+      counted_moveable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                return true;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+     ).run(a);
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(1, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(7, counted_moveable::instance_counter);
+    BOOST_CHECK_EQUAL(3, counted_moveable::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(3, counted_moveable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(7, counted_moveable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveable::instance_counter, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveable::cnt_dtor, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+  }
+  // Part B-2: only then task, predicate false
+  {
+    counted_moveable::clear();
+
+    {
+      counted_moveable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                return false;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+     ).run(a);
+
+      spin_wait(50, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(0, counter);
+      BOOST_CHECK_EQUAL(0, sum);
+      BOOST_CHECK_EQUAL(0, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(5, counted_moveable::instance_counter);
+    BOOST_CHECK_EQUAL(2, counted_moveable::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(2, counted_moveable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(5, counted_moveable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveable::instance_counter, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveable::cnt_dtor, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+  }
+}
+
+COOL_AUTO_TEST_CASE(T101,
+  * utf::description("custom struct w/o move ctor, ctor and dtor counters"))
+{
+  // Part A-1: both then/else tasks, predicate true
+  {
+    counted_copyable::clear();
+
+    {
+      counted_copyable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                return true;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+         , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 2;
+              }
+          )
+     ).run(a);
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(1, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(7, counted_copyable::instance_counter);
+    BOOST_CHECK_EQUAL(6, counted_copyable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_copyable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(7, counted_copyable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_copyable::instance_counter, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_copyable::cnt_dtor, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+  }
+  // Part A-2: both then/else tasks, predicate false
+  {
+    counted_copyable::clear();
+
+    {
+      counted_copyable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                return false;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+         , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 2;
+              }
+          )
+     ).run(a);
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(2, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(7, counted_copyable::instance_counter);
+    BOOST_CHECK_EQUAL(6, counted_copyable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_copyable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(7, counted_copyable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_copyable::instance_counter, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_copyable::cnt_dtor, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+  }
+  // Part B-1: only then task, predicate true
+  {
+    counted_copyable::clear();
+
+    {
+      counted_copyable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                return true;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+     ).run(a);
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(1, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(7, counted_copyable::instance_counter);
+    BOOST_CHECK_EQUAL(6, counted_copyable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_copyable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(7, counted_copyable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_copyable::instance_counter, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_copyable::cnt_dtor, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+  }
+  // Part B-2: only then task, predicate false
+  {
+    counted_copyable::clear();
+
+    {
+      counted_copyable a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                return false;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+     ).run(a);
+
+      spin_wait(50, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(0, counter);
+      BOOST_CHECK_EQUAL(0, sum);
+      BOOST_CHECK_EQUAL(0, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(5, counted_copyable::instance_counter);
+    BOOST_CHECK_EQUAL(4, counted_copyable::cnt_copy_ctor);
+    BOOST_CHECK_EQUAL(0, counted_copyable::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(5, counted_copyable::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_copyable::instance_counter, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_copyable::cnt_dtor, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+  }
+}
+
+COOL_AUTO_TEST_CASE(T102,
+  * utf::description("custom struct with move ctor only, ctor and dtor counters"))
+{
+ // Part A-1: both then/else tasks, predicate true
+  {
+    counted_moveonly::clear();
+
+    {
+      counted_moveonly a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                return true;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+         , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 2;
+              }
+          )
+     ).run(std::move(a));
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(1, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(5, counted_moveonly::instance_counter);
+    BOOST_CHECK_EQUAL(4, counted_moveonly::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveonly::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(5, counted_moveonly::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveonly::instance_counter, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveonly::cnt_dtor, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+  }
+  // Part A-2: both then/else tasks, predicate false
+  {
+    counted_moveonly::clear();
+
+    {
+      counted_moveonly a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                return false;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+         , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 2;
+              }
+          )
+     ).run(std::move(a));
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(2, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(5, counted_moveonly::instance_counter);
+    BOOST_CHECK_EQUAL(4, counted_moveonly::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveonly::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(5, counted_moveonly::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveonly::instance_counter, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveonly::cnt_dtor, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+  }
+  // Part B-1: only then task, predicate true
+  {
+    counted_moveonly::clear();
+
+    {
+      counted_moveonly a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                return true;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+     ).run(std::move(a));
+
+      spin_wait(100, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(2, counter);
+      BOOST_CHECK_EQUAL(5, sum);
+      BOOST_CHECK_EQUAL(1, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(5, counted_moveonly::instance_counter);
+    BOOST_CHECK_EQUAL(4, counted_moveonly::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveonly::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(5, counted_moveonly::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveonly::instance_counter, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveonly::cnt_dtor, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+  }
+  // Part B-2: only then task, predicate false
+  {
+    counted_moveonly::clear();
+
+    {
+      counted_moveonly a(2, 3);
+      auto runner = std::make_shared<my_runner>();
+      std::atomic<int> counter;
+      std::atomic<int> sum;
+      std::atomic<int> path;  // 0 - none, 1 - then, 2 - else
+      counter = 0;
+      sum = 0;
+      path = 0;
+
+      cool::ng::async::factory::conditional(
+          cool::ng::async::factory::create(
+              runner
+            , [](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                return false;
+              }
+          )
+        , cool::ng::async::factory::create(
+              runner
+            , [&counter, &sum, &path](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+              {
+                counter = v.size();
+                for (auto&& item : v)
+                  sum += item;
+
+                path = 1;
+              }
+           )
+     ).run(std::move(a));
+
+      spin_wait(50, [&counter] { return counter != 0; });
+      BOOST_CHECK_EQUAL(0, counter);
+      BOOST_CHECK_EQUAL(0, sum);
+      BOOST_CHECK_EQUAL(0, path);
+    }
+
+    std::this_thread::sleep_for(ms(50));
+    BOOST_CHECK_EQUAL(4, counted_moveonly::instance_counter);
+    BOOST_CHECK_EQUAL(3, counted_moveonly::cnt_move_ctor);
+    BOOST_CHECK_EQUAL(0, counted_moveonly::cnt_def_ctor);
+    BOOST_CHECK_EQUAL(1, counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(4, counted_moveonly::cnt_dtor);
+
+    BOOST_CHECK_EQUAL(counted_moveonly::instance_counter, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+    BOOST_CHECK_EQUAL(counted_moveonly::cnt_dtor, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+  }
+}
+
+
+
 BOOST_AUTO_TEST_SUITE_END()

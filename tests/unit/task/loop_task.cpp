@@ -33,37 +33,16 @@
 #include <condition_variable>
 #include <exception>
 
-#define BOOST_TEST_MODULE LoopTask
-#include <boost/test/unit_test.hpp>
-
 #include "cool/ng/async.h"
+#include "task_common.h"
 
 using ms = std::chrono::milliseconds;
 
-BOOST_AUTO_TEST_SUITE(loop_task)
+BOOST_AUTO_TEST_SUITE(loop)
 
 
-class my_runner : public cool::ng::async::runner
-{
- public:
-  void inc() { ++counter; }
-  void clear() { counter = 0; }
-  int counter = 0;
-};
-
-void spin_wait(unsigned int msec, const std::function<bool()>& lambda)
-{
-  auto start = std::chrono::system_clock::now();
-  while (!lambda())
-  {
-    auto now = std::chrono::system_clock::now();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return;
-  }
-}
-
-
-BOOST_AUTO_TEST_CASE(void_with_body)
+COOL_AUTO_TEST_CASE(T001,
+ * utf::description("task<void, bool> predicate with body"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
@@ -128,7 +107,8 @@ BOOST_AUTO_TEST_CASE(void_with_body)
   }
 }
 
-BOOST_AUTO_TEST_CASE(int_with_body)
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("task<void, int> predicate with body"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();
@@ -198,7 +178,8 @@ BOOST_AUTO_TEST_CASE(int_with_body)
   }
 }
 
-BOOST_AUTO_TEST_CASE(no_body)
+COOL_AUTO_TEST_CASE(T003,
+  * utf::description("task<void, bool> predicate without body"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_3 = std::make_shared<my_runner>();
@@ -263,7 +244,8 @@ class nocopy
    int m_value;
 };
 
-BOOST_AUTO_TEST_CASE(nocopy_with_body)
+COOL_AUTO_TEST_CASE(T004,
+ * utf::description("task<moveable&&, bool> predicate without body"))
 {
   auto runner_1 = std::make_shared<my_runner>();
   auto runner_2 = std::make_shared<my_runner>();

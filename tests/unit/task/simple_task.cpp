@@ -33,27 +33,10 @@
 #include <condition_variable>
 #include <exception>
 
-#define BOOST_TEST_MODULE SimpleTask
-#include <boost/version.hpp>
-#include <boost/test/unit_test.hpp>
-
-#if !defined(COOL_AUTO_TEST_CASE)
-#  if BOOST_VERSION < 106200
-#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
-#  else
-#    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a, b)
-     namespace utf = boost::unit_test;
-#  endif
-#endif
-
-#include "cool/ng/async.h"
+#include "task_common.h"
 
 using ms = std::chrono::milliseconds;
 
-
-class my_runner : public cool::ng::async::runner
-{
-};
 
 class my_other_runner : public cool::ng::async::runner
 {
@@ -63,22 +46,11 @@ class my_other_runner : public cool::ng::async::runner
   bool& m_on_destroy;
 };
 
-bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
-{
-  auto start = std::chrono::system_clock::now();
-  while (!lambda())
-  {
-    auto now = std::chrono::system_clock::now();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= msec)
-      return false;
-  }
-  return true;
-}
 
-BOOST_AUTO_TEST_SUITE(mem)
+BOOST_AUTO_TEST_SUITE(simple_memory)
 
 COOL_AUTO_TEST_CASE(T001,
-  * utf::description("single task, single runner, normal execution, check memory leaks")
+  * utf::description("Windows specific test: single task, single runner, normal execution, check memory leaks")
   * utf::disabled())
 {
   try
@@ -113,7 +85,7 @@ COOL_AUTO_TEST_CASE(T001,
 
 
 COOL_AUTO_TEST_CASE(T002,
-  * utf::description("single task, single runner. runner gone before task exec, check leaks")
+  * utf::description("Windows specific test: single task, single runner. runner gone before task exec, check leaks")
   * utf::disabled())
 {
   try
@@ -164,7 +136,7 @@ class my_task
 };
 
 COOL_AUTO_TEST_CASE(T003,
-  * utf::description("multiple tasks, one block, destroy runner must produce no leaks")
+  * utf::description("Windows specific test: multiple tasks, one block, destroy runner must produce no leaks")
   * utf::disabled())
 {
   {
@@ -226,7 +198,8 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(simple)
 
 
-BOOST_AUTO_TEST_CASE(task_ind_void)
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("task<int, void>"))
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;
@@ -246,7 +219,8 @@ BOOST_AUTO_TEST_CASE(task_ind_void)
   BOOST_CHECK_EQUAL(6, counter);
 }
 
-BOOST_AUTO_TEST_CASE(basic_int_int)
+COOL_AUTO_TEST_CASE(T002,
+  * utf::description("task<int, int>"))
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;
@@ -267,7 +241,8 @@ BOOST_AUTO_TEST_CASE(basic_int_int)
   BOOST_CHECK_EQUAL(6, counter);
 }
 
-BOOST_AUTO_TEST_CASE(basic_int_void)
+COOL_AUTO_TEST_CASE(T003,
+  * utf::description("task<void, int>"))
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;
@@ -288,7 +263,8 @@ BOOST_AUTO_TEST_CASE(basic_int_void)
   BOOST_CHECK_EQUAL(6, counter);
 }
 
-BOOST_AUTO_TEST_CASE(basic_void_void)
+COOL_AUTO_TEST_CASE(T004,
+ * utf::description("task<void,void>"))
 {
   auto runner = std::make_shared<my_runner>();
   std::atomic<int> counter;
@@ -308,7 +284,8 @@ BOOST_AUTO_TEST_CASE(basic_void_void)
   BOOST_CHECK_EQUAL(6, counter);
 }
 
-BOOST_AUTO_TEST_CASE(basic_with_exception)
+COOL_AUTO_TEST_CASE(T005,
+  * utf::description("simple task throwing an exception"))
 {
   auto runner = std::make_shared<my_runner>();
   std::mutex m;
@@ -344,7 +321,8 @@ class nocopy
    int m_value;
 };
 
-BOOST_AUTO_TEST_CASE(rvalue_reference_input)
+COOL_AUTO_TEST_CASE(T006,
+  * utf::description("simple task, rvalue reference input"))
 {
   auto runner = std::make_shared<my_runner>();
   int counter = 0;
@@ -365,5 +343,124 @@ BOOST_AUTO_TEST_CASE(rvalue_reference_input)
   std::this_thread::sleep_for(ms(10));
   BOOST_CHECK_EQUAL(42, counter);
 }
+
+COOL_AUTO_TEST_CASE(T100,
+  * utf::description("custom struct with both move and copy ctor, ctor and dtor counters"))
+{
+  counted_moveable::clear();
+
+  {
+    counted_moveable a(2, 3);
+    auto runner = std::make_shared<my_runner>();
+    std::atomic<int> counter;
+    counter = 0;
+    std::atomic<int> sum;
+    sum = 0;
+
+    cool::ng::async::factory::create(
+        runner
+      , [&counter, &sum](const std::shared_ptr<my_runner>& self, const counted_moveable& v)
+        {
+          counter = v.size();
+          for (auto&& item : v)
+            sum += item;
+        }
+    ).run(a);
+
+    spin_wait(100, [&counter] { return counter != 0; });
+    BOOST_CHECK_EQUAL(2, counter);
+    BOOST_CHECK_EQUAL(5, sum);
+  }
+
+  std::this_thread::sleep_for(ms(50));
+  BOOST_CHECK_EQUAL(4, counted_moveable::instance_counter);
+  BOOST_CHECK_EQUAL(1, counted_moveable::cnt_move_ctor);
+  BOOST_CHECK_EQUAL(2, counted_moveable::cnt_copy_ctor);
+  BOOST_CHECK_EQUAL(0, counted_moveable::cnt_def_ctor);
+  BOOST_CHECK_EQUAL(1, counted_moveable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(4, counted_moveable::cnt_dtor);
+
+  BOOST_CHECK_EQUAL(counted_moveable::instance_counter, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(counted_moveable::cnt_dtor, counted_moveable::cnt_move_ctor + counted_moveable::cnt_def_ctor + counted_moveable::cnt_copy_ctor + counted_moveable::cnt_el_ctor);
+}
+
+COOL_AUTO_TEST_CASE(T101,
+  * utf::description("custom struct w/o move ctor, ctor and dtor counters"))
+{
+  counted_copyable::clear();
+
+  {
+    counted_copyable a(2, 3);
+    auto runner = std::make_shared<my_runner>();
+    std::atomic<int> counter;
+    counter = 0;
+    std::atomic<int> sum;
+    sum = 0;
+
+    cool::ng::async::factory::create(
+        runner
+      , [&counter, &sum](const std::shared_ptr<my_runner>& self, const counted_copyable& v)
+        {
+          counter = v.size();
+          for (auto&& item : v)
+            sum += item;
+        }
+    ).run(a);
+
+    spin_wait(100, [&counter] { return counter != 0; });
+    BOOST_CHECK_EQUAL(2, counter);
+    BOOST_CHECK_EQUAL(5, sum);
+  }
+
+  std::this_thread::sleep_for(ms(50));
+  BOOST_CHECK_EQUAL(4, counted_copyable::instance_counter);
+  BOOST_CHECK_EQUAL(3, counted_copyable::cnt_copy_ctor);
+  BOOST_CHECK_EQUAL(0, counted_copyable::cnt_def_ctor);
+  BOOST_CHECK_EQUAL(1, counted_copyable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(4, counted_copyable::cnt_dtor);
+
+  BOOST_CHECK_EQUAL(counted_copyable::instance_counter, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(counted_copyable::cnt_dtor, counted_copyable::cnt_def_ctor + counted_copyable::cnt_copy_ctor + counted_copyable::cnt_el_ctor);
+}
+
+COOL_AUTO_TEST_CASE(T102,
+  * utf::description("custom struct with move ctor only, ctor and dtor counters"))
+{
+  counted_moveonly::clear();
+
+  {
+    counted_moveonly a(2, 3);
+    auto runner = std::make_shared<my_runner>();
+    std::atomic<int> counter;
+    counter = 0;
+    std::atomic<int> sum;
+    sum = 0;
+
+    cool::ng::async::factory::create(
+        runner
+      , [&counter, &sum](const std::shared_ptr<my_runner>& self, counted_moveonly&& v)
+        {
+          counter = v.size();
+          for (auto&& item : v)
+            sum += item;
+        }
+    ).run(std::move(a));
+
+    spin_wait(100, [&counter] { return counter != 0; });
+    BOOST_CHECK_EQUAL(2, counter);
+    BOOST_CHECK_EQUAL(5, sum);
+  }
+
+  std::this_thread::sleep_for(ms(100));
+  BOOST_CHECK_EQUAL(3, counted_moveonly::instance_counter);
+  BOOST_CHECK_EQUAL(2, counted_moveonly::cnt_move_ctor);
+  BOOST_CHECK_EQUAL(0, counted_moveonly::cnt_def_ctor);
+  BOOST_CHECK_EQUAL(1, counted_moveonly::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(3, counted_moveonly::cnt_dtor);
+
+  BOOST_CHECK_EQUAL(counted_moveonly::instance_counter, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor  + counted_moveonly::cnt_el_ctor);
+  BOOST_CHECK_EQUAL(counted_moveonly::cnt_dtor, counted_moveonly::cnt_move_ctor + counted_moveonly::cnt_def_ctor + counted_moveonly::cnt_el_ctor);
+}
+
 
 BOOST_AUTO_TEST_SUITE_END()
