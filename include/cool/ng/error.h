@@ -51,7 +51,7 @@ enum class errc
   request_failed = 16,
   not_found = 17,
   already_exists = 18,
-  no_context = 19
+  no_context = 19,
 };
 
 struct library_category : std::error_category

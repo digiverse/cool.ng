@@ -168,6 +168,10 @@ system_error::system_error(int code_, const std::string& msg_, bool backtrace_)
 network_error::network_error(const std::string& msg_, bool backtrace_)
     : system_error(WSAGetLastError(), msg_, backtrace_)
 { /* noop */ }
+
+network_error::network_error(int code_, const std::string& msg_, bool backtrace_)
+    : system_error(code_, msg_, backtrace_)
+{ /* noop */ }
 #endif
 
 

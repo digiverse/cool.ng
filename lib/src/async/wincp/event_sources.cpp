@@ -745,7 +745,7 @@ stream::context::context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, vo
     p_->add_environ(&m_environ);
     m_cleanup = CreateThreadpoolCleanupGroup();
     if (m_cleanup == nullptr)
-      throw exc::threadpool_failure("failed to create new threadpool cleanup group");
+      throw exc::system_error("failed to create new threadpool cleanup group");
     SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, NULL);
 
     TRACE(s_->name(), "context created, env=" << &m_environ);
@@ -775,7 +775,7 @@ void stream::context::set_handle(context::sptr* ctxptr, handle h_)
   );
 
   if (m_tpio == nullptr)
-    throw exc::threadpool_failure("failed to create new threadpool I/O completion object");
+    throw exc::system_error("failed to create new threadpool I/O completion object");
 }
 
 stream::context::~context()
@@ -1152,7 +1152,7 @@ void stream::write(const void* data, std::size_t size)
 
   bool expected = false;
   if (!(*cp)->m_wr_busy.compare_exchange_strong(expected, true))
-    throw exc::operation_failed(cool::ng::error::errc::resource_busy);
+    throw exc::resource_busy("write request is already running");
 
   (*cp)->m_wr_data = static_cast<const uint8_t*>(data);
   (*cp)->m_wr_size = size;
