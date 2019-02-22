@@ -53,8 +53,8 @@ std::string library_category::message(int ev) const
 /*   0 */ "not an error",
           "the runner requested through the weak_ptr no longer exists",
           "internal: dynamic cast from async::runner to user runner type unexplicably failed",
-          "internal: no task context",
-          "the object was in the wrong state to perform the requested operation",
+          "requested operation failed",
+          "the object was in the unexpected state or a wrong state to perform the requested operation",
           "the provided value was out of the valid value range",
           "the parameter value was not valid",
           "failed to convert provided value into the requested value",
@@ -68,7 +68,8 @@ std::string library_category::message(int ev) const
           "the destination is not reachable",
           "the request has failed",
           "the item was not found",
-          "the item already exists"
+          "the item already exists",
+          "the expected operation context does not exist"
   };
   static const char* const unknown = "unrecognized error";
 

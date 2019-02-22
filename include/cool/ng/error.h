@@ -35,8 +35,8 @@ enum class errc
   not_an_error = 0,
   no_runner = 1,
   bad_runner_cast = 2,
-  no_task_context = 3,
-  wrong_state = 4,
+  operation_failed = 3,
+  invalid_state = 4,
   out_of_range = 5,
   illegal_argument = 6,
   bad_conversion = 7,
@@ -50,7 +50,8 @@ enum class errc
   destination_unreachable = 15,
   request_failed = 16,
   not_found = 17,
-  already_exists = 18
+  already_exists = 18,
+  no_context = 19
 };
 
 struct library_category : std::error_category

@@ -107,7 +107,7 @@ class timer
    *
    * @throw exception::illegal_argument thrown if period, when converted
    *        to microseconds, is equal to 0 or if the task @a task_ is empty
-   * @throw exception::threadpool_failure if threadpool operation failed. This
+   * @throw exception::system_error if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
    * @note Upon creating the timer is inactive and must explicitly be activated
@@ -140,7 +140,7 @@ class timer
    *
    * @throw exception::illegal_argument thrown if period, when converted
    *        to microseconds, is equal to 0 or if the task @a task_ is empty
-   * @throw exception::threadpool_failure if threadpool operation failed. This
+   * @throw exception::system_error if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
    * @param task_ the user @ref task to execute periodically
@@ -169,7 +169,7 @@ class timer
    *
    * @throw exception::illegal_argument thrown if period, when converted
    *        to microseconds, is equal to 0 or if the task @a task_ is empty
-   * @throw exception::threadpool_failure if threadpool operation failed. This
+   * @throw exception::system_error if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
    * @note Upon creating the timer is inactive and must explicitly be activated
@@ -192,7 +192,7 @@ class timer
    *
    * @throw exception::illegal_argument thrown if period, when converted
    *        to microseconds, is equal to 0 or if the task @a task_ is empty
-   * @throw exception::threadpool_failure if threadpool operation failed. This
+   * @throw exception::system_error if threadpool operation failed. This
    *        is an MS Windows specific exception.
    *
    * @note Upon creating the timer is inactive and must explicitly be activated

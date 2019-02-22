@@ -54,7 +54,7 @@ poolmgr::poolmgr() : m_pool(nullptr)
   InitializeThreadpoolEnvironment(&m_environ);
   m_pool = CreateThreadpool(nullptr);
   if (m_pool == nullptr)
-    throw exception::threadpool_failure();
+    throw exception::system_error("Failed to create new threadpool");
 
   // Associate the callback environment with our thread pool.
   SetThreadpoolCallbackPool(&m_environ, m_pool);
@@ -122,14 +122,14 @@ executor::executor(RunPolicy policy_)
 
   m_fifo = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1000);
   if (m_fifo == nullptr)
-    throw exception::cp_failure();
+    throw exception::system_error("failed to create new I/O completion port");
 
   try
   {
     // Create work with the callback environment.
     m_work = CreateThreadpoolWork(task_executor, this, m_pool->get_environ());
     if (m_work.load() == nullptr)
-      throw exception::threadpool_failure();
+      throw exception::system_error("failed to create new threadpool work object");
   }
   catch (...)
   {

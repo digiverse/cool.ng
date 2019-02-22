@@ -203,11 +203,11 @@ server::context::context(const server::ptr& s_
   {
     m_handle = ::socket(addr_.version() == ip::version::ipv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0);
     if (m_handle == ::cool::ng::net::invalid_handle)
-      throw exc::socket_failure();
+      throw exc::network_error("failed to allocate network socket");
     {
       const int enable = 1;
       if (::setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) != 0)
-        throw exc::socket_failure();
+        throw exc::network_error("setcockopt failed");
     }
     {
       struct sockaddr* addr;
@@ -235,11 +235,11 @@ server::context::context(const server::ptr& s_
       }
 
       if (::bind(m_handle, addr, sz) != 0)
-        throw exc::socket_failure();
+        throw exc::network_error("bind failed");
     }
 
     if (::listen(m_handle, 10) != 0)
-      throw exc::socket_failure();
+      throw exc::network_error("listen failed");
 
     m_source = ::dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, m_handle, 0 , ex_->queue());
     m_source.cancel_handler(on_cancel);
@@ -448,12 +448,12 @@ void stream::set_handle(cool::ng::net::handle h_)
   // on OSX accepted socket does not preserve non-blocking properties of the listen socket
   int option = 1;
   if (ioctl(h_, FIONBIO, &option) != 0)
-    throw exc::socket_failure();
+    throw exc::network_error("ioctl failed");
 #endif
 
   auto rh = ::dup(h_);
   if (rh == cool::ng::net::invalid_handle)
-    throw exc::socket_failure();
+    throw exc::network_error("dup of the network socket failed");
 
   create_write_source(h_, false);
   create_read_source(rh, m_buf, m_size);
@@ -562,12 +562,12 @@ void stream::disconnect()
           // connecting state for proper cleanup
           rd_context* aux;
           if (!cancel_read_source(aux))
-            throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
+            throw exc::concurrency_problem("failed to cancel read source - possible concurrent use");
         }
         {
           context* aux;
           if (!cancel_write_source(aux))
-            throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
+            throw exc::concurrency_problem("failed to cancel write source - possible concurrent use");
         }
         return;
     }
@@ -576,16 +576,16 @@ void stream::disconnect()
   {
     rd_context* aux;
     if (!cancel_read_source(aux))
-      throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
-  }
+           throw exc::concurrency_problem("failed to cancel read source - possible concurrent use");
+   }
   {
     context* aux;
     if (!cancel_write_source(aux))
-      throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
+      throw exc::concurrency_problem("failed to cancel write source - possible concurrent use");
   }
   expect = state::disconnecting;
   if (!m_state.compare_exchange_strong(expect, state::disconnected))
-    throw exc::operation_failed(cool::ng::error::errc::concurrency_problem);
+    throw exc::concurrency_problem("unexpected state encountered - possible concurrent use");
 }
 
 void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
@@ -611,12 +611,12 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
       : ::socket(AF_INET, SOCK_STREAM, 0);
 #endif
     if (handle == cool::ng::net::invalid_handle)
-      throw exc::socket_failure();
+      throw exc::network_error("failed to create new network socket");
 
 #if !defined(LINUX_TARGET)
     int option = 1;
     if (ioctl(handle, FIONBIO, &option) != 0)
-      throw exc::socket_failure();
+      throw exc::network_error("ioctl failed");
 #endif
 
     create_write_source(handle);
@@ -649,7 +649,7 @@ void stream::connect(const cool::ng::net::ip::address& addr_, uint16_t port_)
     if (::connect(handle, p, size) == -1)
     {
       if (errno != EINPROGRESS)
-        throw exc::socket_failure();
+        throw exc::network_error("connect failed");
     }
   }
   catch (...)
@@ -788,7 +788,7 @@ void stream::write(const void* data, std::size_t size)
 
   bool expected = false;
   if (!m_wr_busy.compare_exchange_strong(expected, true))
-    throw exc::operation_failed(cool::ng::error::errc::resource_busy);
+    throw exc::resource_busy("write operation is already running");
 
   m_wr_data = static_cast<const uint8_t*>(data);
   m_wr_size = size;
@@ -851,14 +851,14 @@ void stream::process_connecting_event(context* ctx, std::size_t size)
     if (size <= 2048)
   #endif
     {
-      throw exc::runtime_fault(error::errc::request_failed);
+      throw exc::operation_failed("unexpected size value " + std::to_string(size) + " for pending connect");
     }
 
     // connect succeeded - create reader context and start reader
     // !! must dup because Linux wouldn't have read/write on same fd
     auto aux_h = ::dup(ctx->m_handle);
     if (aux_h == cool::ng::net::invalid_handle)
-      throw exc::socket_failure();
+      throw exc::network_error("dup of network socket failed");
 
     create_read_source(aux_h, m_buf, m_size);
     m_state = state::connected;

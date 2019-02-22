@@ -142,7 +142,7 @@ class stream
    * @param sz_ size of the user provided buffer or, if stream is to allocate
    *            buffer internally, the size of the buffer to allocate
    *
-   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::system_error if any network socket operations failed
    * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
    *        "runner" specified via parameter @a r_ is no longer available
    * @throw std::bad_alloc if the internal memory allocation failed
@@ -204,7 +204,7 @@ class stream
    * @param sz_ size of the user provided buffer or, if stream is to allocate
    *            buffer internally, the size of the buffer to allocate
    *
-   * @throw cool::ng::exception::socket_failure if any network socket operations failed
+   * @throw cool::ng::exception::system_error if any network socket operations failed
    * @throw cool::ng::exception::runner_not_available if the @ref cool::ng::async::runner
    *        "runner" specified via parameter @a r_ is no longer available
    * @throw std::bad_alloc if the internal memory allocation failed

@@ -123,13 +123,6 @@ class any
   std::unique_ptr<valueholder> m_value;
 };
 
-class bad_any_cast : public std::bad_cast
-{
- public:
-  const char* what() const NOEXCEPT_ override
-  { return "bad_any_cast: failed any_cast conversion"; }
-};
-
 template <typename T> inline T* any_cast(any* v_)
 {
   return v_ != nullptr && v_->m_value->type() == typeid(T)
@@ -149,7 +142,7 @@ template <typename T> inline T any_cast(any & v_)
 
     nonref * result = any_cast<nonref>(&v_);
     if (!result)
-        throw bad_any_cast();
+        throw exception::bad_conversion("any_cast failed to convert value to requested type");
 
     // Attempt to avoid construction of a temporary object in cases when
     // `T` is not a reference. Example:

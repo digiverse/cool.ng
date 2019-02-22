@@ -25,6 +25,8 @@
 # include <Windows.h>
 #endif
 
+#include <sstream>
+#include <iomanip>
 #include "cool/ng/exception.h"
 
 #if defined(WINDOWS_TARGET)
@@ -44,30 +46,31 @@
 
 namespace cool { namespace ng { namespace exception {
 
-backtrace::backtrace(std::size_t depth_) NOEXCEPT_ : m_traces(depth_, null_address)
+backtrace::backtrace(bool capture_) NOEXCEPT_
+  : m_count(0)
 {
+  if (!capture_)
+    return;
+
   try
   {
-    if (depth_ == 0)
-      return;
-
 #if defined(WINDOWS_TARGET)
-    auto count = CaptureStackBackTrace(1, static_cast<DWORD>(depth_), m_traces.data(), nullptr);
+    m_count = CaptureStackBackTrace(1, static_cast<DWORD>(m_traces.size()), m_traces.data(), nullptr);
 #else
-    auto count = ::backtrace(m_traces.data(), depth_);
+    m_count = ::backtrace(m_traces.data(), m_traces.size());
 #endif
-    if (count < 0)
-      m_traces.clear();
-    else if (count < depth_)
-      m_traces.resize(count);
+    if (m_count < 0)
+      m_count = 0;
   }
   catch (...)
   { /* noop */ }
 }
 
-const std::vector<stack_address>& backtrace::traces() const NOEXCEPT_
+stack_address backtrace::operator [](std::size_t idx_) const
 {
-  return m_traces;
+  if (idx_ >= size())
+    throw out_of_range();
+  return m_traces[idx_];
 }
 
 std::vector<std::string> backtrace::symbols() const NOEXCEPT_
@@ -75,7 +78,7 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
   std::vector<std::string> ret;
   try
   {
-    if (m_traces.size() > 0)
+    if (size() > 0)
     {
 #if defined(WINDOWS_TARGET)
 
@@ -89,7 +92,7 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
       symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
 
       DWORD64 displacement;
-      for (std::size_t i = 0; i < m_traces.size(); ++i)
+      for (std::size_t i = 0; i < size(); ++i)
       {
         displacement = 0;
         if (SymFromAddr(process, reinterpret_cast<int64_t>(m_traces[i]), &displacement, symbol))
@@ -107,10 +110,10 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
 
 #else
 
-      auto syms = ::backtrace_symbols(m_traces.data(), m_traces.size());
+      auto syms = ::backtrace_symbols(m_traces.data(), size());
       if (syms != nullptr)
       {
-        for (std::size_t i = 0; i < m_traces.size(); ++i)
+        for (std::size_t i = 0; i < size(); ++i)
           ret.push_back(syms[i]);
         std::free(syms);
       }
@@ -123,19 +126,62 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
   return ret;
 }
 
+std::string base::message() const
+{
+  return std::string(name()) + ": " + what() + "\n  " + code().message() + "\n";
+}
+
 // -------
-system_error::system_error(std::size_t depth_) NOEXCEPT_
+
+std::string system_error::message() const
+{
+  return std::string(name()) + ": " + what() + "\n  [errno = " +
+     std::to_string(code().value()) + "] " + code().message() + "\n";
+}
+
+// -------
+system_error::system_error(const std::string& msg_, bool backtrace_)
 #if defined(WINDOWS_TARGET)
-    : base(std::error_code(GetLastError(), std::system_category()), depth_)
+    : system_error_code(GetLastError())
+    , base(msg_, backtrace_)
 #else
-    : base(std::error_code(errno, std::system_category()), depth_)
+    : system_error_code(errno)
+    , base(msg_, backtrace_)
 #endif
-{ /* noop */ }
+{
+  m_errc = std::error_code(static_cast<int>(*this), std::system_category());
+}
+
+system_error::system_error(int code_, const std::string& msg_, bool backtrace_)
+#if defined(WINDOWS_TARGET)
+    : system_error_code(code_)
+    , base(msg_, backtrace_)
+#else
+    : system_error_code(errno)
+    , base(msg_, backtrace_)
+#endif
+{
+  m_errc = std::error_code(static_cast<int>(*this), std::system_category());
+}
 
 #if defined(WINDOWS_TARGET)
-socket_failure::socket_failure(std::size_t depth_) NOEXCEPT_
-    : base(std::error_code(GetLastError(), std::system_category()), depth_)
+network_error::network_error(const std::string& msg_, bool backtrace_)
+    : system_error(WSAGetLastError(), msg_, backtrace_)
 { /* noop */ }
 #endif
+
+
+std::string to_string(const base& ex)
+{
+  std::stringstream os;
+  os << ex.message();
+  auto syms = ex.stack_backtrace().symbols();
+  os << "**** Call stack backtrace:\n";
+  for (int i = 0; i < syms.size(); ++i)
+    os << "\t" << syms[i] << "\n";
+
+  return os.str();
+}
+
 
 } } } // namespace

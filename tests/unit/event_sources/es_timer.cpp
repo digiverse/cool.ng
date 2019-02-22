@@ -27,9 +27,11 @@
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <io.h>
 #else
 # include <sys/types.h>
 # include <sys/socket.h>
+# include <fcntl.h>
 #endif
 
 #include <iostream>
@@ -51,7 +53,7 @@
 #define BOOST_TEST_MODULE TimerEventSource
 #include <boost/test/unit_test.hpp>
 
-#if !defined(COOL_AUTO_TEST)
+#if !defined(COOL_AUTO_TEST_CASE)
 #  if BOOST_VERSION < 106200
 #    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
 #  else
@@ -62,6 +64,7 @@
 
 #include "cool/ng/bases.h"
 #include "cool/ng/async.h"
+#include "cool/ng/exception.h"
 
 // #include "test_server.h"
 
@@ -75,6 +78,34 @@ using std::placeholders::_4;
 
 BOOST_AUTO_TEST_SUITE(timer)
 
+COOL_AUTO_TEST_CASE(T001,
+  * utf::description("system_error test"))
+{
+  try
+  {
+    char buf[256];
+#if defined(WINDOWS_TARGET)
+    _open("no-such-file", 0, 0);
+#else
+    if (open("no-such-file", 0, 0) < 0)
+#endif
+      throw cool::ng::exception::system_error("open failed");
+  }
+  catch (const cool::ng::exception::base& ex)
+  {
+    std::cout << to_string(ex) << "\n";
+  }
+
+  try
+  {
+    throw cool::ng::exception::runner_not_available();
+  }
+  catch (const cool::ng::exception::base& ex)
+  {
+    std::cout << to_string(ex) << "\n";
+  }
+}
+#if 0
 namespace net = cool::ng::net;
 namespace ip = cool::ng::net::ip;
 namespace ipv4 = cool::ng::net::ipv4;
@@ -269,7 +300,7 @@ COOL_AUTO_TEST_CASE(T005,
   spin_wait(100, [](){ return false; });
 }
 
-
+#endif
 BOOST_AUTO_TEST_SUITE_END()
 
 

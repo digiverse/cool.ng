@@ -26,6 +26,7 @@
 
 
 #include <string>
+#include <array>
 #include <vector>
 #include <exception>
 #include <stdexcept>
@@ -57,233 +58,553 @@ using stack_address = void*;
 const stack_address null_address = nullptr;
 
 /**
- * Helper class that captures stack backtrace at the construction
+ * Helper class that captures stack backtrace at its construction. It is
+ * used by an @ref base "exception base" class to capture the stack
+ * backtrace.
  */
 class backtrace
 {
  public:
-  dlldecl const std::vector<stack_address>& traces() const NOEXCEPT_;
+  /**
+   * Constructs an instance of backtrace.
+   */
+  dlldecl backtrace(bool capture_) NOEXCEPT_;
+  /**
+   * Returns the number of stack backtraces captured by this instance.
+   */
+  inline std::size_t size() const NOEXCEPT_ { return m_count; };
+  /**
+   * Returns the stack backtrace address at the specified index.
+   *
+   * @throw out_of_range thrown if index @c idx_ is out of range.
+   */
+  dlldecl stack_address operator [](std::size_t idx_) const;
+  /**
+   * Return the program symbols that correspond to the captured stack backtrace
+   * addresses.
+   */
   dlldecl std::vector<std::string> symbols() const NOEXCEPT_;
 
- protected:
-  dlldecl backtrace(std::size_t depth_) NOEXCEPT_;
-
  private:
-  std::vector<stack_address> m_traces;
+  std::array<stack_address, default_bt_depth> m_traces;
+  int32_t                                     m_count;
 };
 
-class base : public std::exception
-           , public backtrace
+/**
+ * Common base class for all exceptions in this module.
+ */
+class base : public std::runtime_error
 {
  public:
-  base(const std::error_code& ec_, std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : backtrace(depth_), m_errc(ec_)
+  /**
+   * Construct a new exception object with optional user message that optionally
+   * captures the call stack backtrace.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the call stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  base(const std::string& msg_ = "", bool backtrace_ = true)
+      : runtime_error(msg_), m_backtrace(backtrace_)
   { /* noop */ }
+  /**
+   * Return user message, if any, or an empty string if none.
+   */
+  dlldecl virtual std::string message() const;
+  /**
+   * Return @ref backtrace "captured call stack backtrace".
+   */
+  const backtrace& stack_backtrace() const             { return m_backtrace; }
+  /**
+   * Return the error code associated with this instance of exception object.
+   */
+  virtual std::error_code code() const NOEXCEPT_ = 0;
+  /**
+   * Return the name of this exception object type.
+   */
+  virtual const char* name() const NOEXCEPT_ = 0;
 
-  base(const cool::ng::error::errc ec_, std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : backtrace(depth_), m_errc(make_error_code(ec_))
-  { /* noop */ }
+ private:
+  backtrace m_backtrace;
+};
 
-  const char* what() const NOEXCEPT_ override
-  {
-    return "Cool.NG library exception. Use message() method for more details.";
-  }
+/* ---------------------------------------------------------------------------
+ * -----
+ * ----- System errors
+ * -----
+ * ------------------------------------------------------------------------ */
 
-  const std::error_code code() const NOEXCEPT_
+class system_error_code
+{
+ public:
+  system_error_code(int errno_) NOEXCEPT_    { m_errno = errno_; }
+  dlldecl operator int() const NOEXCEPT_     { return m_errno;   }
+
+ private:
+  int m_errno;
+};
+
+/**
+ * Exception class that captures the system error code at the moment of
+ * its construction and present them in the C++ standard manner. This and the
+ * derived exception classes contain an error code of the @c std::system_error
+ * error category.
+ */
+class system_error : public system_error_code, public base
+{
+ public:
+  /**
+   * Construct a new exception object that captures the system error code.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  dlldecl system_error(const std::string& msg_ = "", bool backtrace_ = true);
+  /**
+   * Construct a new exception object with already captured system error code.
+   *
+   * @param code_ system error code
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  dlldecl system_error(int code_, const std::string& msg_ = "", bool backtrace_ = true);
+  dlldecl std::string message() const override;
+  std::error_code code() const NOEXCEPT_ override
   {
     return m_errc;
   }
- private:
-  const std::error_code m_errc;
-};
-/**
- * Helper class that captures platform dependent error codes at the moment of
- * its construction and presenting them in the C++ standard manner.
- */
-class system_error : public base
-{
- public:
-  dlldecl system_error(std::size_t depth_ = default_bt_depth) NOEXCEPT_;
-};
-
-class runtime_fault : public base
-{
- public:
-  runtime_fault(const cool::ng::error::errc ec_, std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : base(ec_, depth_)
-  { /* noop */ }
-};
-
-class logic_fault : public base
-{
- public:
-  logic_fault(const cool::ng::error::errc ec_, std::size_t depth_ = default_bt_depth) NOEXCEPT_
-     : base(ec_, depth_)
-  { /* noop */ }
-  virtual const char* what() const NOEXCEPT_ override
+  const char* name() const NOEXCEPT_ override
   {
-    return m_msg.c_str();
+    return "system_error";
   }
 
  private:
-  std::string m_msg;
+  std::error_code m_errc;
 };
 
-class connection_failure : public system_error
-{
- public:
-  connection_failure(std::size_t depth_ = default_bt_depth) : system_error(depth_)
-  { /* noop */ }
-};
-
+/**
+ * Exception class that captures the system error code of the networking subsystem
+ * at the moment of its construction and present them in the C++ standard manner.
+ * This and the derived exception classes contain an error code of the
+ * @c std::system_error error category.
+ *
+ * @note This class is necessary because the network socket library on the
+ * Microsoft Windows uses own error codes. Thus instead of calling @c GetLastError()
+ * this class calls @c WSAGetLastError() to capture the error code. On other operating
+ * system this type is an alias for @ref system_error.
+ *
+ * @note The error handling code should not catch this type of exception. It should
+ * always catch @ref system_error instead.
+ */
 #if defined(WINDOWS_TARGET)
-
-class socket_failure : public base
+class network_error : public system_error
 {
  public:
-  dlldecl socket_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_;
+  /**
+   * Construct a new exception object that captures the error code of the networking
+   * subsystem.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  dlldecl network_error(const std::string& msg_ = "", bool backtrace_ = true);
+  /**
+   * Construct a new exception object with already captured networkign subsystem error code.
+   *
+   * @param code_ networking subsystem error code
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  dlldecl network_error(int code_, const std::string& msg_ = "", bool backtrace_ = true);
+  const char* name() const NOEXCEPT_ override
+  {
+    return "socket_error";
+  }
 };
-
 #else
-
-class socket_failure : public system_error
-{
- public:
-  socket_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_
-      : system_error(depth_)
-  { /* noop */ }
-};
-
+using network_error = system_error;
 #endif
 
-
-class threadpool_failure : public system_error
+/**
+ * Exception class denoting condition where the weak pointer to the runner
+ * object can no longer lock on this object.
+ */
+class runner_not_available : public base
 {
  public:
-  threadpool_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_
-      : system_error(depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  runner_not_available(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::no_runner);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "runner_not_available";
+  }
 };
 
-class cp_failure : public system_error
+/**
+ * Exception class denoting condition where the pointer to the runner
+ * object cannot be cast into the pointer to the desired data type.
+ */
+class bad_runner_cast : public base
 {
  public:
-  cp_failure(std::size_t depth_ = default_bt_depth)  NOEXCEPT_
-      : system_error(depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  bad_runner_cast(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::bad_runner_cast);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "bad_runner_cast";
+  }
 };
 
-class internal_fault : public base
+/**
+ * Exception class denoting condition where the value cannot be converted into
+ * the value of the desired data type.
+ */
+class bad_conversion : public base
 {
  public:
-  internal_fault(const cool::ng::error::errc ec_, std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : base(ec_, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  bad_conversion(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::bad_conversion);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "bad_conversion";
+  }
 };
 
-class bad_runner_cast : public internal_fault
+/**
+ * Exception class denoting concurrency problem condition.
+ */
+class concurrency_problem : public base
 {
  public:
-  bad_runner_cast(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : internal_fault(cool::ng::error::errc::bad_runner_cast, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  concurrency_problem(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::concurrency_problem);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "concurrency_problem";
+  }
 };
 
-class invalid_state : public logic_fault
+/**
+ * Exception class denoting that the expected operation context does not exist.
+ */
+class no_context : public base
 {
  public:
-  invalid_state(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : logic_fault(cool::ng::error::errc::wrong_state, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  no_context(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::no_context);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "no_context";
+  }
 };
 
-class runner_not_available : public logic_fault
+
+/**
+ * Exception class denoting problem with the value out of the valid value range.
+ */
+class out_of_range : public base
 {
  public:
-  runner_not_available(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : logic_fault(cool::ng::error::errc::no_runner, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  out_of_range(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::out_of_range);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "out_of_range";
+  }
 };
 
-class no_context : public internal_fault
+/**
+ * Exception class denoting problem with one or more parameters being set to illegal value.
+ */
+class illegal_argument : public base
 {
  public:
-  no_context(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : internal_fault(cool::ng::error::errc::no_task_context, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  illegal_argument(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::illegal_argument);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "illegal_argument";
+  }
 };
 
-class nothing_to_run : public internal_fault
+/**
+ * Exception class denoting problem with the unexpected internal state or the
+ * internal state preventing the requested action.
+ */
+class invalid_state : public base
 {
  public:
-  nothing_to_run(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : internal_fault(cool::ng::error::errc::not_an_error, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  invalid_state(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::invalid_state);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "invalid_state";
+  }
 };
 
-class out_of_range : public logic_fault
+/**
+ * Exception class denoting problem with the requested resouse is already spoken for.
+ */
+class resource_busy : public base
 {
  public:
-  out_of_range(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : logic_fault(cool::ng::error::errc::out_of_range, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  resource_busy(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::resource_busy);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "resource_busy";
+  }
 };
 
-class illegal_argument : public logic_fault
+/**
+ * Exception class denoting that the requested operation failed.
+ *
+ * @note The user message should provide more details on the cause of the failure.
+ */
+class operation_failed : public base
 {
  public:
-  illegal_argument(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : logic_fault(cool::ng::error::errc::illegal_argument, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  operation_failed(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::operation_failed);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "operation_failed";
+  }
 };
 
-class bad_conversion : public logic_fault
+/**
+ * Exception class denoting that the object on which to perform the operation was found empty.
+ */
+class empty_object : public base
 {
  public:
-  dlldecl bad_conversion(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : logic_fault(cool::ng::error::errc::bad_conversion, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  empty_object(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::empty_object);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "empty_object";
+  }
 };
 
-class parsing_error : public logic_fault
+/**
+ * Exception class denoting that the similar item already exists.
+ */
+class already_exists : public base
 {
  public:
-  dlldecl parsing_error(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : logic_fault(cool::ng::error::errc::parsing_error, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  already_exists(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::already_exists);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "already_exists";
+  }
 };
 
-class empty_object : public logic_fault
+/**
+ * Exception class denoting that the requested item was not found.
+ */
+class not_found : public base
 {
  public:
-  dlldecl empty_object(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-      : logic_fault(cool::ng::error::errc::empty_object, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  not_found(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::not_found);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "not_found";
+  }
 };
 
-class not_found : public runtime_fault
+/**
+ * Exception class denoting that the problem occured during parsing of the input.
+ */
+class parsing_error : public base
 {
  public:
-  not_found(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : runtime_fault(cool::ng::error::errc::not_found, depth_)
+  /**
+   * Construct a new exception object.
+   *
+   * @param msg_ optional user message
+   * @param backtrace_ optional flag to set to @c false if the stack backtrace is not
+   *                   wanted; default value is @c true.
+   */
+  parsing_error(const std::string& msg_ = "", bool backtrace_ = true)
+    : base(msg_, backtrace_)
   { /* noop */ }
+  std::error_code code() const NOEXCEPT_ override
+  {
+    return make_error_code(cool::ng::error::errc::parsing_error);
+  }
+  const char* name() const NOEXCEPT_ override
+  {
+    return "parsing_error";
+  }
 };
 
-class already_exists : public runtime_fault
-{
- public:
-  already_exists(std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : runtime_fault(cool::ng::error::errc::already_exists, depth_)
-  { /* noop */ }
-};
-
-class operation_failed : public runtime_fault
-{
- public:
-  operation_failed(cool::ng::error::errc ec_, std::size_t depth_ = default_bt_depth) NOEXCEPT_
-    : runtime_fault(ec_, depth_)
-  { /* noop */ }
-};
+/**
+ * Return textual presentation of this exception with information presented
+ * in human readable way.
+ */
+dlldecl std::string to_string(const base& ex);
 
 } } } // namespace
 

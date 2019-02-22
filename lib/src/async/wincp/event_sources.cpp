@@ -78,7 +78,7 @@ timer::timer(const task_type& t_, uint64_t p_, uint64_t l_)
 
   m_source = CreateThreadpoolTimer(on_event, this, m_pool->get_environ());
   if (m_source == nullptr)
-    throw exc::threadpool_failure();
+    throw exc::system_error("failed to create new threadpool timer");
 }
 
 timer::~timer()
@@ -270,11 +270,11 @@ void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
     {
       m_handle = WSASocketW(m_sock_type, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
       if (m_handle == invalid_handle)
-        throw exc::socket_failure();
+        throw exc::network_error("failed to crate new network socket");
 
       const int enable = 1;
       if (setsockopt(m_handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enable), sizeof(enable)) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("setsockopt operation failed on the network socket");
 
       // enable connect from IPv4 sockets, too ... something that's enable by
       // default on OSX and Linux
@@ -282,7 +282,7 @@ void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
       {
         const DWORD ipv6only = 0;
         if (setsockopt(m_handle, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&ipv6only), sizeof(ipv6only)) == SOCKET_ERROR)
-          throw exc::socket_failure();
+          throw exc::network_error("setsockopt opearation failed on the network socket");
       }
 
       sockaddr_in addr4;
@@ -296,10 +296,10 @@ void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
         set_address(addr6, addr_, port_, p, size);
 
       if (bind(m_handle, p, static_cast<int>(size)) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("failed to bind network socket");
 
       if (listen(m_handle, 10) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("listen failed");
     }
 
     // ----
@@ -318,7 +318,7 @@ void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
           , &filler
           , nullptr
           , nullptr) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("ioctl failed");
 
       guid = WSAID_GETACCEPTEXSOCKADDRS;
       if (WSAIoctl(
@@ -331,7 +331,7 @@ void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
           , &filler
           , nullptr
           , nullptr) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("ioctl failed");
     }
 
     // ----
@@ -344,7 +344,7 @@ void server::initialize(const cool::ng::net::ip::address& addr_, uint16_t port_)
       , m_pool->get_environ());
     if (m_tpio == nullptr)
     {
-      throw exc::threadpool_failure();
+      throw exc::system_error("failed to create new threadpool I/O completion object");
     }
 
     m_state = state::stopped;
@@ -376,7 +376,7 @@ void server::start_accept()
 {
   m_client_handle = ::WSASocketW(m_sock_type, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
   if (m_client_handle == invalid_handle)
-    throw exc::socket_failure();
+    throw exc::network_error("failed to create network socket");
 
   StartThreadpoolIo(m_tpio);
 
@@ -745,7 +745,7 @@ stream::context::context(async::impl::poolmgr::ptr p_, const stream::ptr& s_, vo
     p_->add_environ(&m_environ);
     m_cleanup = CreateThreadpoolCleanupGroup();
     if (m_cleanup == nullptr)
-      throw exc::threadpool_failure();
+      throw exc::threadpool_failure("failed to create new threadpool cleanup group");
     SetThreadpoolCallbackCleanupGroup(&m_environ, m_cleanup, NULL);
 
     TRACE(s_->name(), "context created, env=" << &m_environ);
@@ -775,7 +775,7 @@ void stream::context::set_handle(context::sptr* ctxptr, handle h_)
   );
 
   if (m_tpio == nullptr)
-    throw exc::threadpool_failure();
+    throw exc::threadpool_failure("failed to create new threadpool I/O completion object");
 }
 
 stream::context::~context()
@@ -922,7 +922,7 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
 
     auto handle = WSASocketW(type, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
     if (handle == invalid_handle)
-      throw exc::socket_failure();
+      throw exc::network_error("failed to create network socket");
 
     (*cp)->set_handle(cp, handle);
   }
@@ -934,7 +934,7 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
     {
       const DWORD ipv6only = 0;
       if (setsockopt((*cp)->m_handle, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&ipv6only), sizeof(ipv6only)) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("setsockopt failed on the network socket");
     }
 
     // get address of ConnectEx function (argh!)
@@ -951,7 +951,7 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
           , &filler
           , nullptr
           , nullptr) == SOCKET_ERROR)
-        throw exc::socket_failure();
+        throw exc::network_error("ioctl failed");
     }
 
     // --- wtf was Microsoft thinking?
@@ -967,7 +967,7 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
       set_address(addr6, ipv6::any, 0, pointer, size);
 
     if (bind((*cp)->m_handle, pointer, size) != NO_ERROR)
-      throw exc::socket_failure();
+      throw exc::network_error("failed to bind network socket");
 
     // notify thread pool about incoming async operation
     StartThreadpoolIo((*cp)->m_tpio);
@@ -988,10 +988,11 @@ void stream::connect(const ip::address& addr_, uint16_t port_)
         , nullptr
         , &(*cp)->m_rd_overlapped))
     {
-      if (WSAGetLastError() != ERROR_IO_PENDING)
+      auto err = WSAGetLastError();
+      if (err != ERROR_IO_PENDING)
       {
         CancelThreadpoolIo((*cp)->m_tpio);
-        throw exc::socket_failure();
+        throw exc::network_error(err, "connect failed");
       }
     }
   }

@@ -423,7 +423,7 @@ BOOST_AUTO_TEST_CASE(server_errors)
           )
         , [] (const std::shared_ptr<test_runner>& r, const async::net::stream& s_) { }
       )
-    , cool::ng::exception::socket_failure);
+    , cool::ng::exception::system_error);
   }
   std::this_thread::sleep_for(ms(100));
 }
