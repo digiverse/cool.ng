@@ -118,7 +118,42 @@ set( COOL_NG_API_HEADERS
     include/cool/ng/async/net/stream.h
 )
 
-set( COOL_NG_IMPL_HEADERS
+# ### ##################################################
+# ###
+# ### Cool library
+# ###
+# ### ##################################################
+
+# ### --------------------------------------------------
+# ### Platform dependent parts
+# ### --------------------------------------------------
+
+# ### run_queue comes in three flavors, depending on the underlying queue technology
+# ### ------------------------------------------------------------------------------
+set( COOL_NG_GCD_RUN_QUEUE_DIR   ${COOL_NG_HOME}/lib/src/async/run_queue/gcd )
+set( COOL_NG_DEQUE_RUN_QUEUE_DIR ${COOL_NG_HOME}/lib/src/async/run_queue/deque )
+set( COOL_NG_WINCP_RUN_QUEUE_DIR ${COOL_NG_HOME}/lib/src/async/run_queue/wincp )
+
+ 
+if ( ${TASK_RUNNER_IMPL} STREQUAL "GCD_TARGET_QUEUE" )
+  set ( COOL_NG_RUN_QUEUE_DIR ${COOL_NG_GCD_RUN_QUEUE_DIR} )
+elseif ( ${TASK_RUNNER_IMPL} STREQUAL "GCD_DEQUE" )
+  set ( COOL_NG_RUN_QUEUE_DIR ${COOL_NG_DEQUE_RUN_QUEUE_DIR} )
+elseif  ( ${TASK_RUNNER_IMPL} STREQUAL "WIN_COMPLETION_PORT" )
+  set ( COOL_NG_RUN_QUEUE_DIR ${COOL_NG_WINCP_RUN_QUEUE_DIR} )
+else()
+  message( FATAL_ERROR "Unknown run_queue platform '${TASK_RUNNER_IMPL}', cannot proceed" )
+endif()
+
+set( COOL_NG_RUN_QUEUE_SRCS ${COOL_NG_RUN_QUEUE_DIR}/run_queue.cpp )
+set( COOL_NG_RUN_QUEUE_HEADERS ${COOL_NG_RUN_QUEUE_DIR}/run_queue.h )
+if ( ${TASK_RUNNER_IMPL} STREQUAL "WIN_COMPLETION_PORT" )
+  set( COOL_NG_RUN_QUEUE_HEADERS ${COOL_NG_RUN_QUEUE_HEADERS} ${COOL_NG_RUN_QUEUE_DIR}/critical_section.h )
+endif()
+include_directories( ${COOL_NG_RUN_QUEUE_DIR} )
+
+
+set( COOL_NG_IMPL_COMMON_HEADERS
     include/cool/ng/impl/platform.h
     include/cool/ng/impl/ip_address.h
     include/cool/ng/impl/async/task_traits.h
@@ -135,70 +170,68 @@ set( COOL_NG_IMPL_HEADERS
     include/cool/ng/impl/async/net_stream.h
 )
 
-# ### ##################################################
-# ###
-# ### Cool library
-# ###
-# ### ##################################################
-
-set( COOL_NG_LIB_HEADERS
-  ${COOL_NG_HOME}/lib/include/lib/async/executor.h
-)
-
-set( COOL_NG_LIB_SRCS
+set( COOL_NG_LIB_COMMON_SRCS
   ${COOL_NG_HOME}/lib/src/bases.cpp
   ${COOL_NG_HOME}/lib/src/exception.cpp
   ${COOL_NG_HOME}/lib/src/error.cpp
   ${COOL_NG_HOME}/lib/src/ip_address.cpp
-  ${COOL_NG_HOME}/lib/src/async/runner.cpp
-  ${COOL_NG_HOME}/lib/src/async/event_sources.cpp
+#  ${COOL_NG_HOME}/lib/src/async/runner.cpp
+#  ${COOL_NG_HOME}/lib/src/async/event_sources.cpp
 )
 
-# --- executor sources
-set (COOL_NG_GCD_EVENT_SOURCES_SRCS       ${COOL_NG_HOME}/lib/src/async/gcd/event_sources.cpp )
-set (COOL_NG_GCD_EVENT_SOURCES_HEADERS    ${COOL_NG_HOME}/lib/src/async/gcd/event_sources.h )
-set (COOL_NG_GCD_EXECUTOR_SRCS            ${COOL_NG_HOME}/lib/src/async/gcd/executor.cpp )
-set (COOL_NG_GCD_EXECUTOR_HEADERS         ${COOL_NG_HOME}/lib/src/async/gcd/executor.h)
+set( COOL_NG_PLATFORM_SRCS ${COOL_NG_RUN_QUEUE_SRCS} )
+set( COOL_NG_PLATFORM_HEADERS ${COOL_NG_RUN_QUEUE_HEADERS} )
 
-set (COOL_NG_WINCP_EVENT_SOURCES_SRCS     ${COOL_NG_HOME}/lib/src/async/wincp/event_sources.cpp )
-set (COOL_NG_WINCP_EVENT_SOURCES_HEADERS  ${COOL_NG_HOME}/lib/src/async/wincp/event_sources.h )
-set (COOL_NG_WINCP_EXECUTOR_SRCS          ${COOL_NG_HOME}/lib/src/async/wincp/executor.cpp)
-set (COOL_NG_WINCP_EXECUTOR_HEADERS       ${COOL_NG_HOME}/lib/src/async/wincp/executor.h ${COOL_NG_HOME}/lib/src/async/wincp/critical_section.h)
+set( COOL_NG_LIB_HEADERS ${COOL_NG_API_HEADERS} ${COOL_NG_IMPL_COMMON_HEADERS} ${COOL_NG_PLATFORM_HEADERS} )
+set( COOL_NG_LIB_SRCS ${COOL_NG_LIB_COMMON_SRCS} ${COOL_NG_PLATFORM_SRCS} )
 
-if ( NOT WINDOWS )
-  set (COOL_NG_EXECUTOR_FILES ${COOL_NG_GCD_EXECUTOR_SRCS} ${COOL_NG_GCD_EXECUTOR_HEADERS})
-  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_GCD_EVENT_SOURCES_SRCS} ${COOL_NG_GCD_EVENT_SOURCES_HEADERS})
-else()
-  set (COOL_NG_EXECUTOR_FILES ${COOL_NG_WINCP_EXECUTOR_SRCS} ${COOL_NG_WINCP_EXECUTOR_HEADERS})
-  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_WINCP_EVENT_SOURCES_SRCS} ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS})
-endif()
+set( COOL_NG_LIB_FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
 
-set( COOL_NG_GCD_IMPL_HEADERS
-  ${COOL_NG_GCD_EXECUTOR_HEADERS}
-  ${COOL_NG_GCD_EVENT_SOURCES_HEADERS}
-)
+# --- run_queue sources
+#set (COOL_NG_GCD_EVENT_SOURCES_SRCS       ${COOL_NG_HOME}/lib/src/async/gcd/event_sources.cpp )
+#set (COOL_NG_GCD_EVENT_SOURCES_HEADERS    ${COOL_NG_HOME}/lib/src/async/gcd/event_sources.h )
+#set (COOL_NG_GCD_RUN_QUEUE_SRCS            ${COOL_NG_HOME}/lib/src/async/gcd/run_queue.cpp )
+#set (COOL_NG_GCD_RUN_QUEUE_HEADERS         ${COOL_NG_HOME}/lib/src/async/gcd/run_queue.h)
 
-set( COOL_NG_GCD_IMPL_SRCS
-  ${COOL_NG_GCD_EXECUTOR_SRCS}
-  ${COOL_NG_GCD_EVENT_SOURCES_SRCS}
-)
+#set (COOL_NG_WINCP_EVENT_SOURCES_SRCS     ${COOL_NG_HOME}/lib/src/async/wincp/event_sources.cpp )
+#set (COOL_NG_WINCP_EVENT_SOURCES_HEADERS  ${COOL_NG_HOME}/lib/src/async/wincp/event_sources.h )
+#set (COOL_NG_WINCP_RUN_QUEUE_SRCS          ${COOL_NG_HOME}/lib/src/async/wincp/run_queue.cpp)
+#set (COOL_NG_WINCP_RUN_QUEUE_HEADERS       ${COOL_NG_HOME}/lib/src/async/wincp/run_queue.h ${COOL_NG_HOME}/lib/src/async/wincp/critical_section.h)
 
-set( COOL_NG_WINCP_IMPL_HEADERS
-  ${COOL_NG_WINCP_EXECUTOR_HEADERS}
-  ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS}
-)
-set( COOL_NG_WINCP_IMPL_SRCS
-  ${COOL_NG_WINCP_EXECUTOR_SRCS}
-  ${COOL_NG_WINCP_EVENT_SOURCES_SRCS}
-)
+#if ( NOT WINDOWS )
+#  set (COOL_NG_RUN_QUEUE_FILES ${COOL_NG_GCD_RUN_QUEUE_SRCS} ${COOL_NG_GCD_RUN_QUEUE_HEADERS})
+#  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_GCD_EVENT_SOURCES_SRCS} ${COOL_NG_GCD_EVENT_SOURCES_HEADERS})
+#else()
+#  set (COOL_NG_RUN_QUEUE_FILES ${COOL_NG_WINCP_RUN_QUEUE_SRCS} ${COOL_NG_WINCP_RUN_QUEUE_HEADERS})
+#  set (COOL_NG_EVENT_SOURCES_FILES ${COOL_NG_WINCP_EVENT_SOURCES_SRCS} ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS})
+#endif()
+
+#set( COOL_NG_GCD_IMPL_HEADERS
+#  ${COOL_NG_GCD_RUN_QUEUE_HEADERS}
+#  ${COOL_NG_GCD_EVENT_SOURCES_HEADERS}
+#)
+
+#set( COOL_NG_GCD_IMPL_SRCS
+#  ${COOL_NG_GCD_RUN_QUEUE_SRCS}
+#  ${COOL_NG_GCD_EVENT_SOURCES_SRCS}
+#)
+
+#set( COOL_NG_WINCP_IMPL_HEADERS
+#  ${COOL_NG_WINCP_RUN_QUEUE_HEADERS}
+#  ${COOL_NG_WINCP_EVENT_SOURCES_HEADERS}
+#)
+#set( COOL_NG_WINCP_IMPL_SRCS
+#  ${COOL_NG_WINCP_RUN_QUEUE_SRCS}
+#  ${COOL_NG_WINCP_EVENT_SOURCES_SRCS}
+#)
 
 # -- cool library sources
-set( COOL_NG_LIB_FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
-if( WINDOWS )
-  set( COOL_NG_LIB_FILES ${COOL_NG_LIB_FILES} ${COOL_NG_WINCP_IMPL_HEADERS} ${COOL_NG_WINCP_IMPL_SRCS} )
-else()
-  set( COOL_NG_LIB_FILES ${COOL_NG_LIB_FILES} ${COOL_NG_GCD_IMPL_HEADERS} ${COOL_NG_GCD_IMPL_SRCS} )
-endif()
+#set( COOL_NG_LIB_FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
+#if( WINDOWS )
+#  set( COOL_NG_LIB_FILES ${COOL_NG_LIB_FILES} ${COOL_NG_WINCP_IMPL_HEADERS} ${COOL_NG_WINCP_IMPL_SRCS} )
+#else()
+#  set( COOL_NG_LIB_FILES ${COOL_NG_LIB_FILES} ${COOL_NG_GCD_IMPL_HEADERS} ${COOL_NG_GCD_IMPL_SRCS} )
+#endif()
 
 
 
@@ -274,3 +307,43 @@ else()
   target_compile_definitions( cool.ng-dev PUBLIC _SCL_SECURE_NO_WARNINGS WINDOWS_TARGET COOL_ASYNC_PLATFORM_WINCP )
 
 endif()
+
+# ### ##################################################
+# ###
+# ### Source organization for IDEs
+# ###
+# ### ##################################################
+
+source_group( "API Header Files" FILES ${COOL_NG_API_HEADERS} )
+source_group( "Impl Header Files" FILES ${COOL_NG_IMPL_COMMON_HEADERS} )
+source_group( "Header Unit Tests" FILES ${HEADER_ONLY_UNIT_TESTS_SOURCES} )
+source_group( "Library Unit Tests" FILES ${LIBRARY_UNIT_TESTS_SOURCES} )
+source_group( "Library Files" FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
+source_group( "Documentation" FILES ${COOL_NG_HOME}/mainpage.dox )
+
+source_group( "Run_Queue\\Target Queue" FILES ${COOL_NG_GCD_RUN_QUEUE_DIR}/run_queue.h ${COOL_NG_GCD_RUN_QUEUE_DIR}/run_queue.cpp )
+source_group( "Run_Queue\\Deque FIFO" FILES ${COOL_NG_DEQUE_RUN_QUEUE_DIR}/run_queue.h ${COOL_NG_DEQUE_RUN_QUEUE_DIR}/run_queue.cpp )
+source_group( "Run_Queue\\Completion Port" FILES
+  ${COOL_NG_WINCP_RUN_QUEUE_DIR}/run_queue.h
+  ${COOL_NG_WINCP_RUN_QUEUE_DIR}/critical_section.h
+  ${COOL_NG_WINCP_RUN_QUEUE_DIR}/run_queue.cpp
+)
+
+# --- custom target listing all source files (for IDEs only)
+add_custom_target("All-Sources" SOURCES
+  ${COOL_NG_API_HEADERS}
+  ${COOL_NG_IMPL_HEADERS}
+  ${COOL_NG_GCD_IMPL_HEADERS}
+  ${COOL_NG_GCD_IMPL_SRCS}
+  ${COOL_NG_WINCP_IMPL_HEADERS}
+  ${COOL_NG_WINCP_IMPL_SRCS}
+  ${COOL_NG_LIB_HEADERS}
+  ${COOL_NG_LIB_SRCS}
+  ${HEADER_ONLY_UNIT_TESTS_SOURCES}
+  ${LIBRARY_UNIT_TESTS_SOURCES}
+  ${COOL_NG_HOME}/mainpage.dox
+
+  ${COOL_NG_GCD_RUN_QUEUE_DIR}/run_queue.h   ${COOL_NG_GCD_RUN_QUEUE_DIR}/run_queue.cpp
+  ${COOL_NG_DEQUE_RUN_QUEUE_DIR}/run_queue.h ${COOL_NG_DEQUE_RUN_QUEUE_DIR}/run_queue.cpp
+  ${COOL_NG_WINCP_RUN_QUEUE_DIR}/run_queue.h ${COOL_NG_WINCP_RUN_QUEUE_DIR}/critical_section.h ${COOL_NG_WINCP_RUN_QUEUE_DIR}/run_queue.cpp
+)

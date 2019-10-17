@@ -36,21 +36,40 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # ###
 # ### Platform identification and compiler setup
 # ###
+# ### Note:
+# ###  TASK_RUNNER_IMPL identifies the technology used
+# ###  by runner to ensure FIFO behavior:
+# ###    * GCD_TARGET_QUEUE uses GCD task queue with
+# ###      target queue set to dispatch_get_global_queue
+# ###    * GCD_DEQUE uses std::deque guarded by std::mutex
+# ###      which empties into  dispatch_get_global_queue
+# ###    * WIN_COMPLETION_PORT uses Windows Completion
+# ###      Ports associated with the thread pool
+# ###
+# ###  This identifier is passed to the source code as
+# ###  preprocessor macro set to the same value
+# ###
 # ### ##################################################
 
 if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
 
 # --- Apple OS/X
   set( OSX true)
-  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
+  #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC -fbracket-depth=10000" )
+  add_compile_options( -g -std=c++11 -fPIC -fbracket-depth=10000 )
   set( CMAKE_EXE_LINKER_FLAGS "-w" )
+  set( TASK_RUNNER_IMPL GCD_TARGET_QUEUE )
+  set( COOL_PLATFORM_TARGET OSX )
 
 elseif( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
 
 # --- Linux
   set( LINUX true )
-  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC" )
-elseif (MSVC)
+  #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -fPIC" )
+  add_compile_options( -g -std=c++11 -fPIC )
+  set( TASK_RUNNER_IMPL GCD_DEQUE )
+  set( COOL_PLATFORM_TARGET LINUX )
+elseif ( MSVC )
 
 # --- Windows
   set( WINDOWS true )
@@ -65,13 +84,20 @@ elseif (MSVC)
     set( CMAKE_SHARED_LINKER_FLAGS "/machine:X64" )
   endif()
 
-  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 -D_SCL_SECURE_NO_WARNINGS")
+  #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /Zm750 -D_SCL_SECURE_NO_WARNINGS")
+  add_compile_options( /EHsc /bigobj /Zm750 )
+  add_definitions( -D_SCL_SECURE_NO_WARNINGS )
+  set( TASK_RUNNER_IMPL WIN_COMPLETION_PORT )
+  set( COOL_PLATFORM_TARGET WIN64 )
 else()
 
 # --- unknown target
   message( FATAL "unsupported platform" )
 
 endif()
+
+add_definitions( -DPLATFORM_TARGET=${COOL_PLATFORM_TARGET} )
+add_definitions( -DTASK_RUNNER_IMPL=${TASK_RUNNER_IMPL} )
 
 include( Component.cmake )
 
@@ -235,52 +261,24 @@ if( COOL_NG_UNIT_TESTS )
 
   enable_testing()
   # --- unit tests for internal header stuff
-  foreach( ut ${HEADER_ONLY_UNIT_TESTS} )
-    header_unit_test( ${ut} ${${ut}_SRCS} )
-    set( HEADER_ONLY_UNIT_TESTS_SOURCES ${HEADER_ONLY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
-  endforeach()
+#  foreach( ut ${HEADER_ONLY_UNIT_TESTS} )
+#    header_unit_test( ${ut} ${${ut}_SRCS} )
+#    set( HEADER_ONLY_UNIT_TESTS_SOURCES ${HEADER_ONLY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
+#  endforeach()
 
   # --- unit tests for internal stuff using static library
-  foreach( ut ${LIBRARY_UNIT_TESTS} )
-    internal_unit_test( ${ut} ${${ut}_SRCS} )
-    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
-  endforeach()
+#  foreach( ut ${LIBRARY_UNIT_TESTS} )
+#    internal_unit_test( ${ut} ${${ut}_SRCS} )
+#    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
+#  endforeach()
 
   # --- API unit tests using dynamic library
-  foreach( ut ${API_UNIT_TESTS} )
-    api_unit_test( ${ut} ${${ut}_SRCS} )
-    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
-  endforeach()
+# foreach( ut ${API_UNIT_TESTS} )
+#    api_unit_test( ${ut} ${${ut}_SRCS} )
+#    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
+#  endforeach()
 
+internal_unit_test(run_queue  tests/unit/run_queue/run_queue.cpp)
 endif()
 
-# ### ##################################################
-# ###
-# ### Source organization for IDEs
-# ###
-# ### ##################################################
-
-source_group( "API Header Files" FILES ${COOL_NG_API_HEADERS} )
-source_group( "Impl Header Files" FILES ${COOL_NG_IMPL_HEADERS} )
-source_group( "Header Unit Tests" FILES ${HEADER_ONLY_UNIT_TESTS_SOURCES} )
-source_group( "Library Unit Tests" FILES ${LIBRARY_UNIT_TESTS_SOURCES} )
-source_group( "GCD Specific Files" FILES ${COOL_NG_GCD_IMPL_HEADERS} ${COOL_NG_GCD_IMPL_SRCS} )
-source_group( "Windows Specific Files" FILES ${COOL_NG_WINCP_IMPL_HEADERS} ${COOL_NG_WINCP_IMPL_SRCS} )
-source_group( "Library Files" FILES ${COOL_NG_LIB_HEADERS} ${COOL_NG_LIB_SRCS} )
-source_group( "Documentation" FILES ${COOL_NG_HOME}/mainpage.dox )
-
-# --- custom target listing all source files (for IDEs only)
-add_custom_target("All-Sources" SOURCES
-  ${COOL_NG_API_HEADERS}
-  ${COOL_NG_IMPL_HEADERS}
-  ${COOL_NG_GCD_IMPL_HEADERS}
-  ${COOL_NG_GCD_IMPL_SRCS}
-  ${COOL_NG_WINCP_IMPL_HEADERS}
-  ${COOL_NG_WINCP_IMPL_SRCS}
-  ${COOL_NG_LIB_HEADERS}
-  ${COOL_NG_LIB_SRCS}
-  ${HEADER_ONLY_UNIT_TESTS_SOURCES}
-  ${LIBRARY_UNIT_TESTS_SOURCES}
-  ${COOL_NG_HOME}/mainpage.dox
-)
 
