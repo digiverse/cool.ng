@@ -33,7 +33,7 @@
 #include <condition_variable>
 
 #define BOOST_TEST_MODULE RunQueue
-#include <boost/test/unit_test.hpp>
+#include <unit_test_common.h>
 
 #include "run_queue.h"
 
@@ -54,13 +54,14 @@ bool spin_wait(unsigned int msec, const std::function<bool()>& lambda)
 
 void void_to_function_exec(void* data)
 {
-  (**static_cast<void (**)()>(data))();
+  (*static_cast<void (**)()>(data))();
 }
 
 BOOST_AUTO_TEST_SUITE(run_queue_basics)
 
 
-BOOST_AUTO_TEST_CASE(basic_run)
+COOL_AUTO_TEST_CASE(T001,
+    *utf::description("Basic run of two tasks"))
 {
   static std::atomic_int aux;
   aux = 0;
@@ -75,7 +76,8 @@ BOOST_AUTO_TEST_CASE(basic_run)
   run_queue::release(rq);
 }
 
-BOOST_AUTO_TEST_CASE(start_stop)
+COOL_AUTO_TEST_CASE(T002,
+    *utf::description("Check that task are not run after stop and run again after start"))
 {
   static std::atomic_int aux;
   aux = 0;
@@ -96,7 +98,8 @@ BOOST_AUTO_TEST_CASE(start_stop)
   run_queue::release(rq);
 }
 
-BOOST_AUTO_TEST_CASE(exec_on_delete)
+COOL_AUTO_TEST_CASE(T003,
+    *utf::description("check that all tasks are run before run_queue disappears"))
 {
   static std::atomic_int aux;
   std::weak_ptr<run_queue> test_gone;
@@ -127,7 +130,9 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(advanced)
 
-BOOST_AUTO_TEST_CASE(multi_thread_queue_feed)
+COOL_AUTO_TEST_CASE(T010,
+    *utf::description("test feeding a single run queue from multiple threads")
+    *utf::disabled())
 {
   const int NUM_TASKS = 100000;
   const int NUM_THREADS = 10;
@@ -177,7 +182,7 @@ BOOST_AUTO_TEST_CASE(multi_thread_queue_feed)
 
 #if 0
 #if TEST2==1
-BOOST_AUTO_TEST_CASE(deep_stack)
+COOL_AUTO_TEST_CASE(deep_stack)
 {
 #if defined(WINDOWS_TARGET)
   const int NUM_TASKS = 100000;
@@ -214,7 +219,7 @@ BOOST_AUTO_TEST_CASE(deep_stack)
 #endif
 
 #if TEST3==1
-BOOST_AUTO_TEST_CASE(many_stacks)
+COOL_AUTO_TEST_CASE(many_stacks)
 {
 #if defined(WINDOWS_TARGET)
   const int NUM_TASKS = 100000;
@@ -244,7 +249,7 @@ BOOST_AUTO_TEST_CASE(many_stacks)
 #endif
 
 #if TEST4==1
-BOOST_AUTO_TEST_CASE(multi_thread_run_feed)
+COOL_AUTO_TEST_CASE(multi_thread_run_feed)
 {
   const int NUM_TASKS = 100000;
   const int NUM_THREADS = 10;

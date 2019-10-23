@@ -175,7 +175,7 @@ set( COOL_NG_LIB_COMMON_SRCS
   ${COOL_NG_HOME}/lib/src/exception.cpp
   ${COOL_NG_HOME}/lib/src/error.cpp
   ${COOL_NG_HOME}/lib/src/ip_address.cpp
-#  ${COOL_NG_HOME}/lib/src/async/runner.cpp
+  ${COOL_NG_HOME}/lib/src/async/runner.cpp
 #  ${COOL_NG_HOME}/lib/src/async/event_sources.cpp
 )
 

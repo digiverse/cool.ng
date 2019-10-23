@@ -257,6 +257,7 @@ endif()
 if( COOL_NG_UNIT_TESTS )
 
   include_directories( SYSTEM ${Boost_INCLUDE_DIR} )
+  include_directories( ${COOL_NG_HOME}/tests/unit )
   link_directories( ${Boost_LIBRARY_DIRS} )
 
   enable_testing()
@@ -279,6 +280,8 @@ if( COOL_NG_UNIT_TESTS )
 #  endforeach()
 
 internal_unit_test(run_queue  tests/unit/run_queue/run_queue.cpp)
+api_unit_test(task ${task_SRCS} )
+
 endif()
 
 

@@ -29,29 +29,49 @@
 #include "cool/ng/exception.h"
 #include "cool/ng/impl/async/context.h"
 #include "cool/ng/impl/async/task.h"
-#include "lib/async/executor.h"
+#include "run_queue.h"
 
 namespace cool { namespace ng { namespace async {
 
-runner::runner(RunPolicy policy_)
+runner::runner()
 {
-  m_impl = std::make_shared<impl::executor>(policy_);
+  m_impl = impl::run_queue::create();
 }
 
 runner::~runner()
-{ /* noop */ }
+{
+  impl::run_queue::release(m_impl);
+}
 
 const std::string& runner::name() const
 {
   return m_impl->name();
 }
 
-const std::shared_ptr<impl::executor>& runner::impl() const
+const std::shared_ptr<impl::run_queue>& runner::impl() const
 {
   return m_impl;
 }
 
 namespace detail {
+
+// executor for task::run()
+void task_executor(void* arg_)
+{
+  auto ctx = static_cast<detail::context_stack*>(arg_);
+
+  auto r = ctx->top()->get_runner().lock();
+  if (r)
+  {
+    ctx->top()->entry_point(r, ctx->top());
+    if (ctx->empty())
+      delete ctx;
+    else
+      r->impl()->enqueue(task_executor, nullptr, ctx);
+  }
+  else
+    delete ctx;
+}
 
 void kickstart(context_stack* ctx_)
 {
@@ -64,7 +84,7 @@ void kickstart(context_stack* ctx_)
     delete ctx_;
     throw exception::runner_not_available();
   }
-  aux->impl()->run(ctx_);
+  aux->impl()->enqueue(task_executor, nullptr, ctx_);
 }
 
 }

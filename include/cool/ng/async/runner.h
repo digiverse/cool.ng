@@ -32,36 +32,7 @@
 
 namespace cool { namespace ng { namespace async {
 
-namespace impl { class executor; }
-
-/**
- * Task scheduling policies for @ref cool::ng::async::runner "runner".
- *
- * A @ref runner can use either sequential or cuncurrent task scheduling policy.
- * The sequential policy instructs the runner to schedule the @ref task "tasks"
- * from its task queue one after another, only scheduling the next task after
- * the executuon of the previous task has completed. The concurrent policy
- * instructs the runner to schedule the execution of the next task as soon as 
- * an idle thread is available in the thread pool, regardless of whether the 
- * execution of the previous task has completed or not.
- *
- * The scheduling policy is only indicative. In particular, there is no guarantee
- * that the platform supports the cuncurrent scheduling, and even if it does, 
- * there is no guarantee that there will be an idle thread available in the 
- * worker thread pool. The only guarantee offered by the RunPolicy is that 
- * the runner using sequential policy <em>will not</em> execute the tasks 
- * from its task queue concurrently.
- */
-enum class RunPolicy {
-  /**
-   * Sequantial scheduling policy where runner executes the tasks one after another.
-   */
-  SEQUENTIAL,
-  /**
-   * Concurrent scheduling policy where runner may execute several tasks in parallel.
-   */
-  CONCURRENT
-};
+namespace impl { class run_queue; }
 
 /**
  * A representation of the queue of asynchronously executing tasks.
@@ -101,7 +72,7 @@ class runner
    *
    * Constructs a new runner object, optionally with the desired task 
    * scheduling policy.
-   *
+   run_queue
    * @param policy_ optional parameter, set to RunPolicy::SEQUENTIAL by default.
    *
    * @exception cool::exception::create_failure thrown if a new instance cannot
@@ -110,7 +81,7 @@ class runner
    * @note The runner object is created in started state and is immediately
    *   capable of executing tasks.
    */
-  dlldecl runner(RunPolicy policy_ = RunPolicy::SEQUENTIAL);
+  dlldecl runner();
 
   /**
    * Copy constructor.
@@ -155,10 +126,10 @@ class runner
    * Returns a reference to the internal task queue implementation. Portable
    * applications should avoid using the internal implementation directly.
    */
-  const std::shared_ptr<impl::executor>& impl() const;
+  const std::shared_ptr<impl::run_queue>& impl() const;
 
  private:
-  std::shared_ptr<impl::executor> m_impl;
+  std::shared_ptr<impl::run_queue> m_impl;
 };
 
 
