@@ -109,28 +109,28 @@ include( Component.cmake )
 # ### ##################################################
 
 
-if (COOL_NG_BUILD_DOC)
+#if (COOL_NG_BUILD_DOC)
 
-  find_package(Doxygen)
-  if (NOT Doxygen_FOUND)
-    message(WARNING "Doxygen package not found, will not generate documentation")
-  else ()
-    make_directory (${COOL_NG_DOC_DIR})
-    configure_file(
-      ${COOL_NG_HOME}/cool.ng.dox.in
-      ${COOL_NG_DOC_DIR}/cool.ng.dox
-      @ONLY
-    )
-    add_custom_command(
-      OUTPUT ${COOL_NG_DOC_DIR}/doc/html/index.html
-      COMMAND ${DOXYGEN_EXECUTABLE} ${COOL_NG_DOC_DIR}/cool.ng.dox
-      DEPENDS ${COOL_NG_API_HEADERS} ${COOL_NG_HOME}/mainpage.dox
-      WORKING_DIRECTORY ${COOL_NG_DOC_DIR}
-    )
-    add_custom_target(doc ALL DEPENDS ${COOL_NG_DOC_DIR}/doc/html/index.html)
-  endif()
+#  find_package(Doxygen)
+#  if (NOT Doxygen_FOUND)
+#    message(WARNING "Doxygen package not found, will not generate documentation")
+#  else ()
+#    make_directory (${COOL_NG_DOC_DIR})
+#    configure_file(
+#      ${COOL_NG_HOME}/cool.ng.dox.in
+#      ${COOL_NG_DOC_DIR}/cool.ng.dox
+#      @ONLY
+#    )
+#    add_custom_command(
+#      OUTPUT ${COOL_NG_DOC_DIR}/doc/html/index.html
+#      COMMAND ${DOXYGEN_EXECUTABLE} ${COOL_NG_DOC_DIR}/cool.ng.dox
+#      DEPENDS ${COOL_NG_API_HEADERS} ${COOL_NG_HOME}/mainpage.dox
+#      WORKING_DIRECTORY ${COOL_NG_DOC_DIR}
+#    )
+#    add_custom_target(doc ALL DEPENDS ${COOL_NG_DOC_DIR}/doc/html/index.html)
+#  endif()
 
-endif()
+#endif()
 
 # ### ##################################################
 # ###
@@ -279,8 +279,9 @@ if( COOL_NG_UNIT_TESTS )
 #    set( LIBRARY_UNIT_TESTS_SOURCES ${LIBRARY_UNIT_TESTS_SOURCES} ${${ut}_SRCS} )
 #  endforeach()
 
-internal_unit_test(run_queue  tests/unit/run_queue/run_queue.cpp)
-api_unit_test(task ${task_SRCS} )
+internal_unit_test( run_queue  tests/unit/run_queue/run_queue.cpp )
+api_unit_test( ip_address ${ip_address_SRCS} )
+#api_unit_test( task ${task_SRCS} )
 
 endif()
 

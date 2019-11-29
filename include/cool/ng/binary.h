@@ -97,7 +97,7 @@ template <std::size_t Size> class binary
     }
     else
     {
-      ::memset(m_data, 0, size);
+      ::memset(m_data, 0, Size);
       ::memcpy(m_data, other.m_data, OtherSize);
     }
     return *this;

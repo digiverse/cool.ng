@@ -103,19 +103,29 @@ endif()
 
 
 # --- library API header files
+set( COO_NG_DOCUMENTED_API_HEADERS
+  include/cool/ng/async.h
+  include/cool/ng/exception.h
+  include/cool/ng/bases.h
+  include/cool/ng/ip_address.h
+  include/cool/ng/binary.h
+  include/cool/ng/async/task.h
+  include/cool/ng/async/runner.h
+  include/cool/ng/async/event_sources.h
+  include/cool/ng/async/net/server.h
+  include/cool/ng/async/net/stream.h
+)
+
+set( COOL_NG_API_DOCUMENTATION_FILES
+  doc/api/mainpage.dox
+  doc/api/module-async.dox
+  doc/api/module-ip.dox
+)
+
 set( COOL_NG_API_HEADERS
-    include/cool/ng/async.h
-    include/cool/ng/error.h
-    include/cool/ng/exception.h
-    include/cool/ng/traits.h
-    include/cool/ng/bases.h
-    include/cool/ng/ip_address.h
-    include/cool/ng/binary.h
-    include/cool/ng/async/task.h
-    include/cool/ng/async/runner.h
-    include/cool/ng/async/event_sources.h
-    include/cool/ng/async/net/server.h
-    include/cool/ng/async/net/stream.h
+  ${COO_NG_DOCUMENTED_API_HEADERS}
+  include/cool/ng/error.h
+  include/cool/ng/traits.h
 )
 
 # ### ##################################################
@@ -341,9 +351,22 @@ add_custom_target("All-Sources" SOURCES
   ${COOL_NG_LIB_SRCS}
   ${HEADER_ONLY_UNIT_TESTS_SOURCES}
   ${LIBRARY_UNIT_TESTS_SOURCES}
-  ${COOL_NG_HOME}/mainpage.dox
+  ${COOL_NG_API_DOCUMENTATION_FILES}
 
   ${COOL_NG_GCD_RUN_QUEUE_DIR}/run_queue.h   ${COOL_NG_GCD_RUN_QUEUE_DIR}/run_queue.cpp
   ${COOL_NG_DEQUE_RUN_QUEUE_DIR}/run_queue.h ${COOL_NG_DEQUE_RUN_QUEUE_DIR}/run_queue.cpp
   ${COOL_NG_WINCP_RUN_QUEUE_DIR}/run_queue.h ${COOL_NG_WINCP_RUN_QUEUE_DIR}/critical_section.h ${COOL_NG_WINCP_RUN_QUEUE_DIR}/run_queue.cpp
 )
+
+# ### ##################################################
+# ###
+# ### Doxygen documentation
+# ###
+# ### ##################################################
+
+if( COOL_NG_BUILD_DOC )
+
+  include( cmake/documentation.cmake )
+  cool_ng_api_doc( ${COOL_NG_HOME}/doc doc doc ${COOL_NG_API_DOCUMENTATION_FILES} ${COO_NG_DOCUMENTED_API_HEADERS} )
+  
+endif()

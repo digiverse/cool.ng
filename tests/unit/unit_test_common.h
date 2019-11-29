@@ -1,11 +1,10 @@
-#if !defined(cool_ng_abcdefb0_dba1_4ce1_b25a_913f5951523a)
-#define      cool_ng_abcdefb0_dba1_4ce1_b25a_913f5951523a
+#if !defined(cool_ng_efcdefb0_dba1_4ce1_b25a_913f5951523a)
+#define      cool_ng_efcdefb0_dba1_4ce1_b25a_913f5951523a
 
 #include <functional>
 #include <chrono>
 #include <thread>
 #include <vector>
-#include "cool/ng/async.h"
 
 #include <boost/test/unit_test.hpp>
 

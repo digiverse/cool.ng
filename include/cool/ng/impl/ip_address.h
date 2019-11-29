@@ -28,13 +28,24 @@
 #include "cool/ng/exception.h"
 #include "cool/ng/binary.h"
 #include <cstring>
+#include <iostream>
+#include <memory>
 
-namespace cool { namespace ng { namespace net {
+namespace cool { namespace ng { namespace ip {
 
 enum class style;
+class address;
+namespace ipv4 { class host; class network; }
+namespace ipv6 { class host; class network; }
 
 namespace detail {
 
+dlldecl std::istream& sin(std::istream& is, address& val);
+dlldecl ip::ipv4::host literal_ipv4(const char* lit_);
+dlldecl ip::ipv6::host literal_ipv6(const char* lit_);
+dlldecl ip::ipv4::network literal_ipv4_net(const char* lit_);
+dlldecl ip::ipv6::network literal_ipv6_net(const char* lit_);
+dlldecl std::shared_ptr<ip::address> literal_ip(const char* lit_);
 
 template <std::size_t Size>
 cool::ng::util::binary<Size> calculate_mask(std::size_t length)

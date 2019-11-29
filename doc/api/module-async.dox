@@ -1,7 +1,8 @@
-/**
-@mainpage
 
-@section async Asynchronous Module
+/**
+@defgroup async Asynchronous Module
+
+The support for structured approach to the asynchronous programming.
 
 The asynchronous module contains abstractions that support a structured approach
 to the asynchronous programming model. In essence, these abstractions rely on
@@ -141,4 +142,12 @@ into asynchronous code:
   @ref cool::ng::async::GetterTask "GetterTask" and @ref cool::ng::async::MutatorTask 
   "MutatorTask" type aliases to declare return types of @c get_some_data() and
   @c set_some_data() methods, respectively.
+*/
+
+/**
+@namespace cool::ng::async
+@ingroup async
+
+This namespace contains class templates and classes that support structured approach to
+the asynchronous programming. See the description of @ref async for more details.
 */

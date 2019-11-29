@@ -30,6 +30,9 @@
 
 namespace cool { namespace ng { namespace error {
 
+/**
+ * Error codes enumeration.
+ */
 enum class errc
 {
   not_an_error = 0,
@@ -69,6 +72,9 @@ dlldecl std::error_code no_error();
 
 namespace std {
 
+/**
+ * Standard template specialization for @ref cool::ng::error::errc "errc" enumeration.
+ */
 template <>
 struct is_error_code_enum<cool::ng::error::errc>  : true_type { };
 

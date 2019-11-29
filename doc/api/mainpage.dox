@@ -1,0 +1,11 @@
+/**
+@mainpage
+
+Cool.NG library contains a set of reusable classes and class templates.
+
+It consists of the following modules:
+
+  - @ref async, which offers abstractions for structed approach to asynchronous programming
+  - @ref ip, which offer abstractions to simplify the work with IPv4 and IPv6 addresses
+ 
+*/

@@ -1,0 +1,22 @@
+
+/**
+@defgroup ip IP Addresses Module
+
+The support for IPv4 and IPv6 address manipulation.
+
+The IP Addresses module contains abstractions that simplyfy work with the
+IP addresses of both IPv4 and IPv6 generations. The abstractions provide a
+common containers, support transformations from one generation in another,
+where permitted, and ease the address input and output by offering conversion
+functions to and from textual forms. In addition, the conversion functions to
+work with the C-like system calls (connect(2), accept(2), ...) are also
+provided.
+*/
+
+/**
+@namespace cool::ng::ip
+@ingroup ip
+
+This namespace contains class templates and classes that simplify the work with
+IPv4 and IPv6 addresses.
+*/

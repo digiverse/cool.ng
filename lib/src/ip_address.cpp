@@ -29,88 +29,49 @@
 # pragma comment(lib, "Ws2_32.lib")
 #endif
 
-namespace cool { namespace ng { namespace net {
+namespace cool { namespace ng {
 
 namespace ip {
 
-std::istream& operator >>(std::istream& is, cool::ng::net::ip::address& val)
+host_container::~host_container()
 {
-  switch (val.version())
-  {
-    case version::ipv4:
-      cool::ng::net::detail::ipv4::parse(is, val);
-      break;
-
-    case version::ipv6:
-      cool::ng::net::detail::ipv6::parse(is, val);
-      break;
-  }
-  return is;
+  release();
 }
 
-host_container::host_container() : m_value(&ipv6::unspecified)
-{ /* noop */ }
-
-host_container::host_container(const host_container& addr_)
-  : host_container(*static_cast<const address*>(addr_))
-{ /* noop */ }
-
-host_container::host_container(const address& addr_)
-{
-  *this = addr_;
-}
-
-host_container::host_container(const in_addr& addr_)
-{
-  *this = addr_;
-}
-
-host_container::host_container(const in6_addr& addr_)
-{
-  *this = addr_;
-}
-
-host_container::host_container(const sockaddr_storage& addr_)
-{
-  *this = addr_;
-}
-
-const host_container& host_container::operator =(const address& addr_)
+host_container& host_container::operator =(const address& addr_)
 {
   switch (addr_.version())
   {
     case version::ipv4:
-      m_v4 = addr_;
-      m_value = &m_v4;
+      assign(ipv4::host(addr_));
       break;
 
     case version::ipv6:
-      m_v6 = addr_;
-      m_value = &m_v6;
+      assign(ipv6::host(addr_));
       break;
   }
   return *this;
 }
 
-const host_container& host_container::operator =(const host_container& addr_)
+host_container& host_container::operator =(const host_container& addr_)
 {
   *this = *static_cast<const address*>(addr_);
   return *this;
 }
 
-const host_container& host_container::operator =(const in_addr& addr_)
+host_container& host_container::operator =(const in_addr& addr_)
 {
-  *this = ipv4::host(addr_);
+  assign(ipv4::host(addr_));
   return *this;
 }
 
-const host_container& host_container::operator =(const in6_addr& addr_)
+host_container& host_container::operator =(const in6_addr& addr_)
 {
   *this = ipv6::host(addr_);
   return *this;
 }
 
-const host_container& host_container::operator =(const sockaddr_storage& addr_)
+host_container& host_container::operator =(const sockaddr_storage& addr_)
 {
   switch (addr_.ss_family)
   {
@@ -121,14 +82,116 @@ const host_container& host_container::operator =(const sockaddr_storage& addr_)
     case AF_INET6:
       *this = reinterpret_cast<const sockaddr_in6*>(&addr_)->sin6_addr;
       break;
+
+    default:
+      throw cool::ng::exception::bad_conversion();
   }
   return *this;
 }
 
+host_container::operator sockaddr_storage() const
+{
+  auto self = static_cast<const address*>(*this);
 
-} // namespace ip
+  sockaddr_storage res;
+  switch (self->version())
+  {
+    case version::ipv4:
+      res.ss_family =  AF_INET;
+      reinterpret_cast<sockaddr_in*>(&res)->sin_addr = static_cast<in_addr>(*self);
+      break;
+
+    case version::ipv6:
+      res.ss_family =  AF_INET6;
+      reinterpret_cast<sockaddr_in6*>(&res)->sin6_addr = static_cast<in6_addr>(*self);
+      break;
+  }
+  return res;
+}
+
+void host_container::release()
+{
+  static_cast<address*>(static_cast<void*>(&this->m_v4))->~address();
+}
+
+void host_container::assign(const ipv4::host& addr_)
+{
+  release();
+  new (&m_v4) ipv4::host(addr_);
+}
+
+void host_container::assign(const ipv6::host& addr_)
+{
+  release();
+  new (&m_v6) ipv6::host(addr_);
+}
 
 namespace detail {
+
+ip::ipv4::host literal_ipv4(const char* lit_)
+{
+  return ip::ipv4::host(lit_);
+}
+ip::ipv6::host literal_ipv6(const char* lit_)
+{
+  return ip::ipv6::host(lit_);
+}
+ip::ipv4::network literal_ipv4_net(const char* lit_)
+{
+  return ip::ipv4::network(lit_);
+}
+ip::ipv6::network literal_ipv6_net(const char* lit_)
+{
+  return ip::ipv6::network(lit_);
+}
+std::shared_ptr<ip::address> literal_ip(const char* lit_)
+{
+  return std::make_shared<ip::ipv4::host>(); // TODO:
+}
+
+// ==========================================================================
+// =======
+// ======= Parsing helpers
+// =======
+// ==========================================================================
+namespace {
+
+// Parses sequence of digits in input stream as decimal integer number.
+// Returns the character terminating the sequence.
+char parse_num(std::istream& is, int& res)
+{
+  char c;
+
+  c = is.get();
+  if (!is.eof() && c >= '0' && c <= '9')
+  {
+    res = (c - '0');
+  }
+
+  for (c = is.get(); !is.eof() && (c >= '0' && c <= '9'); c = is.get())
+  {
+    res = 10 * res + (c - '0');
+  }
+  return c;
+}
+
+int parse_hexval(char c)
+{
+  if (c >= '0' && c <='9')
+    return c - '0';
+
+  int res = 10;
+  if (c >= 'a' && c <= 'f')
+    res += (c - 'a');
+  else if (c >= 'A' && c <= 'F')
+    res += c - 'A';
+  else
+    throw exception::parsing_error();
+
+  return res;
+}
+
+} // anonymous namespace
 
 template <typename T> class refwrap
 {
@@ -147,25 +210,25 @@ typedef refwrap<ip::address> list_t;
 namespace ipv4 {
 
   const list_t assigned_list[] = {
-    cool::ng::net::ipv4::loopback,
-    cool::ng::net::ipv4::any,
-    cool::ng::net::ipv4::broadcast,
-    cool::ng::net::ipv4::rfc_broadcast,
-    cool::ng::net::ipv4::rfc_private_24,
-    cool::ng::net::ipv4::rfc_private_20,
-    cool::ng::net::ipv4::rfc_private_16,
-    cool::ng::net::ipv4::rfc_carrier_nat,
-    cool::ng::net::ipv4::rfc_loopback,
-    cool::ng::net::ipv4::rfc_unset,
-    cool::ng::net::ipv4::rfc_iana_private,
-    cool::ng::net::ipv4::rfc_test,
-    cool::ng::net::ipv4::rfc_test_2,
-    cool::ng::net::ipv4::rfc_test_3,
-    cool::ng::net::ipv4::rfc_6to4_anycast,
-    cool::ng::net::ipv4::rfc_test_comm,
-    cool::ng::net::ipv4::rfc_mcast,
-    cool::ng::net::ipv4::rfc_test_mcast,
-    cool::ng::net::ipv4::rfc_future
+    cool::ng::ip::ipv4::loopback,
+    cool::ng::ip::ipv4::any,
+    cool::ng::ip::ipv4::broadcast,
+    cool::ng::ip::ipv4::rfc_broadcast,
+    cool::ng::ip::ipv4::rfc_private_24,
+    cool::ng::ip::ipv4::rfc_private_20,
+    cool::ng::ip::ipv4::rfc_private_16,
+    cool::ng::ip::ipv4::rfc_carrier_nat,
+    cool::ng::ip::ipv4::rfc_loopback,
+    cool::ng::ip::ipv4::rfc_unset,
+    cool::ng::ip::ipv4::rfc_iana_private,
+    cool::ng::ip::ipv4::rfc_test,
+    cool::ng::ip::ipv4::rfc_test_2,
+    cool::ng::ip::ipv4::rfc_test_3,
+    cool::ng::ip::ipv4::rfc_6to4_anycast,
+    cool::ng::ip::ipv4::rfc_test_comm,
+    cool::ng::ip::ipv4::rfc_mcast,
+    cool::ng::ip::ipv4::rfc_test_mcast,
+    cool::ng::ip::ipv4::rfc_future
   };
 
     const std::size_t assigned_list_size = sizeof(assigned_list)/sizeof(refwrap<ip::address>);
@@ -174,16 +237,16 @@ namespace ipv4 {
 
 namespace ipv6 {
   const list_t assigned_list[] = {
-    cool::ng::net::ipv6::loopback,
-    cool::ng::net::ipv6::unspecified,
-    cool::ng::net::ipv6::rfc_ipv4map,
-    cool::ng::net::ipv6::rfc_teredo,
-    cool::ng::net::ipv6::rfc_ipv4translate,
-    cool::ng::net::ipv6::rfc_discard,
-    cool::ng::net::ipv6::rfc_doc,
-    cool::ng::net::ipv6::rfc_local,
-    cool::ng::net::ipv6::rfc_link,
-    cool::ng::net::ipv6::rfc_mcast
+    cool::ng::ip::ipv6::loopback,
+    cool::ng::ip::ipv6::unspecified,
+    cool::ng::ip::ipv6::rfc_ipv4map,
+    cool::ng::ip::ipv6::rfc_teredo,
+    cool::ng::ip::ipv6::rfc_ipv4translate,
+    cool::ng::ip::ipv6::rfc_discard,
+    cool::ng::ip::ipv6::rfc_doc,
+    cool::ng::ip::ipv6::rfc_local,
+    cool::ng::ip::ipv6::rfc_link,
+    cool::ng::ip::ipv6::rfc_mcast
   };
 
   const std::size_t assigned_list_size = sizeof(assigned_list)/sizeof(refwrap<ip::address>);
@@ -210,8 +273,6 @@ bool is_assigned(list_t const list[], std::size_t size, const ip::address& addr)
   return false;
 }
 
-const char* hex_digits = "0123456789abcdef";
-
 // ===========================================================================
 // ======
 // ======
@@ -222,93 +283,154 @@ const char* hex_digits = "0123456789abcdef";
 
 namespace ipv4 {
 
-using cool::ng::net::ipv4::binary_t;
+using cool::ng::ip::ipv4::binary_t;
 
-// Parses sequence of digits in input stream as decimal integer number.
-// Returns the character terminating the sequence.
-char parse_num(std::istream& is, unsigned int& res)
+bool is_valid(char c, const std::string& whitelist)
 {
-  char c;
-  res = 0;
-
-  for (c = is.get(); !is.eof() && (c >= '0' && c <= '9'); c = is.get())
-  {
-    res = 10 * res + (c - '0');
-  }
-  return c;
+  return whitelist.find_first_of(c) != whitelist.npos;
 }
+
+// ====== Parser for dot-decimal IPv4 addresses
+
+class parser
+{
+ public:
+  inline parser(std::istream& is_)
+    : m_stream(is_)
+  { /* noop */ }
+  explicit operator const uint8_t*();
+
+ private:
+  void parse();
+
+ private:
+  std::istream& m_stream;
+  binary_t      m_address;
+};
+
+class visualizer
+{
+ public:
+  visualizer(std::ostream& os_, const binary_t& b_, ip::style s_);
+  std::ostream& operator()();
+
+ private:
+  std::ostream&   m_stream;
+  const binary_t& m_buffer;
+};
 
 // Parses IPv4 IP address in dotted format.
-cool::ng::net::ipv4::binary_t _parse(std::istream& is)
+void parser::parse()
 {
-  binary_t result;
   int count;
+  char c;
 
-  for (count = 0; count < 4; ++count)
+  try
   {
-    unsigned int aux;
-    char c = parse_num(is, aux);
-    if (aux > 255)
-      throw exception::parsing_error();
-    result[count] = aux;
+    for (count = 0; count < 4; ++count)
+    {
+      int aux = -1;
+      c = parse_num(m_stream, aux);
+      if (aux < 0 || aux > 255)  // number required but not found or number too large
+        throw exception::parsing_error();
 
-    if (c != '.' && count < 3)
+      m_address[count] = static_cast<uint8_t>(aux);
+
+      if (c != '.' && count < 3)
+        throw exception::parsing_error();
+    }
+
+    if (count < 4)
       throw exception::parsing_error();
+
+    if (!m_stream.eof())   // push back the last character if not EOF
+      m_stream.unget();
   }
-
-  if (count < 4)
-    throw exception::parsing_error();
-
-  if (!is.eof())   // push back the last character if not EOF
-    is.unget();
-
-  return result;
-}
-
-void parse(std::istream& is, cool::ng::net::ipv4::host& val)
-{
-  val = static_cast<uint8_t*>(_parse(is));
-}
-
-void parse(std::istream& is, cool::ng::net::ipv4::network& val)
-{
-  unsigned int mask = 0;
-  auto addr = _parse(is);
-  char c = is.get();
-  if (c == '/')   // network mask width is supposed to follow
+  catch (const cool::ng::exception::parsing_error&)
   {
-    ipv4::parse_num(is, mask);
-    if (!is.eof())
-      is.unget();
-    if (mask > 32)
-      throw exception::parsing_error();
+    if (!m_stream.eof())   // push back the last character if not EOF
+      m_stream.unget();
+    throw;
   }
-  else
+}
+
+parser::operator const uint8_t*()
+{
+  parse();
+  return static_cast<uint8_t*>(m_address);
+}
+
+void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mask)
+{
+  try
   {
-    mask = static_cast<int>(val.mask());
-    if (!is.eof())
-      is.unget();
+    binary_t aux_addr = static_cast<const uint8_t*>(parser(is));
+
+    if (require_mask)
+    {
+      int aux = -1;
+      char c;
+
+      is >> c;
+
+      if (is.eof() || c != '/')
+      {
+        if (!is.eof())
+          is.unget();
+
+        throw cool::ng::exception::bad_conversion();
+      }
+      else
+      {
+        c = parse_num(is, aux);
+        if (!is.eof())
+          is.unget();
+        if (aux < 0)
+          throw cool::ng::exception::bad_conversion();
+      }
+
+      if (aux > 32)
+        throw exception::out_of_range();
+      mask = aux;
+    }
+
+    addr = aux_addr;
   }
-  val = cool::ng::net::ipv4::network(mask, addr);
+  catch (const cool::ng::exception::parsing_error&)
+  {
+    throw cool::ng::exception::bad_conversion();
+  }
 }
 
-void parse(std::istream& is, ip::address& val)
+visualizer::visualizer(std::ostream& os_, const binary_t& b_, ip::style s_)
+  : m_stream(os_), m_buffer(b_)
 {
-  if (val.kind() == ip::kind::host)
-    parse(is, dynamic_cast<cool::ng::net::ipv4::host&>(val));
-  else
-    parse(is, dynamic_cast<cool::ng::net::ipv4::network&>(val));
+  switch (s_)
+  {
+    case style::customary:
+    case style::dot_decimal:
+      break;
+
+    default:
+      throw cool::ng::exception::bad_conversion();
+  }
 }
 
-void str(uint8_t const val[], std::ostream& os)
+std::ostream& visualizer::operator ()()
 {
-  os << static_cast<int>(val[0]) << "."
-     << static_cast<int>(val[1]) << "."
-     << static_cast<int>(val[2]) << "."
-     << static_cast<int>(val[3]);
+  std::stringstream ss;
+  for (int i = 0; i < 4; ++i)
+  {
+    if (i > 0)
+      m_stream << '.';
+    m_stream << static_cast<int>(m_buffer[i]);
+  }
+  return m_stream;
 }
 
-} // namespace
+
+
+} // namespace ipv4
 
 // ===========================================================================
 // ======
@@ -320,6 +442,292 @@ void str(uint8_t const val[], std::ostream& os)
 namespace ipv6
 {
 
+using cool::ng::ip::ipv6::binary_t;
+
+// IPv6 address quad (two bytes) as used by IPv6 address parser
+class quad
+{
+ public:
+  quad& operator =(const std::string&);
+  explicit operator uint16_t() const;
+
+ private:
+  quad& append_(char c_);
+
+ private:
+  std::string m_str;
+};
+
+quad::operator uint16_t() const
+{
+  int res = 0;
+
+  for (auto it = m_str.cbegin(); it != m_str.cend(); ++it)
+  {
+    res <<= 4;
+    res |= parse_hexval(*it);
+  }
+  return res;
+}
+
+quad& quad::operator =(const std::string& str_)
+{
+  if (str_.length() > 4)
+    throw cool::ng::exception::parsing_error();
+  m_str = str_;
+  return *this;
+}
+
+// IPv6 address delimiter as used by IPv6 address parser. It will throw if
+// delimiter is changed mid-address; the only permitted chagne is that of
+// ':' into '.' for dotted-decimal presentation
+
+const char delim_ms  = '-';
+const char delim_rfc = ':';
+const char delim_dot = '.';
+
+class delimiter
+{
+ public:
+  inline delimiter() : m_char('\0')       { }
+  explicit inline operator bool() const   { return !(m_char == '\0'); }
+  explicit inline operator char() const   { return m_char; }
+  inline bool is_rfc() const              { return m_char == delim_rfc; }
+  inline bool is_ms() const               { return m_char == delim_ms; }
+  inline bool is_dot() const              { return m_char == delim_dot; }
+
+  char operator =(char c_);
+  static inline bool is(const char c_) { return c_ == delim_rfc || c_ == delim_ms || c_ == delim_dot; }
+
+ private:
+  char set_(char c_)             { return m_char = c_; }
+  char m_char;
+};
+
+char delimiter::operator =(char c_)
+{
+  if (!*this)
+  {
+    if (c_ == delim_rfc || c_ == delim_ms)
+      return set_(c_);
+    throw cool::ng::exception::parsing_error();
+  }
+  if (c_ != m_char)
+  {
+    if (m_char == delim_rfc && c_ == delim_dot)  // only permitted change
+      return set_(c_);
+    throw cool::ng::exception::parsing_error();
+  }
+  return m_char;
+}
+
+
+// ====== Parser for RFC 5952 IPv6 addresses
+
+class parser
+{
+  enum class token { delimiter, compression, quad, decimal, empty, end_of_stream };
+  enum class base { decimal = 10, hex = 16 };
+
+ public:
+  inline parser(std::istream& is_)
+    : m_stream(is_)
+  { /* noop */ }
+  explicit operator const uint8_t*();
+
+ private:
+  void parse();
+  token fetch(std::string& str_, base b_);
+  void inflate();
+  static bool is_digit(char c_, base b_);
+  inline int number_of_quads() const { return m_decimal_count == 0 ? 8 : 6; }
+
+ private:
+  // input and interim data
+  std::istream& m_stream;
+  delimiter     m_delimiter;
+  quad          m_quads[8];
+  cool::ng::ip::ipv6::binary_t m_address; // result
+
+  // state variables
+  bool m_start = true;           // true until the first character is read
+  bool m_is_deflated = false;    // true if it has :: compression sequence
+  int  m_first_deflated = -1;    // position of first deflated quad
+  int  m_last_quad = -1;
+  int  m_decimal_count = 0;      // number of dot-decimal fields, if present
+
+};
+
+bool parser::is_digit(char c_, base b_)
+{
+  if (c_ >= '0' && c_ <= '9')
+    return true;
+
+  return c_ >= '0' && c_ <= '9' ? true
+      : b_ == base::hex ? (c_ >='a' && c_ <= 'f') || (c_ >= 'A' && c_ <= 'F') : false;
+}
+
+parser::operator const uint8_t*()
+{
+  parse();
+  return static_cast<uint8_t*>(m_address);
+}
+
+parser::token parser::fetch(std::string& str_, base b_)
+{
+  char c;
+  m_stream >> c;
+
+  if (m_stream.eof())
+    return token::end_of_stream;
+
+  switch (c)
+  {
+    case delim_ms:
+    case delim_rfc:
+      m_delimiter = c;
+      if (m_start)
+      {
+        m_start = false;
+        return token::delimiter;
+      }
+
+      return token::compression;
+
+    default:
+      m_start = false;
+      str_.clear();
+      do
+      {
+        if (!is_digit(c, b_))
+          break;
+        str_ += c;
+        if (str_.length() > 4)
+          throw cool::ng::exception::parsing_error();
+        m_stream >> c;
+      } while (!m_stream.eof());
+
+      if (m_stream.eof())
+        return b_ == base::hex ? token::quad : token::decimal;
+
+      if (c == delim_rfc || c == delim_ms)
+      {
+        m_delimiter = c;
+        return token::quad;
+      }
+      else if (c == delim_dot)
+      {
+        if (b_ == base::hex)   // the first decimal group, check if only decimal digits
+        {
+          for (int i = 0; i < str_.length(); ++i)
+            if (!is_digit(str_[i], base::decimal))
+              throw cool::ng::exception::parsing_error();
+        }
+        return token::decimal;
+      }
+      m_stream.unget();
+      break;
+  }
+  return str_.empty() ? token::empty : b_ == base::hex ? token::quad : token::decimal;
+}
+
+void parser::parse()
+{
+  std::string text;
+  base numeric_base = base::hex;
+  bool loop = true;
+  bool need_compression = false;
+
+  while (loop)
+  {
+    switch (fetch(text, numeric_base))
+    {
+      case token::end_of_stream:
+      case token::empty:
+        loop = false;
+        break;
+
+      case token::delimiter:
+        need_compression = true;
+        break;
+
+      case token::quad:
+        if (need_compression)
+          throw cool::ng::exception::parsing_error();
+
+        ++m_last_quad;
+        if (m_last_quad >= 8)
+          throw cool::ng::exception::parsing_error();
+
+        m_quads[m_last_quad] = text;
+        break;
+
+      case token::compression:
+        need_compression = false;
+        if (m_is_deflated)     // can't have two :: sequences
+          throw cool::ng::exception::parsing_error();
+        m_is_deflated = true;
+        m_first_deflated = m_last_quad + 1;
+        break;
+
+      case token::decimal:
+      {
+        m_delimiter = '.';  // switch delimiter to check the change is legal
+        int aux;
+
+        if (need_compression)
+          throw cool::ng::exception::parsing_error();
+
+        if (m_decimal_count >= 4)
+          throw cool::ng::exception::parsing_error();
+        std::istringstream is(text);
+        parse_num(is, aux);
+        if (aux < 0 || aux > 255)
+          throw cool::ng::exception::parsing_error();
+        m_address[12 + m_decimal_count] = static_cast<uint8_t>(aux);
+        ++m_decimal_count;
+        numeric_base = base::decimal;
+      }
+    }
+  }
+
+  if (m_is_deflated)
+    inflate();
+
+  if (m_last_quad != number_of_quads() - 1)
+    throw cool::ng::exception::parsing_error();
+
+  if (m_decimal_count > 0)
+  {         // must have exactly 4 decimal fields with two spare quads to use
+    if (m_decimal_count != 4)
+      throw cool::ng::exception::parsing_error();
+  }
+
+  for (int i = 0; i < number_of_quads(); ++i)
+  {
+    auto aux = static_cast<uint16_t>(m_quads[i]);
+    m_address[2 * i] = aux >> 8;
+    m_address[2 * i + 1] = aux & 0xff;
+  }
+}
+
+void parser::inflate()
+{
+  int inflate_count = number_of_quads() - (m_last_quad + 1);
+  if (inflate_count < number_of_quads())
+  {
+    int move_count = m_last_quad - m_first_deflated + 1;
+    int destination = number_of_quads() - 1;
+    int source = m_last_quad;
+
+    for (int i = 0; i < move_count; ++i)
+        m_quads[destination--] = m_quads[source--];
+    for (int i = 0; i < inflate_count; ++i)
+      m_quads[m_first_deflated++] = quad();
+  }
+  m_last_quad += inflate_count;
+}
+
 // NOTE: Term "quad" in below code refers to two-byte quantity which value
 //       can be visualized with four hex digits.
 
@@ -329,412 +737,274 @@ namespace ipv6
 //           |         |         |
 //           +----+----+----+----+
 //   nibble    0    1    2    3
-class quad_wrap
+class q_wrap
 {
  public:
-  // NOTE const_cast!!! It's dirty but it works.
-  quad_wrap(const uint8_t* data) : m_data(const_cast<uint8_t*>(data)) { /* noop */ }
-  operator uint16_t () const { return (m_data[0] << 8) | m_data[1]; }
+  q_wrap(const uint8_t* data) : m_data(data)
+  { /* noop */ }
 
-  // Return a nibble (four bits) from the quad.
-  int operator [] (int index) const
-  {
-    return (index & 0x01) == 0 ? m_data[index >> 1] >> 4 : m_data[index >> 1] & 0xF;
-  }
-
-  // Assign value to nibble 3 (rightmost nibble)
-  void operator =(int value)
-  {
-    m_data[1] |= (value & 0x0F);
-  }
-
-  void operator <<=(int n)
-  {
-    n &= 0x03;   // Doesn't make sense to shift more than four times
-    for (int i = 0; i < n; ++i)
-      shl();
-  }
+  uint_fast16_t operator[](std::size_t index) const;
+  constexpr std::size_t size() const { return 8; }
+  std::ostream& quad(std::ostream& os, std::size_t index) const;
+  std::ostream& dot_decimal(std::ostream& os, std::size_t index) const;
 
  private:
-  void shl()
-  {
-    m_data[0] <<= 4;
-    m_data[0] |= ((m_data[1] >> 4) & 0x0F);
-    m_data[1] <<= 4;
-  }
-
- private:
-  uint8_t* m_data;
+  const uint8_t* m_data;
 };
 
-std::ostream& operator <<(std::ostream& os, const quad_wrap& q)
+std::ostream& q_wrap::quad(std::ostream& os, std::size_t index) const
 {
-  if (q == 0)
-    os << '0';
-  else
-  {
-    int ndx = 0;
-    for (ndx = 0; q[ndx] == 0; ++ndx)    // skip leading zeros
-    ;
-    for ( ; ndx < 4; ++ndx)
-      os << hex_digits[q[ndx]];
-  }
-  return os;
+  return os << std::hex << (*this)[index];
 }
 
-void find_longest_0_quad_sequence(uint8_t const val[], int& start, int& length)
+std::ostream& q_wrap::dot_decimal(std::ostream& os, std::size_t index) const
 {
-  int index = 0;
-  int limit = length;
-  int cur_start = -1;
+  std::size_t r_index = index << 1;
+  return os << std::dec << static_cast<int>(m_data[r_index]) << "." << static_cast<int>(m_data[r_index + 1]);
+}
 
+uint_fast16_t q_wrap::operator[](std::size_t index) const
+{
+  if (index >= size() )
+    throw cool::ng::exception::out_of_range();
+
+  std::size_t r_index = index << 1;
+  return (m_data[r_index] << 8) | m_data[r_index + 1];
+}
+
+class visualizer
+{
+ public:
+  visualizer(std::ostream& os_, const binary_t& b_)
+    : m_stream(os_)
+    , m_buffer(static_cast<const uint8_t*>(b_))
+//    , m_delimiter(s_ == ip::style::microsoft ? '-' : ':')
+  { /* noop */ }
+  std::ostream& operator()(ip::style s_);
+  std::ostream& operator()()
+  {
+    return this->operator ()(ip::style::customary);
+  }
+
+ private:
+  std::ostream& expanded(std::size_t limit);
+  std::ostream& deflated(std::size_t limit, char delimiter, bool& ends_with_deflated);
+  std::ostream& dotted_quad();
+  bool find_zero_sequence(std::size_t limit, std::size_t& start, std::size_t& length);
+
+ private:
+  std::ostream&   m_stream;
+  q_wrap          m_buffer;
+};
+
+std::ostream& visualizer::operator()(ip::style s_)
+{
+  bool aux;
+
+  switch (s_)
+  {
+    case ip::style::customary:
+    case ip::style::dot_decimal:
+      throw cool::ng::exception::bad_conversion();
+
+    case ip::style::expanded:
+      return expanded(m_buffer.size());
+
+    case ip::style::canonical:
+    case ip::style::strict:
+      return deflated(m_buffer.size(), ':', aux);
+
+    case ip::style::microsoft:
+      return deflated(m_buffer.size(), '-', aux);
+
+    case ip::style::dotted_quad:
+      return dotted_quad();
+  }
+}
+
+std::ostream& visualizer::deflated(std::size_t limit, char delimiter, bool& ends_with_deflated)
+{
+  std::size_t first, length;  // this is for deflated zero sequence
+
+  if (!find_zero_sequence(limit, first, length))
+    return expanded(limit);
+
+  for (std::size_t i = 0; i < first; ++i)
+    m_buffer.quad(m_stream, i) << delimiter;
+
+  m_stream << delimiter;
+  if (first == 0)
+    m_stream << delimiter;
+
+  ends_with_deflated = first + length >= limit;
+  if (!ends_with_deflated)
+  {
+    for (std::size_t i = first + length; i < limit - 1; ++i)
+      m_buffer.quad(m_stream, i) << delimiter;
+
+    m_buffer.quad(m_stream, limit - 1);
+  }
+  return m_stream;
+}
+
+std::ostream& visualizer::dotted_quad()
+{
+  bool ends_with_deflated;
+
+  deflated(m_buffer.size() - 2, ':', ends_with_deflated);
+  if (!ends_with_deflated)
+    m_stream << ":";
+
+  m_buffer.dot_decimal(m_stream, m_buffer.size() - 2) << ".";
+  return m_buffer.dot_decimal(m_stream, m_buffer.size() - 1);
+}
+
+std::ostream& visualizer::expanded(std::size_t limit)
+{
+  for (std::size_t i = 0; i < limit - 1; ++i)
+    m_buffer.quad(m_stream, i) << ":";
+  return m_buffer.quad(m_stream, limit - 1);
+}
+
+bool visualizer::find_zero_sequence(std::size_t limit, std::size_t& start, std::size_t& length)
+{
   length = 0;
-  start = -1;
+  std::size_t cur_start = 0, cur_length = 0;
 
-  for (index = 0; index < limit; )
+  for (std::size_t i = 0; i < limit; ++i)
   {
-
-    // skip non-zero quads
-    for ( ; index < limit && quad_wrap(&val[index]) != 0; index += 2)
-    ;
-
-    cur_start = index;
-    for (index += 2; index < limit && quad_wrap(&val[index]) == 0; index += 2)
-    ;
-
-    int cur_len = (index - cur_start) / 2;
-    if (cur_len > length)
+    if (m_buffer[i] != 0)     // possible end of  current zero sequence
     {
-      start = cur_start;
-      length = cur_len;
-    }
-  }
-
-  if (length < 2)
-  {
-    length = 0;
-    start = -1;
-  }
-}
-
-// Translate binary IPv6 address into canonical textual presentation as
-// specified in RFC5952
-//
-// Parameters
-//   - os    Output stream
-//   - size  Number of bytes to translate; this is necessary to reuse this
-//           function for dotted-quad presentation where the first part is
-//           visualized as canonical IPv6 address and last 8 bytes in
-//           dotted IPv4 format
-void str_canonical(uint8_t const val[], char delim, std::ostream& os, std::size_t size)
-{
-  int zero_start, zero_length = static_cast<int>(size);
-
-  find_longest_0_quad_sequence(val, zero_start, zero_length);
-
-  if (zero_start == -1)
-  {
-    for (int i = 0; i < size; i += 2)
-    {
-      if (i > 0)
-        os << delim;
-      os << quad_wrap(&val[i]);
-    }
-  }
-  else
-  {
-    int i;
-
-    for (i = 0; i < zero_start; i += 2)
-    {
-      if (i > 0)
-        os << delim;
-      os << quad_wrap(&val[i]);
-    }
-    os << delim;
-    i = zero_start + zero_length * 2;
-    if (i >= size)
-    {
-      os << delim;
+      cur_length = 0;
     }
     else
     {
-      for ( ; i < size; i += 2)
+      if (cur_length == 0)   // start of new zero sequence
       {
-        if (i > 0)
-          os << delim;
-        os << quad_wrap(&val[i]);
+        cur_start = i;
+        cur_length = 1;
+      }
+      else
+      {
+        ++cur_length;        // current 0 sequence continues
+        if (cur_length > length)
+        {
+          start = cur_start;
+          length = cur_length;
+        }
       }
     }
   }
+
+  return length > 1;
 }
 
-void str_expanded(uint8_t const val[], std::ostream& os, std::size_t size)
+void parse(std::istream& is, binary_t& val, std::size_t& mask, bool require_mask)
 {
-
-  os << quad_wrap(&val[0]);
-
-  for (int i = 2; i < size; i += 2)
+  try
   {
-    os << ':';
-    os << quad_wrap(&val[i]);
-  }
-}
+    binary_t addr = static_cast<const uint8_t*>(parser(is));
 
-void str_microsoft(uint8_t const val[], std::ostream& os, std::size_t size)
-{
-  str_canonical(val, '-', os, size);
-}
-
-bool parse_ishex(char c)
-{
-  // don't like compilers that enforce style through default enabled warnings!!!
-  return (c >= '0' && c <= '9') ||  (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-}
-
-int parse_hexval(char c)
-{
-  if (c >= '0' && c <='9')
-    return c - '0';
-  if (c >= 'a' && c <= 'f')
-    return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F')
-    return c - 'A' + 10;
-  throw exception::parsing_error();
-}
-
-void parse_quad(std::istream& is, uint8_t* q_ptr)
-{
-  bool first = true;
-  quad_wrap q(q_ptr);
-
-  for (char c = is.get(); !is.eof(); c = is.get())
-  {
-    if (!parse_ishex(c))
+    if (require_mask)
     {
-      is.unget();
-      break;
-    }
-    if (first)
-      first = false;
-    else
-      q <<= 1;
-    q = parse_hexval(c);
-  }
-}
+      int aux = -1;
+      char c = is.get();
 
-cool::ng::net::ipv6::binary_t _parse(std::istream& is)
-{
-  cool::ng::net::ipv6::binary_t result, post_compress_value;
-  bool compress_begin = false;
-  bool post_compress = false;
-  bool brackets = false;
-  bool first = true;
-  char c;
-  char delim = '?';
-  int index = 0;
-  int post_compress_index = 0;
-  bool loop = true;
-
-  while (loop)
-  {
-    c = is.get();
-    if (is.eof())
-      break;
-
-    switch (c)
-    {
-      case '[':
-        if (first)
-          brackets = true;
-        else
-          throw exception::parsing_error();
-        break;
-
-      case ':':
-      case '-':
-        if (delim == '?')
-          delim = c;
-        else if (c != delim)
-          throw exception::parsing_error();
-        if (compress_begin)
-        {
-          compress_begin = false;
-          if (post_compress)
-            throw exception::parsing_error();
-          post_compress = true;
-        }
-        else
-        {
-          compress_begin = true;
-        }
-        break;
-
-      case '.': // seems to be dotted-quad ... some damage was already done, undo it
-        if (delim == '-')  // ... but can't have it with Microsoft notation
-        {
+      if (is.eof() || c != '/')
+      {
+        if (!is.eof())
           is.unget();
-          loop = false;
-          break;
-        }
+        throw cool::ng::exception::bad_conversion();
+      }
+      else
+      {
+        parse_num(is, aux);
+        if (!is.eof())
+          is.unget();
+        if (aux < 0)
+          throw cool::ng::exception::parsing_error();
 
+        if (aux > 128)
+          throw exception::out_of_range();
+        mask = aux;
+      }
+    }
+
+    val = addr;
+  }
+  catch (const cool::ng::exception::parsing_error&)
+  {
+    throw cool::ng::exception::bad_conversion();
+  }
+}
+
+} // namespace ipv6
+
+
+std::istream& sin(std::istream& is, cool::ng::ip::address& val)
+{
+  try
+  {
+    switch (val.version())
+    {
+      case version::ipv4:
+      {
+        detail::ipv4::binary_t addr;
+        std::size_t mask;
+        if (val.kind() == ip::kind::host)
         {
-          int quad_val;
-          // 1. one quad too many is already stored in one of binary buffers,
-          //    get its value and clear this quad
-          if (post_compress)
-          {
-            post_compress_index -= 2;
-            quad_wrap q(&post_compress_value[post_compress_index]);
-            quad_val = q;
-            q = 0;
-          }
-          else
-          {
-            index -= 2;
-            quad_wrap q(&result[index]);
-            quad_val = q;
-            q = 0;
-          }
-          // construct stringstream with this value and copy over the
-          std::stringstream ss;
-          ss << std::hex << quad_val << '.';
-          for (c = is.get(); !is.eof() && (c == '.' || (c >= '0' && c <= '9')); c = is.get())
-            ss << c;
-
-          cool::ng::net::ipv4::host addr;
-          ipv4::parse(ss, addr);
-          if (post_compress)
-          {
-            post_compress_value.set(post_compress_index, static_cast<uint8_t*>(addr), 4);
-            post_compress_index+= 4;
-          }
-          else
-            result.set(12, static_cast<uint8_t*>(addr), 4);
-          loop = false;
-          break;
+          ipv4::parse(is, addr, mask, false);
+          val = ip::ipv4::host(static_cast<const uint8_t*>(addr));
         }
-      case ']':
-        if (brackets)
-          loop = false;
         else
-          throw exception::parsing_error();
+        {
+          ipv4::parse(is, addr, mask, true);
+          val = ip::ipv4::network(mask, static_cast<const uint8_t*>(addr));
+        }
         break;
-
-      default:
-        compress_begin = false;
-        is.unget();
-        if (!parse_ishex(c))
+      }
+      case version::ipv6:
+      {
+        detail::ipv6::binary_t addr;
+        std::size_t mask;
+        if (val.kind() == ip::kind::host)
         {
-          loop = false;
-          break;
-        }
-
-        if (post_compress)
-        {
-          parse_quad(is, &post_compress_value[post_compress_index]);
-          post_compress_index += 2;
-        }
-        else
-        {
-          parse_quad(is, &result[index]);
-          index += 2;
+          ipv6::parse(is, addr, mask, false);
+            val = ip::ipv6::host(static_cast<const uint8_t*>(addr));
+          }
+          else
+          {
+            ipv6::parse(is, addr, mask, true);
+            val = ip::ipv6::network(mask, static_cast<const uint8_t*>(addr));
+          }
         }
         break;
     }
   }
-  if (post_compress_index > 0)
-    result.set(static_cast<int>(result.size()) - post_compress_index, post_compress_value);
-  return result;
-}
-
-void parse(std::istream& is, cool::ng::net::ipv6::host& val)
-{
-  val = static_cast<uint8_t*>(_parse(is));
-}
-
-void parse(std::istream& is, cool::ng::net::ipv6::network& val)
-{
-  unsigned int mask = 0;
-  auto addr = _parse(is);
-  char c = is.get();
-  if (c == '/')   // network mask width is supposed to follow
+  catch (const cool::ng::exception::parsing_error&)
   {
-    ipv4::parse_num(is, mask);
-    if (!is.eof())
-      is.unget();
-    if (mask > 128)
-      throw exception::parsing_error();
+    throw cool::ng::exception::bad_conversion();
   }
-  else
-  {
-    mask = static_cast<int>(val.mask());
-    if (!is.eof())
-      is.unget();
-  }
-
-  val =  cool::ng::net::ipv6::network(mask, addr);
+  return is;
 }
 
-void parse(std::istream& is, ip::address& val)
-{
-  if (val.kind() == ip::kind::host)
-    parse(is, dynamic_cast<cool::ng::net::ipv6::host&>(val));
-  else
-    parse(is, dynamic_cast<cool::ng::net::ipv6::network&>(val));
-}
 
-} // namespace
+} // namespace detail
 
-} // namespace entrails
-
-namespace ip {
-
-address::operator struct in_addr() const
-{
-  throw exception::bad_conversion();
-}
-
-address::operator struct in6_addr() const
-{
-  throw exception::bad_conversion();
-}
-
-address& address::operator =(const in_addr&)
-{
-  throw exception::bad_conversion();
-}
-
-address& address::operator =(const in6_addr&)
-{
-  throw exception::bad_conversion();
-}
-
-} // namespace
+// ==== ======================================================================
+// ==== ======================================================================
+// ====
+// ====
+// ==== IPv6 API implementation
+// ====
+// ====
+// ==== ======================================================================
+// ==== ======================================================================
 
 namespace ipv6
 {
 
 // ============= host class
-
-host::host(const in_addr& data)
-{
-  m_data = static_cast<const uint8_t*>(rfc_ipv4map);
-  ::memcpy(&m_data[12], &data, 4);
-}
-
-host::host(const std::string& str)
-{
-  std::stringstream ss(str);
-  ss >> *this;
-}
-
-host::host(const ip::address& other)
-{
-  if (kind() != other.kind() || version() != other.version())
-    throw exception::illegal_argument();
-  m_data = static_cast<const uint8_t*>(other);
-}
 
 bool host::equals(const ip::address &other) const
 {
@@ -751,16 +1021,6 @@ bool host::equals(const ip::address &other) const
       return ::memcmp(&m_data[12], static_cast<const uint8_t*>(other), 4) == 0;
   }
   return false;
-}
-
-void host::visualize(std::ostream& os) const
-{
-  // Stateless IP/ICMP Translation prefixed addresses are shown in
-  // quad-dotted format
-  if (in(rfc_ipv4map) || in(rfc_ipv4translate))
-    visualize(os, DottedQuad);
-  else
-    detail::ipv6::str_canonical(m_data, ':', os, 16);
 }
 
 host::operator struct in_addr() const
@@ -791,55 +1051,35 @@ host::operator std::string() const
   return ss.str();
 }
 
-void host::visualize(std::ostream& os, Style style) const
+std::ostream& host::visualize(std::ostream& os, ip::style style_) const
 {
-  switch (style)
+  switch (style_)
   {
-    case Canonical:
-      visualize(os);
+    case ip::style::customary:
+      return visualize(os, ip::style::canonical);  // call again with the real style
+
+    case ip::style::canonical:
+      if (in(ipv6::rfc_ipv4map) || in(ipv6::rfc_ipv4translate))
+        return visualize(os, ip::style::dotted_quad);
       break;
 
-    case StrictCanonical:
-      detail::ipv6::str_canonical(m_data, ':',  os, 16);
+    case ip::style::strict:
+    case ip::style::expanded:
+    case ip::style::microsoft:
+    case ip::style::dotted_quad:
       break;
 
-    case Expanded:
-      detail::ipv6::str_expanded(m_data, os, 16);
-      break;
-
-    case Microsoft:
-      detail::ipv6::str_microsoft(m_data, os, 16);
-      break;
-
-    case DottedQuad:
-      detail::ipv6::str_canonical(m_data, ':', os, 12);
-      os << ':';
-      detail::ipv4::str(&m_data[12], os);
-      break;
-
-    default:
-      break;
+    case ip::style::dot_decimal:
+      throw cool::ng::exception::bad_conversion();
   }
-}
 
-ip::address& host::operator =(const in_addr& data)
-{
-  m_data = static_cast<const uint8_t*>(rfc_ipv4map);
-  ::memcpy(&m_data[12], &data, 4);
-  return *this;
+  return detail::ipv6::visualizer(os, m_data)(style_);
 }
-
-ip::address& host::operator =(const in6_addr& data)
-{
-  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data));
-  return *this;
-}
-
 
 void host::assign(const ip::address& val)
 {
   if (val.kind() != kind())
-    throw exception::illegal_argument();
+    throw exception::bad_conversion();
   switch (val.version())
   {
     case ip::version::ipv6:
@@ -853,15 +1093,29 @@ void host::assign(const ip::address& val)
   }
 }
 
-ip::address& host::operator =(const std::string& arg)
+void host::assign(const in_addr& rhs)
 {
-  std::stringstream ss(arg);
-  auto aux = *this;
+  m_data = static_cast<const uint8_t*>(rfc_ipv4map);
+  ::memcpy(&m_data[12], &rhs, 4);
+}
 
-  try { ss >> *this; }
-  catch (...) { *this = aux; throw; }
+void host::assign(const in6_addr& rhs)
+{
+  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
+}
 
-  return *this;
+void host::assign(uint8_t const rhs[])
+{
+  m_data = rhs;
+
+}
+
+void host::assign(const std::string& rhs)
+{
+  std::size_t mask;
+  std::stringstream ss(rhs);
+
+  detail::ipv6::parse(ss, m_data, mask, false);
 }
 
 bool host::is(ip::attribute a) const
@@ -882,7 +1136,6 @@ bool host::is(ip::attribute a) const
   return false;
 }
 
-
 bool host::in(const ip::network& net) const
 {
   if (version() != net.version())
@@ -891,16 +1144,6 @@ bool host::in(const ip::network& net) const
 }
 
 // ============= network class
-
-network::network(std::size_t mask_size, uint8_t const data[])
-    : m_data(data)
-    , m_length(mask_size)
-{
-  if (mask_size > size() * 8)
-    throw exception::out_of_range();
-  // zero host part of the address
-  m_data = m_data & detail::calculate_mask<16>(m_length);
-}
 
 network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   : m_data(args)
@@ -912,33 +1155,6 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   m_data = m_data & detail::calculate_mask<16>(m_length);
 }
 
-network::network(std::size_t mask_size, const in6_addr& data)
-    : m_data(static_cast<const uint8_t*>(static_cast<const void*>(&data)))
-    , m_length(mask_size)
-{
-  if (mask_size > size() * 8)
-    throw exception::out_of_range();
-  // zero host part of the address
-  m_data = m_data & detail::calculate_mask<16>(m_length);
-}
-
-network::network(const std::string& str) : m_length(0)
-{
-  // NOTE: parser takes care not to corrupt existing values upon error.
-  //       Since it does copy construction it also applies the mask
-  std::stringstream ss(str);
-
-  ss >> *this;
-}
-
-network::network(const ip::address& data)
-{
-  if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument();
-  m_data = static_cast<const uint8_t*>(data);
-  m_length = dynamic_cast<const network&>(data).m_length;
-}
-
 bool network::equals(const ip::address &other) const
 {
   if (kind() != other.kind() || version() != other.version())
@@ -947,11 +1163,39 @@ bool network::equals(const ip::address &other) const
       && m_length == dynamic_cast<const network&>(other).m_length;
 }
 
+std::ostream& network::visualize(std::ostream& os, ip::style style_) const
+{
+  switch (style_)
+  {
+    case ip::style::customary:
+      return visualize(os, ip::style::canonical);  // call again with the real style
+
+    case ip::style::canonical:
+      break;
+
+    case ip::style::strict:
+    case ip::style::expanded:
+    case ip::style::microsoft:
+      break;
+
+    case ip::style::dotted_quad:  // not useful for networks
+    case ip::style::dot_decimal:
+      throw cool::ng::exception::bad_conversion();
+  }
+
+  return detail::ipv6::visualizer(os, m_data)(style_) << "/" << std::dec << m_length;
+}
+
 network::operator std::string() const
 {
   std::stringstream ss;
   ss << *this;
   return ss.str();
+}
+
+network::operator struct in_addr() const
+{
+  throw exception::bad_conversion();
 }
 
 network::operator struct in6_addr() const
@@ -962,33 +1206,48 @@ network::operator struct in6_addr() const
   return result;
 }
 
-void network::assign(const ip::address& data)
+void network::assign(const ip::address& rhs)
 {
-  if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument();
-  m_data = static_cast<const uint8_t*>(data);
-  m_length = dynamic_cast<const network&>(data).m_length;
+  // special case
+  if (rhs.kind() == kind::host && rhs.version() == version::ipv6)
+  {
+    m_data = static_cast<const uint8_t*>(rhs);
+    m_data = m_data & detail::calculate_mask<16>(m_length);
+    return;
+  }
+
+  if (kind() != rhs.kind() || version() != rhs.version())
+    throw exception::bad_conversion();
+  m_data = static_cast<const uint8_t*>(rhs);
+  m_length = dynamic_cast<const ip::network&>(rhs).mask();
 
   // zero host part of the address
   m_data = m_data & detail::calculate_mask<16>(m_length);
 }
 
-ip::address& network::operator =(const in6_addr& data)
+void network::assign(const in_addr& rhs)
 {
-  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data));
-  // zero host part of the address
-  m_data = m_data & detail::calculate_mask<16>(m_length);
-  return *this;
+  throw exception::bad_conversion();
 }
 
-ip::address& network::operator =(const std::string& arg)
+void network::assign(const in6_addr& rhs)
 {
-  std::stringstream ss(arg);
-  network aux(this->mask());
-  ss >> aux;
+  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
+  // zero host part of the address
+  m_data = m_data & detail::calculate_mask<16>(m_length);
+}
 
-  *this = aux;
-  return *this;
+void network::assign(uint8_t const rhs[])
+{
+  m_data = rhs;
+  m_data = m_data & detail::calculate_mask<16>(m_length);
+}
+
+void network::assign(const std::string& rhs)
+{
+  std::stringstream ss(rhs);
+  detail::ipv6::parse(ss, m_data, m_length, true);
+  m_data = m_data & detail::calculate_mask<16>(m_length);
 }
 
 bool network::is(ip::attribute a) const
@@ -1026,61 +1285,21 @@ bool network::has(const ip::address& other) const
   return m_data == (detail::calculate_mask<16>(m_length) & static_cast<const uint8_t*>(other));
 }
 
-void network::visualize(std::ostream &os) const
-{
-  detail::ipv6::str_canonical(m_data, ':', os, 16);
-  os << "/" << m_length;
-}
-
-
 } // namespace
 
-// ==========================================================================
-//
-// IPv4 implementation
-//
-// ==========================================================================
-
+// ==== ======================================================================
+// ==== ======================================================================
+// ====
+// ====
+// ==== IPv4 API implementation
+// ====
+// ====
+// ==== ======================================================================
+// ==== ======================================================================
 
 namespace ipv4 {
 // ============= host class
 
-
-host::host(const std::string& str)
-{
-  std::stringstream ss(str);
-
-  ss >> *this;
-}
-
-host::host(const in6_addr& data)
-{
-  if (::memcmp(&data, static_cast<const uint8_t*>(ipv6::rfc_ipv4map), 12) == 0 ||
-      ::memcmp(&data, static_cast<const uint8_t*>(ipv6::rfc_ipv4translate), 12) == 0)
-    m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data)) + 12;
-  else
-    throw exception::bad_conversion();
-}
-
-host::host(const ip::address& other)
-{
-  if (kind() != other.kind())
-    throw exception::illegal_argument();
-  if (other.version() == ip::version::ipv6)
-  {
-    if (!(other.in(ipv6::rfc_ipv4map) || other.in(ipv6::rfc_ipv4translate)))
-      throw exception::illegal_argument();
-    m_data = static_cast<const uint8_t*>(other) + 12;
-  }
-  else
-    m_data = static_cast<const uint8_t*>(other);
-}
-
-host::host(uint32_t addr)
-{
-  auto aux = ntohl(addr);
-  m_data = static_cast<uint8_t*>(static_cast<void*>(&aux));
-}
 
 bool host::equals(const ip::address &other) const
 {
@@ -1100,25 +1319,9 @@ bool host::equals(const ip::address &other) const
   return false;
 }
 
-void host::visualize(std::ostream& os) const
+std::ostream& host::visualize(std::ostream& os, ip::style style_) const
 {
-  detail::ipv4::str(m_data, os);
-}
-
-ip::address& host::operator =(const in_addr& data)
-{
-  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data));
-  return *this;
-}
-
-ip::address& host::operator =(const in6_addr& data)
-{
-  ipv6::host aux = ipv6::host(data);
-
-  if (!(aux.in(ipv6::rfc_ipv4map) || aux.in(ipv6::rfc_ipv4translate)))
-    throw exception::bad_conversion();
-  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data)) + 12;
-  return *this;
+  return detail::ipv4::visualizer(os, m_data, style_)();
 }
 
 host::operator struct in_addr() const
@@ -1138,7 +1341,6 @@ host::operator struct in6_addr() const
   return result;
 }
 
-
 host::operator std::string() const
 {
   std::stringstream ss;
@@ -1146,34 +1348,52 @@ host::operator std::string() const
   return ss.str();
 }
 
-ip::address& host::operator =(const std::string& arg)
+void host::assign(const ip::address& rhs)
 {
-  std::stringstream ss(arg);
-  auto aux = *this;
+  if (kind() != rhs.kind())
+    throw exception::bad_conversion();
 
-  try { ss >> *this; }
-  catch (...) { *this = aux; throw; }
-
-  return *this;
-}
-
-void host::assign(const ip::address& val)
-{
-  if (kind() != val.kind())
-    throw exception::illegal_argument();
-  switch (val.version())
+  switch (rhs.version())
   {
     case ip::version::ipv4:
-      m_data = static_cast<const uint8_t*>(val);
+      m_data = static_cast<const uint8_t*>(rhs);
       break;
 
     case ip::version::ipv6:
-      if (!(val.in(ipv6::rfc_ipv4map) || val.in(ipv6::rfc_ipv4translate)))
-        throw exception::illegal_argument();
-      m_data = static_cast<const uint8_t*>(val) + (val.size() - size());
+      if (!(rhs.in(ipv6::rfc_ipv4map) || rhs.in(ipv6::rfc_ipv4translate)))
+        throw exception::bad_conversion();
+      m_data = static_cast<const uint8_t*>(rhs) + (rhs.size() - size());
       break;
   }
 }
+
+void host::assign(const in_addr& rhs)
+{
+  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
+}
+
+void host::assign(const in6_addr& rhs)
+{
+  ipv6::host aux(rhs);
+
+  if (!(aux.in(ipv6::rfc_ipv4map) || aux.in(ipv6::rfc_ipv4translate)))
+    throw exception::bad_conversion();
+  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs)) + 12;
+}
+
+void host::assign(uint8_t const rhs[])
+{
+  m_data = rhs;
+}
+
+void host::assign(const std::string& rhs)
+{
+  std::size_t mask;
+  std::stringstream ss(rhs);
+
+  detail::ipv4::parse(ss, m_data, mask, false);
+}
+
 
 bool host::is(ip::attribute a) const
 {
@@ -1204,15 +1424,6 @@ bool host::in(const ip::network& net) const
 // ============= network class
 
 
-network::network(std::size_t mask_size, uint8_t const data[])
-    : m_data(data)
-    , m_length(mask_size)
-{
-  if (mask_size > size() * 8)
-    throw exception::out_of_range();
-  m_data = m_data & detail::calculate_mask<4>(m_length);
-}
-
 network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   : m_data(args)
   , m_length(mask_size)
@@ -1222,45 +1433,17 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
 
-network::network(std::size_t mask_size, const in_addr& data)
-    : m_data(static_cast<const uint8_t*>(static_cast<const void*>(&data)))
-    , m_length(mask_size)
-{
-  if (mask_size > size() * 8)
-    throw exception::out_of_range();
-  // zero host part of the address
-  m_data = m_data & detail::calculate_mask<4>(m_length);
-}
-
-network::network(const std::string& str) : m_length(0)
-{
-  // NOTE: parser takes care not to corrupt existing values upon error.
-  //       Since it does copy construction it also applies the mask
-  std::stringstream ss(str);
-
-  ss >> *this;
-}
-
-network::network(const ip::address& data)
-{
-  if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument();
-  m_data = static_cast<const uint8_t*>(data);
-  m_length = dynamic_cast<const network&>(data).m_length;
-}
-
 bool network::equals(const ip::address &other) const
 {
   if (kind() != other.kind() || version() != other.version())
     return false;
   return m_data == static_cast<const uint8_t*>(other)
-      && dynamic_cast<const network&>(other).m_length;//TODO:????
+      && m_length == dynamic_cast<const network&>(other).m_length;
 }
 
-void network::visualize(std::ostream &os) const
+std::ostream& network::visualize(std::ostream &os, ip::style style_) const
 {
-  detail::ipv4::str(m_data, os);
-  os << "/" << m_length;
+  return detail::ipv4::visualizer(os, m_data, style_)() << "/" << m_length;
 }
 
 network::operator std::string() const
@@ -1270,28 +1453,12 @@ network::operator std::string() const
   return ss.str();
 }
 
-ip::address& network::operator =(const in_addr& data)
-{
-  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&data));
-  return *this;
-}
-
 network::operator struct in_addr() const
 {
   struct in_addr result;
 
   ::memcpy(static_cast<void*>(&result), m_data, m_data.size());
   return result;
-}
-
-ip::address& network::operator =(const std::string& arg)
-{
-  std::stringstream ss(arg);
-  network aux(this->mask());
-  ss >> aux;
-
-  *this = aux;
-  return *this;
 }
 
 bool network::is(ip::attribute a) const
@@ -1312,13 +1479,57 @@ bool network::is(ip::attribute a) const
   return false;
 }
 
-
-void network::assign(const ip::address& data)
+void network::assign(const ip::address& rhs)
 {
-  if (kind() != data.kind() || version() != data.version())
-    throw exception::illegal_argument();
-  m_data = static_cast<const uint8_t*>(data);
-  m_length = dynamic_cast<const network&>(data).m_length;
+  // special case
+  if (rhs.kind() == kind::host)
+  {
+    switch (rhs.version())
+    {
+      case  version::ipv4:
+        m_data = static_cast<const uint8_t*>(rhs);
+        break;
+
+      case version::ipv6:
+        if (!(rhs.in(ipv6::rfc_ipv4map) || rhs.in(ipv6::rfc_ipv4translate)))
+          throw exception::bad_conversion();
+        m_data = static_cast<const uint8_t*>(rhs) + 12;
+        break;
+    }
+
+    m_data = m_data & detail::calculate_mask<4>(m_length);
+    return;
+  }
+
+  if (rhs.version() != version::ipv4)
+    throw exception::bad_conversion();
+  m_data = static_cast<const uint8_t*>(rhs);
+  m_data = m_data & detail::calculate_mask<4>(m_length);
+}
+
+void network::assign(const in_addr& rhs)
+{
+  m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
+  m_data = m_data & detail::calculate_mask<4>(m_length);
+}
+
+void network::assign(const in6_addr& rhs)
+{
+  throw exception::bad_conversion();
+}
+
+void network::assign(uint8_t const rhs[])
+{
+  m_data = rhs;
+  m_data = m_data & detail::calculate_mask<4>(m_length);
+}
+
+void network::assign(const std::string& rhs)
+{
+  std::stringstream ss(rhs);
+
+  detail::ipv4::parse(ss, m_data, m_length, true);
+  m_data = m_data & detail::calculate_mask<4>(m_length);
 }
 
 bool network::in(const ip::network& net) const
