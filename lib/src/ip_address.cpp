@@ -33,6 +33,16 @@ namespace cool { namespace ng {
 
 namespace ip {
 
+// ==== ======================================================================
+// ==== ======================================================================
+// ====
+// ====
+// ==== host_container
+// ====
+// ====
+// ==== ======================================================================
+// ==== ======================================================================
+
 host_container::~host_container()
 {
   release();
@@ -59,28 +69,28 @@ host_container& host_container::operator =(const host_container& addr_)
   return *this;
 }
 
-host_container& host_container::operator =(const in_addr& addr_)
+host_container& host_container::operator =(const struct in_addr& addr_)
 {
   assign(ipv4::host(addr_));
   return *this;
 }
 
-host_container& host_container::operator =(const in6_addr& addr_)
+host_container& host_container::operator =(const struct in6_addr& addr_)
 {
   *this = ipv6::host(addr_);
   return *this;
 }
 
-host_container& host_container::operator =(const sockaddr_storage& addr_)
+host_container& host_container::operator =(const struct sockaddr_storage& addr_)
 {
   switch (addr_.ss_family)
   {
     case AF_INET:
-      *this = reinterpret_cast<const sockaddr_in*>(&addr_)->sin_addr;
+      *this = reinterpret_cast<const struct sockaddr_in*>(&addr_)->sin_addr;
       break;
 
     case AF_INET6:
-      *this = reinterpret_cast<const sockaddr_in6*>(&addr_)->sin6_addr;
+      *this = reinterpret_cast<const struct sockaddr_in6*>(&addr_)->sin6_addr;
       break;
 
     default:
@@ -124,6 +134,235 @@ void host_container::assign(const ipv6::host& addr_)
 {
   release();
   new (&m_v6) ipv6::host(addr_);
+}
+
+// ==== ======================================================================
+// ==== ======================================================================
+// ====
+// ====
+// ==== service
+// ====
+// ====
+// ==== ======================================================================
+// ==== ======================================================================
+
+namespace
+{
+
+template <typename Buf>
+std::istream& get_word(std::istream& is_, Buf* b_, std::size_t n_)
+{
+  for ( ; n_ > 0; --n_)
+  {
+    b_->sputc(is_.get());
+    if (is_.eof())
+      break;
+  }
+  return is_;
+}
+
+class parser
+{
+ public:
+  inline parser(std::istream& is_)
+    : m_stream(is_), m_proto(transport::unknown)
+  { /* noop */ }
+  explicit operator service();
+
+ private:
+  void parse();
+
+ private:
+  std::istream& m_stream;
+  transport m_proto;
+  host_container m_host;
+  uint16_t m_port;
+};
+
+parser::operator service()
+{
+  parse();
+  return service(m_proto, m_host, m_port);
+}
+
+void parser::parse()
+{
+  {
+    std::stringstream ss;
+
+    get_word(m_stream, ss.rdbuf(), 6);
+    auto aux = ss.str();
+    if (aux == "tcp://")
+      m_proto = transport::tcp;
+    else if (aux == "udp://")
+      m_proto = transport::udp;
+    else
+      throw cool::ng::exception::parsing_error();
+  }
+
+  {
+    char c = m_stream.get();
+    if (m_stream.eof() || !(c == '[' || (c >= '0' && c <='9')))
+      throw cool::ng::exception::parsing_error();
+
+    if (c == '[')  // ipv6 address assumed
+    {
+      ipv6::host h;
+      m_stream >> h;
+      m_stream >> c;
+      if (c != ']')
+        throw cool::ng::exception::parsing_error();
+      m_host = h;
+    }
+    else
+    {
+      m_stream.unget();
+      ipv4::host h;
+      m_stream >> h;
+      m_host = h;
+    }
+    m_stream >> c;
+    if (c != ':')
+      throw cool::ng::exception::parsing_error();
+    m_stream >> m_port;
+  }
+}
+} // anonymous namespace
+
+namespace detail
+{
+
+std::istream& sin(std::istream& is, cool::ng::ip::service& val)
+{
+  val = static_cast<cool::ng::ip::service>(parser(is));
+  return is;
+}
+
+} // namespace detail
+
+service::operator std::string() const
+{
+  std::stringstream ss;
+  visualize(ss, style::customary);
+  return ss.str();}
+
+std::ostream& service::visualize(std::ostream& os, style style_) const
+{
+  switch (m_proto)
+  {
+    case transport::unknown:
+      throw cool::ng::exception::bad_conversion();
+
+    case transport::tcp:
+      os << "tcp://";
+      break;
+
+    case transport::udp:
+      os << "udp://";
+      break;
+  }
+
+  switch (static_cast<const address&>(m_host).version())
+  {
+    case version::ipv4:
+      static_cast<const address&>(m_host).visualize(os, style_);
+      break;
+    case version::ipv6:
+      os << "[";
+      static_cast<const address&>(m_host).visualize(os, style_) << "]";
+      break;
+  }
+
+  os << std::dec << ":" << m_port;
+  return os;
+}
+
+const struct sockaddr* service::sockaddr() const
+{
+  if (m_proto == transport::unknown)
+    throw cool::ng::exception::bad_conversion();
+
+  switch (static_cast<const address&>(m_host).version())
+  {
+    case version::ipv4:
+      return reinterpret_cast<const struct sockaddr*>(&m_in);
+
+    case version::ipv6:
+      return reinterpret_cast<const struct sockaddr*>(&m_in6);
+  }
+}
+
+socklen_t service::sockaddr_len() const
+{
+  if (m_proto == transport::unknown)
+    throw cool::ng::exception::bad_conversion();
+
+  switch (static_cast<const address&>(m_host).version())
+  {
+    case version::ipv4:
+      return sizeof(m_in);
+
+    case version::ipv6:
+      return sizeof(m_in6);
+  }
+}
+
+void service::assign(const struct sockaddr *sa_)
+{
+  if (sa_ == nullptr)
+    throw cool::ng::exception::illegal_argument();
+  if (m_proto == transport::unknown)
+    throw cool::ng::exception::invalid_state();
+
+  switch (sa_->sa_family)
+  {
+    case AF_INET:
+      m_host = reinterpret_cast<const struct sockaddr_in *>(sa_)->sin_addr;
+      m_port = ntohs(reinterpret_cast<const struct sockaddr_in *>(sa_)->sin_port);
+      break;
+
+    case AF_INET6:
+      m_host = reinterpret_cast<const struct sockaddr_in6 *>(sa_)->sin6_addr;
+      m_port = ntohs(reinterpret_cast<const struct sockaddr_in6 *>(sa_)->sin6_port);
+      break;
+
+    default:
+      throw cool::ng::exception::bad_conversion();
+      break;
+  }
+  sync();
+}
+
+void service::assign(const std::string& uri_)
+{
+  try
+  {
+    std::stringstream ss(uri_);
+    *this = static_cast<service>(parser(ss));
+    sync();
+  }
+  catch (...)
+  {
+    throw cool::ng::exception::bad_conversion();
+  }
+}
+
+void service::sync()
+{
+  switch (static_cast<const address&>(m_host).version())
+  {
+    case version::ipv4:
+      m_in.sin_addr = static_cast<struct in_addr>(static_cast<const address&>(m_host));
+      m_in.sin_family = AF_INET;
+      m_in.sin_port = htons(m_port);
+      break;
+
+    case version::ipv6:
+        m_in6.sin6_addr = static_cast<struct in6_addr>(static_cast<const address&>(m_host));
+        m_in6.sin6_family = AF_INET6;
+        m_in6.sin6_port = htons(m_port);
+        break;
+  }
 }
 
 namespace detail {
@@ -988,7 +1227,6 @@ std::istream& sin(std::istream& is, cool::ng::ip::address& val)
   return is;
 }
 
-
 } // namespace detail
 
 // ==== ======================================================================
@@ -1093,13 +1331,13 @@ void host::assign(const ip::address& val)
   }
 }
 
-void host::assign(const in_addr& rhs)
+void host::assign(const struct in_addr& rhs)
 {
   m_data = static_cast<const uint8_t*>(rfc_ipv4map);
   ::memcpy(&m_data[12], &rhs, 4);
 }
 
-void host::assign(const in6_addr& rhs)
+void host::assign(const struct in6_addr& rhs)
 {
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
 }
@@ -1225,12 +1463,12 @@ void network::assign(const ip::address& rhs)
   m_data = m_data & detail::calculate_mask<16>(m_length);
 }
 
-void network::assign(const in_addr& rhs)
+void network::assign(const struct in_addr& rhs)
 {
   throw exception::bad_conversion();
 }
 
-void network::assign(const in6_addr& rhs)
+void network::assign(const struct in6_addr& rhs)
 {
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
   // zero host part of the address
@@ -1367,12 +1605,12 @@ void host::assign(const ip::address& rhs)
   }
 }
 
-void host::assign(const in_addr& rhs)
+void host::assign(const struct in_addr& rhs)
 {
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
 }
 
-void host::assign(const in6_addr& rhs)
+void host::assign(const struct in6_addr& rhs)
 {
   ipv6::host aux(rhs);
 
@@ -1507,13 +1745,13 @@ void network::assign(const ip::address& rhs)
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
 
-void network::assign(const in_addr& rhs)
+void network::assign(const struct in_addr& rhs)
 {
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs));
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
 
-void network::assign(const in6_addr& rhs)
+void network::assign(const struct in6_addr& rhs)
 {
   throw exception::bad_conversion();
 }

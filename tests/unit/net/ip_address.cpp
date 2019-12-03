@@ -1435,4 +1435,358 @@ COOL_AUTO_TEST_CASE(T010,
 
 BOOST_AUTO_TEST_SUITE_END()
 
+BOOST_AUTO_TEST_SUITE(service_)
+
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("ctor service()"))
+{
+  service s;
+  std::string aux;
+
+  BOOST_CHECK(!s);
+  BOOST_CHECK_THROW(s.socket_type(), cool::ng::exception::bad_conversion);
+  BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+  BOOST_CHECK_THROW(aux = static_cast<std::string>(s), cool::ng::exception::bad_conversion);
+}
+
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("ctor service(transport)"))
+{
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = service(transport::tcp));
+    BOOST_CHECK(s);
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_STREAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "tcp://[::]:0");
+  }
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = service(transport::udp));
+    BOOST_CHECK(s);
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_DGRAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "udp://[::]:0");
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::unknown), cool::ng::exception::illegal_argument);
+    BOOST_CHECK(!s);
+  }
+}
+
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("ctor service(transport, const sockaddr*)"))
+{
+  {
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr = static_cast<in_addr>("192.168.3.99"_ipv4);
+    addr.sin_port = htons(7778);
+
+    service s;
+    BOOST_CHECK_NO_THROW(s = service(transport::tcp, static_cast<sockaddr*>(static_cast<void*>(&addr))));
+    BOOST_CHECK(s);
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_STREAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "tcp://192.168.3.99:7778");
+  }
+  {
+    sockaddr_in6 addr;
+    addr.sin6_family = AF_INET6;
+    addr.sin6_addr = static_cast<in6_addr>("200::1223:3456:789a:bcde:f001"_ipv6);
+    addr.sin6_port = htons(4778);
+
+    service s;
+    BOOST_CHECK_NO_THROW(s = service(transport::udp, static_cast<sockaddr*>(static_cast<void*>(&addr))));
+    BOOST_CHECK(s);
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_DGRAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "udp://[200::1223:3456:789a:bcde:f001]:4778");
+  }
+  {
+    sockaddr_in6 addr;
+    addr.sin6_family = AF_INET6;
+    addr.sin6_addr = static_cast<in6_addr>("200::1223:3456:789a:bcde:f001"_ipv6);
+    addr.sin6_port = htons(4778);
+
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::unknown, static_cast<sockaddr*>(static_cast<void*>(&addr))), cool::ng::exception::illegal_argument);
+    BOOST_CHECK(!s);
+  }
+  {
+    sockaddr_in addr;
+    addr.sin_family = AF_UNIX;
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::tcp, static_cast<sockaddr*>(static_cast<void*>(&addr))), cool::ng::exception::bad_conversion);
+    BOOST_CHECK(!s);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::tcp, nullptr), cool::ng::exception::illegal_argument);
+    BOOST_CHECK(!s);
+  }
+}
+
+COOL_AUTO_TEST_CASE(T004,
+  *utf::description("ctor service(transport, address, uint16_t)"))
+{
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::unknown, "192.168.3.99"_ipv4, 4242), cool::ng::exception::illegal_argument);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::tcp, "192.168.3.0/24"_ipv4_net, 4242), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service(transport::udp, "ffee::/16"_ipv6_net, 4242), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = service(transport::udp, "192.168.3.99"_ipv4, 4242));
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_DGRAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "udp://192.168.3.99:4242");
+  }
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = service(transport::tcp, "200::1223:3456:789a:bcde:f001"_ipv6, 4242));
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_STREAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "tcp://[200::1223:3456:789a:bcde:f001]:4242");
+  }
+}
+
+COOL_AUTO_TEST_CASE(T005,
+  *utf::description("ctor service(const std::string&)"))
+{
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = service("udp://192.16.32.11:8032"));
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_DGRAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "udp://192.16.32.11:8032");
+  }
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = service("tcp://[200::1223:3456:789a:bcde:f001]:4242"));
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_STREAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "tcp://[200::1223:3456:789a:bcde:f001]:4242");
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service("tcp://[200::1223:3456:789a:bcde:f001:4242"), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service("arg://[200::1223:3456:789a:bcde:f001:4242"), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service("tcp://192.168.3:1212"), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = service("tcp://192.168.3.12;1212"), cool::ng::exception::bad_conversion);
+  }
+}
+
+COOL_AUTO_TEST_CASE(T006,
+  *utf::description("opeartor =(const sockaddr*)"))
+{
+  {
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr = static_cast<in_addr>("192.168.3.99"_ipv4);
+    addr.sin_port = htons(7778);
+
+    service s;
+    BOOST_CHECK_THROW(s = reinterpret_cast<sockaddr*>(&addr), cool::ng::exception::invalid_state);
+    BOOST_CHECK(!s);
+  }
+  {
+    service s(transport::tcp);
+    BOOST_CHECK_THROW(s = nullptr, cool::ng::exception::illegal_argument);
+  }
+  {
+    sockaddr_in addr;
+    addr.sin_family = AF_UNIX;
+    service s("udp://172.16.16.16:8080");
+    BOOST_CHECK_THROW(s = static_cast<sockaddr*>(static_cast<void*>(&addr)), cool::ng::exception::bad_conversion);
+  }
+  {
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr = static_cast<in_addr>("192.168.3.99"_ipv4);
+    addr.sin_port = htons(7778);
+
+    service s("tcp://[200::1223:3456:789a:bcde:f001]:4242");
+    BOOST_CHECK_NO_THROW(s = reinterpret_cast<sockaddr*>(&addr));
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_STREAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "tcp://192.168.3.99:7778");
+  }
+  {
+    sockaddr_in6 addr;
+    addr.sin6_family = AF_INET6;
+    addr.sin6_addr = static_cast<in6_addr>("200::1223:3456:789a:bcde:f001"_ipv6);
+    addr.sin6_port = htons(4778);
+
+    service s("udp://172.16.16.16:8080");
+    BOOST_CHECK_NO_THROW(s = static_cast<sockaddr*>(static_cast<void*>(&addr)));
+    BOOST_CHECK(s);
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_DGRAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "udp://[200::1223:3456:789a:bcde:f001]:4778");
+  }
+}
+
+COOL_AUTO_TEST_CASE(T007,
+  *utf::description("opeartor =(const std::string&)"))
+{
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = "udp://192.16.32.11:8032");
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_DGRAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "udp://192.16.32.11:8032");
+  }
+  {
+    service s;
+    BOOST_CHECK_NO_THROW(s = "tcp://[200::1223:3456:789a:bcde:f001]:4242");
+    BOOST_CHECK_EQUAL(s.socket_type(), SOCK_STREAM);
+    BOOST_CHECK_EQUAL(s.socket_domain(), AF_INET6);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(s), "tcp://[200::1223:3456:789a:bcde:f001]:4242");
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = "tcp://[200::1223:3456:789a:bcde:f001:4242", cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = "arg://[200::1223:3456:789a:bcde:f001:4242", cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = "tcp://192.168.3:1212", cool::ng::exception::bad_conversion);
+  }
+  {
+    service s;
+    BOOST_CHECK_THROW(s = "tcp://192.168.3.12;1212", cool::ng::exception::bad_conversion);
+  }
+}
+
+COOL_AUTO_TEST_CASE(T008,
+  *utf::description("service::visualize()"))
+{
+  {
+    service s;
+    std::stringstream ss;
+    BOOST_CHECK_THROW(s.visualize(ss), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s(transport::udp, "192.168.3.99"_ipv4, 2222);
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss));
+      BOOST_CHECK_EQUAL(ss.str(), "udp://192.168.3.99:2222");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss, style::dot_decimal));
+      BOOST_CHECK_EQUAL(ss.str(), "udp://192.168.3.99:2222");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_THROW(s.visualize(ss, style::canonical), cool::ng::exception::bad_conversion);
+      BOOST_CHECK_THROW(s.visualize(ss, style::strict), cool::ng::exception::bad_conversion);
+      BOOST_CHECK_THROW(s.visualize(ss, style::expanded), cool::ng::exception::bad_conversion);
+      BOOST_CHECK_THROW(s.visualize(ss, style::microsoft), cool::ng::exception::bad_conversion);
+      BOOST_CHECK_THROW(s.visualize(ss, style::dotted_quad), cool::ng::exception::bad_conversion);
+    }
+  }
+  {
+    service s(transport::tcp, "200::1223:3456:789a:bcde:f001"_ipv6, 44444);
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss));
+      BOOST_CHECK_EQUAL(ss.str(), "tcp://[200::1223:3456:789a:bcde:f001]:44444");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss, style::canonical));
+      BOOST_CHECK_EQUAL(ss.str(), "tcp://[200::1223:3456:789a:bcde:f001]:44444");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss, style::strict));
+      BOOST_CHECK_EQUAL(ss.str(), "tcp://[200::1223:3456:789a:bcde:f001]:44444");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss, style::expanded));
+      BOOST_CHECK_EQUAL(ss.str(), "tcp://[200:0:0:1223:3456:789a:bcde:f001]:44444");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss, style::microsoft));
+      BOOST_CHECK_EQUAL(ss.str(), "tcp://[200--1223-3456-789a-bcde-f001]:44444");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_NO_THROW(s.visualize(ss, style::dotted_quad));
+      BOOST_CHECK_EQUAL(ss.str(), "tcp://[200::1223:3456:789a:188.222.240.1]:44444");
+    }
+    {
+      std::stringstream ss;
+      BOOST_CHECK_THROW(s.visualize(ss, style::dot_decimal), cool::ng::exception::bad_conversion);
+    }
+  }
+}
+
+COOL_AUTO_TEST_CASE(T009,
+*utf::description("service::sockaddr() const"))
+{
+  {
+    service s;
+    const struct sockaddr* ptr;
+    socklen_t len;
+
+    BOOST_CHECK_THROW(ptr = s.sockaddr(), cool::ng::exception::bad_conversion);
+    BOOST_CHECK_THROW(len = s.sockaddr_len(), cool::ng::exception::bad_conversion);
+  }
+  {
+    service s("tcp://[200::1223:3456:789a:bcde:f001]:4242");
+    const struct sockaddr* ptr;
+    socklen_t len;
+    BOOST_CHECK_NO_THROW(ptr = s.sockaddr());
+    BOOST_CHECK_NO_THROW(len = s.sockaddr_len());
+    BOOST_CHECK_EQUAL(len, sizeof(struct sockaddr_in6));
+    BOOST_REQUIRE(ptr->sa_family == AF_INET6);
+    BOOST_CHECK_EQUAL(s.sockaddr_len(), sizeof(struct sockaddr_in6));
+    auto q = reinterpret_cast<const struct sockaddr_in6*>(ptr);
+    auto h = ipv6::host(q->sin6_addr);
+    BOOST_CHECK_EQUAL(h, s.host());
+  }
+  {
+    service s("tcp://192.168.3.100:4242");
+    const struct sockaddr* ptr;
+    socklen_t len;
+    BOOST_CHECK_NO_THROW(ptr = s.sockaddr());
+    BOOST_CHECK_NO_THROW(len = s.sockaddr_len());
+    BOOST_CHECK_EQUAL(len, sizeof(struct sockaddr_in));
+    BOOST_REQUIRE(ptr->sa_family == AF_INET);
+    BOOST_CHECK_EQUAL(s.sockaddr_len(), sizeof(struct sockaddr_in));
+    auto q = reinterpret_cast<const struct sockaddr_in*>(ptr);
+    auto h = ipv6::host(q->sin_addr);
+    BOOST_CHECK_EQUAL(h, s.host());
+  }
+}
+
+
+BOOST_AUTO_TEST_SUITE_END()
+
 

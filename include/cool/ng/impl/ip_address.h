@@ -35,12 +35,14 @@ namespace cool { namespace ng { namespace ip {
 
 enum class style;
 class address;
+class service;
 namespace ipv4 { class host; class network; }
 namespace ipv6 { class host; class network; }
 
 namespace detail {
 
 dlldecl std::istream& sin(std::istream& is, address& val);
+dlldecl std::istream& sin(std::istream& is, service& val);
 dlldecl ip::ipv4::host literal_ipv4(const char* lit_);
 dlldecl ip::ipv6::host literal_ipv6(const char* lit_);
 dlldecl ip::ipv4::network literal_ipv4_net(const char* lit_);

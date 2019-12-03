@@ -90,7 +90,18 @@ enum class attribute
 };
 
 /**
+ * Transport layer protocol enumeration
+ */
+enum class transport
+{
+  unknown, //!< the protocol is unknown
+  udp,     //!< user datagram protocol (UDP)
+  tcp      //!< transmission control protocol (TCP)
+};
+/**
  * Enumeration lising the valid visual styles of IPv4 and IPv6 addresses.
+ *
+ * @see RFC3513: <i>Internet Protocol Version 6 (IPv6) Addressing Architecture</i>
  */
 enum class style {
   /**
@@ -220,7 +231,7 @@ class address
    * IPv6 address space. When comparing the two @ref ip::network "network" address object they have
    * to have equal address mask lengths, too.
    *
-   * @param other an IP address object to compare to this object
+   * @param other_ an IP address object to compare to this object
    * @return true if two address objects compare equal, false if not
    * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
@@ -231,13 +242,13 @@ class address
    * @see @ref cool::ng::ip::operator !=(const cool::ng::ip::address&, const cool::ng::ip::address&)
    *   "!= operator" overload
    */
-  virtual bool equals(const address& other) const = 0;
+  virtual bool equals(const address& other_) const = 0;
   /**
    * Convert the IPv6 address into textual format.
    *
    * Translates the IPv6 address into textual format for visualization.
    *
-   * @param os reference to output  stream to write the visual presentation to
+   * @param os_ reference to output  stream to write the visual presentation to
    * @param style_ visual style to use for visualization
    * @return
    * @see @ref cool::ng::ip::operator <<(std::ostream& os, const cool::ng::ip::address& val)
@@ -247,7 +258,7 @@ class address
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
   */
-  virtual std::ostream& visualize(std::ostream& os, style style_ = style::customary) const = 0;
+  virtual std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const = 0;
   /**
    * Return the version of IP address.
    *
@@ -348,12 +359,13 @@ class address
    *
    *  In all other cases the operator will throw.
    *
-   * @param rhs the IP address object which value to assign to this object.
+   * @param rhs_ the IP address object which value to assign to this object.
+   * @return <tt>*this</tt>
    * @exception exception::bad_conversion thrown if an address cannot be assigned
    */
-  virtual address& operator =(const address& rhs)
+  virtual address& operator =(const address& rhs_)
   {
-    assign(rhs); return *this;
+    assign(rhs_); return *this;
   }
   /**
    * Assignment operator.
@@ -361,13 +373,15 @@ class address
    * Assigns the binary representation of IP address to this address object. If this address object
    * is a @ref network object, a network mask is applied to the source bytes before assignment.
    *
+   * @param rhs_ byte array containing and IP address
+   * @return <tt>*this</tt>
    * @warning It is the user responsibility to ensure that the array contains
    *   at least <tt>@ref address::size() "this.size()"</tt> elements and that they represent
    *   a valid IP address of the respective IP protocol @ref ip::version "version".
    */
-  virtual address& operator =(uint8_t const rhs[])
+  virtual address& operator =(uint8_t const rhs_[])
   {
-    assign(rhs); return *this;
+    assign(rhs_); return *this;
   }
   /**
    * Assignment operator.
@@ -384,16 +398,17 @@ class address
    *   <tt>::%ffff:0:0/96</tt> and used as an IPv6 host address.
    *
    *  In all other cases the operator will throw.
-   *
+   * @param rhs_ IPv4 address structure containing the address
+   * @return <tt>*this</tt>
    * @exception exception::bad_conversion if the source address is
    *   incompatible with the desitnation address
    *
    * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    */
-  virtual address& operator =(const in_addr& rhs)
+  virtual address& operator =(const struct in_addr& rhs_)
   {
-    assign(rhs); return *this;
+    assign(rhs_); return *this;
   }
   /**
    * Assignment operator.
@@ -412,6 +427,8 @@ class address
    *
    *  In all other cases the operator will throw.
    *
+   * @param rhs_ IPv6 address structure containing an IP address
+   * @return <tt>*this</tt>
    * @exception exception::bad_conversion if the source address is
    *   incompatible with the desitnation address
    *
@@ -420,22 +437,24 @@ class address
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
    */
-  virtual address& operator =(const in6_addr& rhs)
+  virtual address& operator =(const struct in6_addr& rhs_)
   {
-    assign(rhs); return *this;
+    assign(rhs_); return *this;
   }
   /**
    * Assignment operator
    *
    * Sets the IP address from the textual presentation.
    *
+   * @param rhs_ string contanining the textual presentation of an IP address
+   * @return <tt>*this</tt>
    * @exception exception::illegal_state The textual presentation is not parsable
    * @exception exception::illegal_argument The textual presentation contains
    *   invalid characters.
    */
-  virtual address& operator =(const std::string& rhs)
+  virtual address& operator =(const std::string& rhs_)
   {
-    assign(rhs); return *this;
+    assign(rhs_); return *this;
   }
   /**
    * Determine whether address belongs to the specified network or not.
@@ -443,18 +462,20 @@ class address
    * Determines whether this IP address belongs to the specified network,
    * either a a host address on the network or as its sub-network.
    *
+   * @param net_ network address to examine the membership of
    * @return true if this address belongs to the specified network, false
    * otherwise.
    *
    * @note IPv6 addresses never belong to IPv4 networks and vice versa.
    */
-  virtual bool in(const network& net) const = 0;
+  virtual bool in(const network& net_) const = 0;
   /**
    * Determine whether IP address demonstrates specified attribute.
    *
-   * @param attr Attribute to check.
+   * @param attr_ Attribute to check.
+   * @return true if this IP addresses demonstrates the attribute, false if not
    */
-  virtual bool is(attribute attr) const = 0;
+  virtual bool is(attribute attr_) const = 0;
 
  protected:
   /**
@@ -463,55 +484,55 @@ class address
    * Implementation classes must provide this method to support the @ref operator=(const address&)
    * "assignment operator".
    *
-   * @param rhs the IP address object which value to assign to this object.
+   * @param rhs_ the IP address object which value to assign to this object.
    * @exception exception::bad_conversion thrown if an address cannot be assigned
    * @see @ref operator=(const address&) for the implementation requirements.
    */
-  virtual void assign(const address& rhs) = 0;
+  virtual void assign(const address& rhs_) = 0;
   /**
    * Assign <tt>in6_addr</tt> to this IP address.
    *
-   * Implementation classes must provide this method to support the @ref operator=(const in6_addr&)
+   * Implementation classes must provide this method to support the @ref operator=(const struct in6_addr&)
    * "assignment operator".
    *
-   * @param rhs <tt>in6_addr</tt> structure to be assigned to  this object.
+   * @param rhs_ <tt>in6_addr</tt> structure to be assigned to  this object.
    * @exception exception::bad_conversion thrown if an address cannot be assigned
-   * @see @ref operator=(const in6_addr&) for the implementation requirements.
+   * @see @ref operator=(const struct in6_addr&) for the implementation requirements.
    */
-  virtual void assign(const in6_addr& rhs) = 0;
+  virtual void assign(const struct in6_addr& rhs_) = 0;
   /**
    * Assign <tt>in_addr</tt> to this IP address.
    *
-   * Implementation classes must provide this method to support the @ref operator=(const in_addr&)
+   * Implementation classes must provide this method to support the @ref operator=(const struct in_addr&)
    * "assignment operator".
    *
-   * @param rhs <tt>in_addr</tt> structure to be assigned to  this object.
+   * @param rhs_ <tt>in_addr</tt> structure to be assigned to  this object.
    * @exception exception::bad_conversion thrown if an address cannot be assigned
-   * @see @ref operator=(const in_addr&) for the implementation requirements.
+   * @see @ref operator=(const struct in_addr&) for the implementation requirements.
    */
-  virtual void assign(const in_addr& rhs) = 0;
+  virtual void assign(const struct in_addr& rhs_) = 0;
   /**
    * Assign array of bytes to this IP address.
    *
    * Implementation classes must provide this method to support the @ref operator=(uint8_t const [])
    * "assignment operator".
    *
-   * @param rhs array of bytes to be assigned to  this object.
+   * @param rhs_ array of bytes to be assigned to  this object.
    * @exception exception::bad_conversion thrown if an address cannot be assigned
    * @see @ref operator=(uint8_t const []) for the implementation requirements.
    */
-  virtual void assign(uint8_t const rhs[]) = 0;
+  virtual void assign(uint8_t const rhs_[]) = 0;
   /**
    * Assign text presentation to this IP address.
    *
    * Implementation classes must provide this method to support the @ref operator=(const std::string&)
    * "assignment operator".
    *
-   * @param rhs textual presentation of an IP addres to assign to this object.
+   * @param rhs_ textual presentation of an IP addres to assign to this object.
    * @exception exception::bad_conversion thrown if an address cannot be assigned
    * @see @ref operator=(const std::string&) for the implementation requirements.
    */
-  virtual void assign(const std::string& rhs) = 0;
+  virtual void assign(const std::string& rhs_) = 0;
 };
 
 /**
@@ -524,25 +545,25 @@ class host : public address
   EXPLICIT_ operator struct in_addr() const override = 0;
   EXPLICIT_ operator struct in6_addr() const override = 0;
   EXPLICIT_ operator std::string() const override = 0;
-  host& operator =(const address& rhs) override
+  host& operator =(const address& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  host& operator =(uint8_t const rhs[]) override
+  host& operator =(uint8_t const rhs_[]) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  host& operator =(const in_addr& rhs) override
+  host& operator =(const struct in_addr& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  host& operator =(const in6_addr& rhs) override
+  host& operator =(const struct in6_addr& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  host& operator =(const std::string& rhs) override
+  host& operator =(const std::string& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
 
   virtual ip::kind kind() const override
@@ -561,35 +582,35 @@ class network : public address
   EXPLICIT_ operator struct in_addr() const override = 0;
   EXPLICIT_ operator struct in6_addr() const override = 0;
   EXPLICIT_ operator std::string() const override = 0;
-  network& operator =(const address& rhs) override
+  network& operator =(const address& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  network& operator =(uint8_t const rhs[]) override
+  network& operator =(uint8_t const rhs_[]) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  network& operator =(const in_addr& rhs) override
+  network& operator =(const struct in_addr& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  network& operator =(const in6_addr& rhs) override
+  network& operator =(const struct in6_addr& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
-  network& operator =(const std::string& rhs) override
+  network& operator =(const std::string& rhs_) override
   {
-    address::operator =(rhs); return *this;
+    address::operator =(rhs_); return *this;
   }
   /**
    * Determine whether IP address belongs to the network.
    *
-   * @return true the specified IP address is either a host on this network
-   *    or a sub-network of this network.
+   * @return true if the specified IP address is either a host on this network
+   *    or a sub-network of this network, false if not/
    *
    * @note IPv6 network does not contain IPv4 hosts or sub-networks, and vice versa.
    */
-  virtual bool has(const address& address) const = 0;
+  virtual bool has(const address& addr_) const = 0;
   virtual ip::kind kind() const override
   {
     return ip::kind::network;
@@ -629,47 +650,47 @@ class host : public ip::host
    * address. In the latter case the new host address object will receive a stanard @ref rfc_ipv4map
    * "SIIT prefix" for mapped addresses (<tt>:</tt><tt>:ffff:0:0/96</tt>).
    *
-   * @param other the other IP address
+   * @param other_ the other IP address
    * @exception exception::bad_conversion thrown if other address object
    *   is not IPv6 host or IPv4 host address object.
    * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    */
-  explicit host(const ip::address& other)
+  explicit host(const ip::address& other_)
   {
-    assign(other);
+    assign(other_);
   }
   /**
    * Construct a host address object with the address read from the byte array.
    *
-   * @param data      byte array containing network address
+   * @param data_ byte array containing network address
    * @warning The ctor uses the first 16 bytes of the array. Providing a byte array of less than 16
    *  elements results in an undefined behavior. This ctor is to be used only if external checks are applied
    *  to the parameter prior the construction of the address object.
    */
-  explicit host(uint8_t const data[])
+  explicit host(uint8_t const data_[])
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object from the IPv6 address structure.
    *
-   * @param data      IPv6 structure with network address.
+   * @param data_ IPv6 structure with network address.
    */
-  explicit host(const in6_addr& data)
+  explicit host(const struct in6_addr& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object from IPv4 address structure.
    *
-   * @param data      IPv4 structure with network address.
+   * @param data_     IPv4 structure with network address.
    * @note The constructed object is an IPv4 mapped address with the
    *   @ref rfc_ipv4map "standard network prefix" for mapped addresses.
    */
-  explicit host(const struct in_addr& data)
+  explicit host(const struct in_addr& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object from textual presentation of the IPv6 host address.
@@ -678,12 +699,12 @@ class host : public ip::host
    * "visual styles for IPV6 addresses" supported by the @ref ip. Additionally, the @ref ip::style::expanded
    * "expanded" style may be further expanded by providing leading zeros in the quad.
    *
-   * @param data textual presentation of the IPv6 host address
+   * @param data_ textual presentation of the IPv6 host address
    * @exception exception::bad_conversion thrown if the textual presentation of the address is not parsable
    */
-  explicit host(const std::string& data)
+  explicit host(const std::string& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object with address from the initializer list.
@@ -698,9 +719,9 @@ class host : public ip::host
    * If the list contains fewer than 16 values the remaining values are
    * set to 0.
    *
-   * @param data     initializer list containing network address bytes.
+   * @param data_     initializer list containing network address bytes.
    */
-  host(std::initializer_list<uint8_t> data) : m_data(data)
+  host(std::initializer_list<uint8_t> data_) : m_data(data_)
   { /* noop */ }
 
   // ==== address interface
@@ -714,33 +735,33 @@ class host : public ip::host
   dlldecl EXPLICIT_ operator std::string () const override;
 
   // ---- assignment operators
-  host& operator =(const ip::address& rhs) override
+  host& operator =(const ip::address& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(uint8_t const rhs[]) override
+  host& operator =(uint8_t const rhs_[]) override
   {
-    ip::address::operator =(rhs); return *this;
+    ip::address::operator =(rhs_); return *this;
   }
-  host& operator =(const in_addr& rhs) override
+  host& operator =(const struct in_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(const in6_addr& rhs) override
+  host& operator =(const struct in6_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(const std::string& rhs) override
+  host& operator =(const std::string& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
   //---- other methods
-  dlldecl bool equals(const ip::address& other) const override;
-  dlldecl std::ostream& visualize(std::ostream& os, style style_ = style::customary) const override;
+  dlldecl bool equals(const ip::address& other_) const override;
+  dlldecl std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::host;
@@ -754,15 +775,15 @@ class host : public ip::host
   {
     return m_data.size();
   };
-  dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::attribute) const override;
+  dlldecl bool in(const ip::network& net_) const override;
+  dlldecl bool is(ip::attribute attr_) const override;
 
  private:
-  dlldecl void assign(const ip::address& rhs) override;
-  dlldecl void assign(const in_addr& rhs) override;
-  dlldecl void assign(const in6_addr& rhs) override;
-  dlldecl void assign(uint8_t const rhs[]) override;
-  dlldecl void assign(const std::string& rhs) override;
+  dlldecl void assign(const ip::address& rhs_) override;
+  dlldecl void assign(const struct in_addr& rhs_) override;
+  dlldecl void assign(const struct in6_addr& rhs_) override;
+  dlldecl void assign(uint8_t const rhs_[]) override;
+  dlldecl void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
@@ -781,10 +802,10 @@ class network : public ip::network
   { /* noop */ }
   /**
    * Construct a network address object with the specified mask size and an unspecified address.
-   * @param mask_size number of bits, from the left, of the network address part (network mask)
+   * @param mask_size_ number of bits, from the left, of the network address part (network mask)
    * @exception exception::out_of_range thrown if mask size exceeds 128 bits.
    */
-  explicit network(std::size_t mask_size) : m_length(mask_size)
+  explicit network(std::size_t mask_size_) : m_length(mask_size_)
   {
     if (mask() > 128)
       throw exception::out_of_range();
@@ -792,28 +813,28 @@ class network : public ip::network
   /**
    * Construct a network address object with the address read from the byte array.
    *
-   * @param mask_size Network mask size, in bits
-   * @param data      Byte array containing network address.
+   * @param mask_size_ Network mask size, in bits
+   * @param data_      Byte array containing network address.
    * @exception exception::out_of_range thrown if the mask size exceeds 128 bits.
    *
    * @warning The ctor uses the first 16 bytes of the array. Providing a byte array of less than 16
    *  elements results in an undefined behavior. This ctor is to be used only if external checks are applied
    *  to the parameter prior the construction of the address object.
    */
-  explicit network(std::size_t mask_size, uint8_t const data[]) : m_length(mask_size)
+  explicit network(std::size_t mask_size_, uint8_t const data_[]) : m_length(mask_size_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a network address object from the IPv6 address structure.
    *
-   * @param mask_size Network mask size, in bits
-   * @param data      IPv6 structure with network address.
+   * @param mask_size_ Network mask size, in bits
+   * @param data_      IPv6 structure with network address.
    * @exception exception::out_of_range thrown if mask size exceeds 128 bits.
    */
-  explicit network(std::size_t mask_size, const in6_addr& data) : m_length(mask_size)
+  explicit network(std::size_t mask_size_, const struct in6_addr& data_) : m_length(mask_size_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a network address object from textual presentation of the IPv6 network address.
@@ -822,14 +843,14 @@ class network : public ip::network
    * "visual styles for IPV6 addresses" supported by the @ref ip. Additionally, the @ref ip::style::expanded
    * "expanded" style may be further expanded by providing leading zeros in the quad.
    *
-   * @param data textual presentation of the IPv6 network address
+   * @param data_ textual presentation of the IPv6 network address
    * @exception exception::bad_conversion thrown if the textual presentation of IPv6 network address is not parsable
    * @exception exception::out_of_range thrown if the network mask length exceeds 128 bits
    * @note The network address string must include the network mask size.
    */
-  explicit network(const std::string& data)
+  explicit network(const std::string& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a network address object with address from the initializer list.
@@ -845,11 +866,11 @@ class network : public ip::network
    * set to 0. The first number (96 in above example) is the network mask size,
    * in bits.
    *
-   * @param mask_size network mask size, in bits
-   * @param data      initializer list containing network address bytes.
+   * @param mask_size_ network mask size, in bits
+   * @param data_      initializer list containing network address bytes.
    * @exception exception::out_of_range thrown if the mask size exceeds 128 bits.
    */
-  dlldecl network(std::size_t mask_size, std::initializer_list<uint8_t> data);
+  dlldecl network(std::size_t mask_size_, std::initializer_list<uint8_t> data_);
   /**
    * Construct a network address object from the host address.
    *
@@ -857,18 +878,18 @@ class network : public ip::network
    * the host address object. This constructor can be used to determine the network
    * adddress of the known host, if the mask is known.
    *
-   * @param mask_size number of bits, from the left, of the network address part (network mask)
-   * @param other   the host  address object which IP address to  use
+   * @param mask_size_ number of bits, from the left, of the network address part (network mask)
+   * @param other_   the host  address object which IP address to  use
    * @exception exception::out_of_range thrown if mask_size exceeds 128 bits.
    */
-  explicit network(std::size_t mask_size, const host& other) : m_length(mask_size)
+  explicit network(std::size_t mask_size_, const host& other_) : m_length(mask_size_)
   {
-    assign(other);
+    assign(other_);
   }
 
   // address interface
-  dlldecl bool equals(const ip::address& other) const override;
-  dlldecl std::ostream& visualize(std::ostream &os, style style_ = style::customary) const override;
+  dlldecl bool equals(const ip::address& other_) const override;
+  dlldecl std::ostream& visualize(std::ostream &os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::network;
@@ -889,48 +910,48 @@ class network : public ip::network
   {
     return m_data.size();
   };
-  network& operator =(const ip::address& rhs) override
+  network& operator =(const ip::address& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(const in_addr& rhs) override
+  network& operator =(const struct in_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(const in6_addr& rhs) override
+  network& operator =(const struct in6_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(uint8_t const rhs[]) override
+  network& operator =(uint8_t const rhs_[]) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(const std::string& rhs) override
+  network& operator =(const std::string& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
 
-  bool in(const ip::network& net) const override;
+  bool in(const ip::network& net_) const override;
   bool is(ip::attribute) const override;
 
   // network interface
-  dlldecl bool has(const ip::address& other) const override;
+  dlldecl bool has(const ip::address& other_) const override;
   std::size_t mask() const override
   {
     return m_length;
   }
 
  private:
-  dlldecl void assign(const ip::address& rhs) override;
-  dlldecl void assign(const in_addr& rhs) override;
-  dlldecl void assign(const in6_addr& rhs) override;
-  dlldecl void assign(uint8_t const rhs[]) override;
-  dlldecl void assign(const std::string& rhs) override;
+  dlldecl void assign(const ip::address& rhs_) override;
+  dlldecl void assign(const struct in_addr& rhs_) override;
+  dlldecl void assign(const struct in6_addr& rhs_) override;
+  dlldecl void assign(uint8_t const rhs_[]) override;
+  dlldecl void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
@@ -1042,7 +1063,7 @@ class host : public ip::host
    * an @ref ipv6::host "IPv6 host" address object that was @ref ipv6::rfc_ipv4map
    * "mapped" or @ref ipv6::rfc_ipv4translate "translated" from the IPv4 host address
    *
-   * @param other the other IP address
+   * @param other_ the other IP address
    * @exception exception::bad_conversion thrown if other address object
    *   is neither IPv4 host address nor mapped or translated IPv6 host address.
    * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
@@ -1050,22 +1071,22 @@ class host : public ip::host
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
    */
-  explicit host(const ip::address& other)
+  explicit host(const ip::address& other_)
   {
-    assign(other);
+    assign(other_);
   }
   /**
    * Construct a host address object with the address read from the byte array.
    *
-   * @param data      byte array containing network address.
+   * @param data_      byte array containing network address.
    *
    * @warning The ctor uses the first 4 bytes of the array. Providing a byte array of less than 4
    *  elements results in an undefined behavior. This ctor is to be used only if external checks are applied
    *  to the parameter prior the construction of the address object.
    */
-  explicit host(uint8_t const data[])
+  explicit host(uint8_t const data_[])
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object from IPv6 address structure.
@@ -1073,7 +1094,7 @@ class host : public ip::host
    * Such construction is only possible if the IPv6 address structure contains
    * an IPv6 address that was mapped or translated from the IPv4 address..
    *
-   * @param data      IPv6 structure with network address.
+   * @param data_      IPv6 structure with network address.
    * @exception exception::bad_conversion thrown if specified address
    *   is not valid.
    *
@@ -1082,18 +1103,18 @@ class host : public ip::host
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
    */
-  explicit host(const in6_addr& data)
+  explicit host(const struct in6_addr& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object from the IPv4 address structure.
    *
-   * @param data      IPv4 structure with network address.
+   * @param data_      IPv4 structure with network address.
    */
-  explicit host(const struct in_addr& data)
+  explicit host(const struct in_addr& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object from textual presentation of the IPv4 host address.
@@ -1101,13 +1122,13 @@ class host : public ip::host
    * The string parameter must contain a valid IPv4 host address in @ref ip::style::dot_decimal
    * "dot-decimal" visual style.
    *
-   * @param data textual presentation of the IPv4 host address
+   * @param data_ textual presentation of the IPv4 host address
    *
    * @exception exception::bad_conversion thrown if the textual presentation is not parsable
    */
-  explicit host(const std::string& data)
+  explicit host(const std::string& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a host address object with address from the initializer list.
@@ -1119,14 +1140,14 @@ class host : public ip::host
    * If the list contains fewer than 4 values the remaining values are
    * set to 0.
    *
-   * @param data     initializer list containing network address bytes.
+   * @param data_     initializer list containing network address bytes.
    */
-  host(std::initializer_list<uint8_t> data) : m_data(data)
+  host(std::initializer_list<uint8_t> data_) : m_data(data_)
   { /* noop */ }
 
   // address interface
-  dlldecl  bool equals(const ip::address& other) const override;
-  dlldecl  std::ostream& visualize(std::ostream& os, style style_ = style::customary) const override;
+  dlldecl  bool equals(const ip::address& other_) const override;
+  dlldecl  std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::host;
@@ -1146,29 +1167,29 @@ class host : public ip::host
   {
     return m_data.size();
   };
-  host& operator =(const ip::address& rhs) override
+  host& operator =(const ip::address& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(uint8_t const rhs[]) override
+  host& operator =(uint8_t const rhs_[]) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(const in_addr& rhs) override
+  host& operator =(const struct in_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(const in6_addr& rhs) override
+  host& operator =(const struct in6_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  host& operator =(const std::string& rhs) override
+  host& operator =(const std::string& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
 
@@ -1176,11 +1197,11 @@ class host : public ip::host
   dlldecl bool is(ip::attribute) const override;
 
  private:
-  dlldecl void assign(const ip::address& rhs) override;
-  dlldecl void assign(const in_addr& rhs) override;
-  dlldecl void assign(const in6_addr& rhs) override;
-  dlldecl void assign(uint8_t const rhs[]) override;
-  dlldecl void assign(const std::string& rhs) override;
+  dlldecl void assign(const ip::address& rhs_) override;
+  dlldecl void assign(const struct in_addr& rhs_) override;
+  dlldecl void assign(const struct in6_addr& rhs_) override;
+  dlldecl void assign(uint8_t const rhs_[]) override;
+  dlldecl void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
@@ -1199,10 +1220,10 @@ class network : public ip::network
   { /* noop */ }
   /**
    * Construct a network address object with the specified mask size and an unspecified address.
-   * @param mask_size number of bits, from the left, of the network address part (network mask)
+   * @param mask_size_ number of bits, from the left, of the network address part (network mask)
    * @exception exception::out_of_range thrown if mask size exceeds 32 bits.
    */
-  explicit network(std::size_t mask_size) : m_length(mask_size)
+  explicit network(std::size_t mask_size_) : m_length(mask_size_)
   {
     if (mask() > 32)
       throw exception::out_of_range();
@@ -1215,8 +1236,8 @@ class network : public ip::network
    * be an IPv4 network address, or either an IPv4 host address or an IPv6 host address which was
    * @ref ipv6::rfc_ipv4map "mapped" or @ref ipv6::rfc_ipv4translate "translated" from IPv4 host address.
    *
-   * @param mask_size number of bits, from the left, of the network address part (network mask)
-   * @param other   the host  address object which IP address to  use
+   * @param mask_size_ number of bits, from the left, of the network address part (network mask)
+   * @param other_   the host  address object which IP address to  use
    * @exception exception::out_of_range thrown if mask_size exceeds 32 bits.
    * @exception exception::bad_conversion thown if the host address object is an @ref ipv6::host
    * "IPv6 host" address object which was not @ref ipv6::rfc_ipv4map "mapped" or @ref ipv6::rfc_ipv4translate
@@ -1226,15 +1247,15 @@ class network : public ip::network
    * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
    *   addresses
    */
-  explicit network(std::size_t mask_size, const ip::address& other) : m_length(mask_size)
+  explicit network(std::size_t mask_size_, const ip::address& other_) : m_length(mask_size_)
   {
-    assign(other);
+    assign(other_);
   }
   /**
    * Construct a network address object with the address read from the byte array.
    *
-   * @param mask_size network mask size, in bits
-   * @param data      byte array containing network address.
+   * @param mask_size_ network mask size, in bits
+   * @param data_      byte array containing network address.
    * @exception exception::bad_conversion if the specified address is not a host address
    * @exception exception::out_of_range thrown if mask size exceeds 32 bits.
    *
@@ -1242,20 +1263,20 @@ class network : public ip::network
    *  elements results in an undefined behavior. This ctor is to be used only if external checks are applied
    *  to the parameter prior the construction of the address object.
    */
-  explicit network(std::size_t mask_size, uint8_t const data[]) : m_length(mask_size)
+  explicit network(std::size_t mask_size_, uint8_t const data_[]) : m_length(mask_size_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a network  address object from the  IPv4 address structure.
    *
-   * @param mask_size network mask size, in bits
-   * @param data      IPv4 structure with network address.
+   * @param mask_size_ network mask size, in bits
+   * @param data_      IPv4 structure with network address.
    * @exception exception::out_of_range thrown if mask size exceeds 32 bits.
    */
-  explicit network(std::size_t mask_size, const in_addr& data) : m_length(mask_size)
+  explicit network(std::size_t mask_size_, const struct in_addr& data_) : m_length(mask_size_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a network address object from textual presentation of the IPv4 network address.
@@ -1263,14 +1284,14 @@ class network : public ip::network
    * The string parameter must contain a valid IPv4 network address in @ref ip::style::dot_decimal
    * "dot-decimal" visual style.
    *
-   * @param data textual presentation of the IPv4 network address
+   * @param data_ textual presentation of the IPv4 network address
    * @exception exception::bad_conversion thrown if the textual presentation of IPv4 network address is not parsable
    * @exception exception::out_of_range thrown if the network mask length exceeds 32 bits
    * @note The network address string must include the network mask size.
    */
-  explicit network(const std::string& data)
+  explicit network(const std::string& data_)
   {
-    assign(data);
+    assign(data_);
   }
   /**
    * Construct a network address object with address from the initializer list.
@@ -1283,15 +1304,15 @@ class network : public ip::network
    * set to 0. The first number (24 in above example) is the network mask size,
    * in bits.
    *
-   * @param mask_size network mask size, in bits
-   * @param data     initializer list containing network address bytes.
+   * @param mask_size_ network mask size, in bits
+   * @param data_     initializer list containing network address bytes.
    * @exception exception::out_of_range thrown if mask size exceeds 32 bits.
    */
-  dlldecl network(std::size_t mask_size, std::initializer_list<uint8_t> data);
+  dlldecl network(std::size_t mask_size_, std::initializer_list<uint8_t> data_);
 
   // address interface
-  dlldecl bool equals(const ip::address& other) const override;
-  dlldecl std::ostream& visualize(std::ostream &os, style style_ = style::customary) const override;
+  dlldecl bool equals(const ip::address& other_) const override;
+  dlldecl std::ostream& visualize(std::ostream &os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::network;
@@ -1314,48 +1335,48 @@ class network : public ip::network
   {
     return m_data.size();
   };
-  network& operator =(const ip::address& rhs) override
+  network& operator =(const ip::address& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(uint8_t const rhs[]) override
+  network& operator =(uint8_t const rhs_[]) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(const in_addr& rhs) override
+  network& operator =(const struct in_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(const in6_addr& rhs) override
+  network& operator =(const struct in6_addr& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
-  network& operator =(const std::string& rhs) override
+  network& operator =(const std::string& rhs_) override
   {
-    ip::address::operator =(rhs);
+    ip::address::operator =(rhs_);
     return *this;
   }
 
-  dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::attribute) const override;
+  dlldecl bool in(const ip::network& net_) const override;
+  dlldecl bool is(ip::attribute attr_) const override;
 
   // network interface
-  dlldecl bool has(const ip::address& other) const override;
+  dlldecl bool has(const ip::address& other_) const override;
   std::size_t mask() const override
   {
     return m_length;
   }
 
  private:
-  dlldecl void assign(const ip::address& rhs) override;
-  dlldecl void assign(const in_addr& rhs) override;
-  dlldecl void assign(const in6_addr& rhs) override;
-  dlldecl void assign(uint8_t const rhs[]) override;
-  dlldecl void assign(const std::string& rhs) override;
+  dlldecl void assign(const ip::address& rhs_) override;
+  dlldecl void assign(const struct in_addr& rhs_) override;
+  dlldecl void assign(const struct in6_addr& rhs_) override;
+  dlldecl void assign(uint8_t const rhs_[]) override;
+  dlldecl void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
@@ -1520,7 +1541,7 @@ class host_container
   /**
    * Copy constructor.
    */
-  host_container(const host_container& other) : host_container(static_cast<const address&>(other))
+  host_container(const host_container& other_) : host_container(static_cast<const address&>(other_))
   { /* noop */ }
   /**
    * Construct a host_container instance from the IP address.
@@ -1538,19 +1559,21 @@ class host_container
    *
    * The address is interpreted to be an @ref ipv4::host "IPv4 host" address.
    */
-  host_container(const in_addr& addr_) : host_container(ipv4::host(addr_))
+  host_container(const struct in_addr& addr_) : host_container(ipv4::host(addr_))
   { /* noop */  }
   /**
    * Constuct a host_container instance from the IPv6 address structure.
    *
    * The address is interpreted to be an @ref ipv6::host "IPv6 host" address.
    */
-  host_container(const in6_addr& addr_) : host_container(ipv6::host(addr_))
+  host_container(const struct in6_addr& addr_) : host_container(ipv6::host(addr_))
   { /* noop */  }
   /**
    * Constuct a host_container instance from the <tt>sockaddr_storage</tt> structure.
+   *
+   * @param addr_ the <tt>sockaddr_storage</tt> structure
    */
-  host_container(const sockaddr_storage& addr_) : host_container()
+  host_container(const struct sockaddr_storage& addr_) : host_container()
   {
     *this = addr_;
   }
@@ -1560,42 +1583,42 @@ class host_container
    * Replaces current value of this host_container object with the value of another host_container object.
    * This is a custom implementation of the copy-assignment operator.
    *
-   * @param other the host_container object to copy the value from
+   * @param other_ the host_container object to copy the value from
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const host_container& other);
+  dlldecl host_container& operator =(const host_container& other_);
   /**
    * Assignment operator.
    *
    * Sets the value of this host_container to the specified address, which must be either IPv6 or
    * IPv4 @ref host address.
    *
-   * @param data an @ref ip::address to store in this host_container
+   * @param data_ an @ref ip::address to store in this host_container
    * @return reference to this host_container object
    * @exception cool::ng::exception::bad_conversion thrown if the provided address is not a @ref host
    *  address.
    */
-  dlldecl host_container& operator =(const address& data);
+  dlldecl host_container& operator =(const address& data_);
   /**
    * Assignment operator.
    *
    * Sets the value of this host_container to the host address provided in the IPv4 <tt>struct in_addr</tt>
    * address structure. The address is interpreted to be an @ref ipv4::host "IPv4 host" address.
    *
-   * @param data an IPv4 address structure containing the host address
+   * @param data_ an IPv4 address structure containing the host address
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const in_addr& data);
+  dlldecl host_container& operator =(const struct in_addr& data_);
   /**
    * Assignment operator.
    *
    * Sets the value of this host_container to the host address provided in the IPv6 <tt>struct in6_addr</tt>
    * address structure. The address is interpreted to be an @ref ipv6::host "IPv6 host" address.
    *
-   * @param data an IPv6 address structure containing the host address
+   * @param data_ an IPv6 address structure containing the host address
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const in6_addr& data);
+  dlldecl host_container& operator =(const struct in6_addr& data_);
   /**
    * Assignment operator.
    *
@@ -1603,10 +1626,10 @@ class host_container
    * structure. Depending on the parameter's value, the address is interpreted to be either an @ref ipv6::host
    * "IPv6 host" address or an @ref ipv4::host "IPv4 host" address.
    *
-   * @param data the <tt>sockaddr_storage</tt> address structure containing the host address
+   * @param data_ the <tt>sockaddr_storage</tt> address structure containing the host address
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const sockaddr_storage& data);
+  dlldecl host_container& operator =(const struct sockaddr_storage& data_);
   /**
    * Type conversion operator
    *
@@ -1634,7 +1657,7 @@ class host_container
    *
    * @return <tt>sockaddr_storage</tt> structure reflecting the currently stored IP address.
    */
-  dlldecl EXPLICIT_ operator sockaddr_storage() const;
+  dlldecl EXPLICIT_ operator struct sockaddr_storage() const;
 
  private:
   void release();
@@ -1656,10 +1679,11 @@ class host_container
  * @return false if two addresses are binary different
  * @see @ref address::equals() for the definition of equality.
  */
-inline bool operator ==(const address& lhs, const address& rhs)
+inline bool operator ==(const address& lhs_, const address& rhs_)
 {
-  return lhs.equals(rhs);
+  return lhs_.equals(rhs_);
 }
+
 /**
  * @ingroup ip
  * Binary compare two IP addresses.
@@ -1668,10 +1692,367 @@ inline bool operator ==(const address& lhs, const address& rhs)
  * @return true if two addresses are binary different
  * @see @ref address::equals() for the definition of equality.
  */
-inline bool operator !=(const address& lhs, const address& rhs)
+inline bool operator !=(const address& lhs_, const address& rhs_)
 {
-  return !lhs.equals(rhs);
+  return !lhs_.equals(rhs_);
 }
+/**
+ * @ingroup ip
+ * @ref ipv4::host "IPv4 host address" literal.
+ *
+ * Enables coding the IPv4 host addresses as a literal constants, eg:
+ *
+ * <code>
+ *   auto host = "192.168.1.1"_ipv4;
+ * </code>
+ * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv4 host address.
+*/
+inline ipv4::host operator "" _ipv4(const char* lit_, std::size_t len_)
+{
+  return detail::literal_ipv4(lit_);
+}
+
+/**
+ * @ingroup ip
+ * @ref ipv6::host "IPv6 host address" literal.
+ *
+ * Enables coding the IPv6 host addresses as a  literal constants, eg:
+ *
+ * <code>
+ *   auto host = "0:12f5:3:a3f8::3:1"_ipv6;
+ * </code>
+ *
+ * The address string can be written in any @ref style "visual style" suitable for IPv6 host addresses.
+ * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv6 host address.
+*/
+inline ipv6::host operator "" _ipv6(const char* lit_, std::size_t len_)
+{
+  return detail::literal_ipv6(lit_);
+}
+
+/**
+ * @ingroup ip
+ * @ref ipv4::network "IPv4 network address" literal.
+ *
+ * Enables coding the IPv4 network addresses as a  literal constants, eg:
+ *
+ * <code>
+ *   auto net = "192.168.3.0/24"_ipv4_net;
+ * </code>
+ *
+ * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv4 network address.
+*/
+inline ipv4::network operator "" _ipv4_net(const char* lit_, std::size_t len_)
+{
+  return detail::literal_ipv4_net(lit_);
+}
+
+/**
+ * @ingroup ip
+ * @ref ipv6::network "IPv6 network address" literal.
+ *
+ * Enables coding the IPv6 network addresses as a  literal constants, eg:
+ *
+ * <code>
+ *   auto net = "::ffff:0:0/96"_ipv6_net;
+ * </code>
+ *
+ * The address string can be written in any @ref style "visual style" suitable for IPv6 network addresses.
+ * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv6 network address.
+*/
+inline ipv6::network operator "" _ipv6_net(const char* lit_, std::size_t len_)
+{
+  return detail::literal_ipv6_net(lit_);
+}
+
+/**
+ * @ingroup ip
+ * @ref address "IP address" literal.
+ *
+ * Enables coding of any IP addresses as a  literal constants, eg:
+ *
+ * <code>
+ *   auto something = "0:12f5:3:a3f8::3:1"_ip;
+ * </code>
+ *
+ * The implementation will examine the address literal to determine what the address represents and
+ * return the shared pointer to the appropriate object. The address string can be written in any recognized
+ * @ref style "visual style".
+ *
+ * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IP address.
+ * @exception cool::ng::exception::out_of_range thrown if the network mask exceeds the number of
+ * address bits for given @ref ip::version "IP address version".
+*/
+std::shared_ptr<address> operator "" _ip(const char * lit_, std::size_t len_)
+{
+  return detail::literal_ip(lit_);
+}
+
+/**
+ * A class representing a network service.
+ *
+ * The network service is identified with the three data elements
+ *    - the @ref transport level protocol this service is using,
+ *    - the @ref address of the host running the service, and
+ *    - a service port
+ *
+ * This class combines all three data elements and can be used to represent either the service provides side
+ * or the service consumer side of the communication.
+ */
+class service
+{
+ public:
+  /**
+   * Default constructor.
+   *
+   * Constructs and instance of the service object with invalid service data. Such service object will throw
+   * on most operations.
+   */
+  explicit service() : m_proto(transport::unknown), m_port(0)
+  { /* noop */ }
+  /**
+   * Construct a service object for the service using the specified transport protocol.
+   *
+   * Such service object, while having valid service data, cannot be used to implement or contact
+   * actual network service since its network address is set to @ref ipv6::unspecified and it service
+   * port to 0. It can be used, however, as a target for assigning <tt>sockaddr</tt> structure with the
+   * actual service information.
+   * @param t_ The @ref transport used by the service
+   * @exception cool::ng::exception::illegal_argument thrown if the <tt>t_</tt> parameter is set to
+   * <tt>transport::unknown</tt>.
+   */
+  explicit service(transport t_) : m_proto(t_), m_port(0)
+  {
+    if (t_ == transport::unknown)
+      throw cool::ng::exception::illegal_argument();
+    sync();
+  }
+  /**
+   * Construct a service object for the service using the specified transport protocol and <tt>sockaddr</tt> structure.
+   *
+   * Constructs a service object for the specified @ref transport, and the IP address and the service port
+   * number fetched from the provided <tt>sockaddr</tt> structure.
+   * @param t_ the @ref transport used by this service
+   * @param sa_ the pointer to <tt>sockaddr</tt> structure
+   * @exception cool::ng::exception::illegal_argument thrown if the provided pointer is <tt>nullptr</tt>
+   * or if the <tt>t_</tt> parameter is set to <tt>transport::unknown</tt>.
+   * @exception cool::ng::exception::bad_conversion thrown is <tt>sockaddr</tt> is neither AF_INET
+   * nor AF_INET6 socket address.
+   */
+  explicit service(transport t_, const struct sockaddr* sa_) : service(t_)
+  {
+    assign(sa_);
+  }
+  /**
+   * Construct a service object for the specified service using the specified transport, address and the service port
+   *
+   * @param t_ the @ref transport used by this service
+   * @param a_ the IP @ref address of the host sunning the service , or connecting to the local service
+   * @param p_ the service port used by the service, or the consumer port using to the service
+   * @exception cool::ng::exception::bad_conversion trown  if the @ref address is not a @ref host address
+   * @exception cool::ng::exception::illegal_argument thrown if the <tt>t_</tt> parameter is set to
+   * <tt>transport::unknown</tt>.
+   */
+  explicit service(transport t_, const address& a_, uint16_t p_)
+    : service(t_)
+  {
+    m_host = a_;
+    m_port = p_;
+  }
+  /**
+   * Construct a service object for the URI string
+   *
+   * Construct the service object from the URI string.
+   * @param uri_ the URI s tring containing the service information
+   * @exception cool::ng::exception::bad_conversion trown  if the URI string is malformed
+   * @see service::operator =(const std::string&)
+   */
+  explicit service(const std::string& uri_) : service()
+  {
+    assign(uri_);
+  }
+  /**
+   * Assignment operator.
+   *
+   * Assigns the service information from the URI string. The URI string contains the transport level
+   * protocol (either <i>tcp</i> or <i>udp</i>), followed by the @ref address "IP address" of the host
+   * providing or consuming the service, followed by the service port, as in the following examples:
+   *
+   *<code>
+   *  tcp://127.0.0.1:442
+   *  udp://[::1]:80
+   *  tcp://[::%ffff:192.168.3.42]:7776
+   *</code>
+   *
+   * @param uri_ the URI string with the service information
+   * @exception cool::ng::exception::bad_conversion thrown if the input string is malformed.
+   * @return reference to this object
+   * @note In order to disambiguate between the separator for the service port and a quad deliimiter used
+   * in textual presentation of IPv6 addresses, the latter must be enclosed in square brackets ('<tt>[</tt>' and
+   * '<tt>]</tt>'). The IPv4 address <i>must not</i> be enclosed in square brackers. The IPv4 and IPv6
+   * addresses themselves must be written in one of the recognized @ref style "visual styles".
+   * @see @ref  style "Visual styles" for textual presentation of IP addresses
+   * @see RFC 3986: <i>Uniform Resource Identifier (URI): Generic Syntax</i>
+   */
+  dlldecl service& operator =(const std::string& uri_)
+  {
+    assign(uri_); return *this;
+  }
+  /**
+   * Assignment operator.
+   *
+   * Assign the IP address and the service port number, contained in the <tt>sockaddr</tt> structure,
+   * to this service object. The assignment does not modify the @ref transport of the service, which must be
+   * set prior to assignment. An attempt to use this assignment operator on a default constructed object
+   * will throw.
+   *
+   * @param sa_ pointer to the <tt>sockaddr</tt> structure.
+   * @exception cool::ng::exception::invalid_state thrown if this service object is not valid
+   * @exception cool::ng::exception::illegal_argument thrown if the provided pointer is <tt>nullptr</tt>
+   * @exception cool::ng::exception::bad_conversion thrown is <tt>sockaddr</tt> is neither AF_INET
+   * nor AF_INET6 socket address.
+   * @return reference to this object
+   * @note This assignment operator will not modify the @ref transport protocol used by the service.
+   * Consequenlty, it is illegal to use this assignment operator on invalid (@ref service::service()
+   * "default constructed") service object.
+   */
+  service& operator =(const sockaddr* sa_)
+  {
+    assign(sa_); return *this;
+  }
+  /**
+   * Type conversion operator.
+   *
+   * Determines the validity of this service object.
+   *
+   * @return true if the service information was set
+   * @return false if this object was default constructed and the service information was not set
+   */
+  EXPLICIT_ operator bool () const  { return m_proto != transport::unknown; }
+  /**
+   * Type conversion operator.
+   *
+   * Returns a string representation of this service information in a form of URI specification.
+   *
+   * @return an URI string containing this seervice information
+   * @exception cool::ng::exception::bad_conversion thrown if this object does not contain a valid
+   * service information due to the default construction.
+   * @see service::operator =(const std::string&)
+   */
+  dlldecl EXPLICIT_ operator std::string() const;
+  /**
+   * Get the <tt>sockaddr</tt> pointer.
+   *
+   * Return a pointer to the <tt>sockaddr</tt> structure which corresponds to the service information
+   * stored in this service object. This pointer can be directly passed to the functions that pass this
+   * data to the kernel, eg:
+   *
+   * <code>
+   *   auto res = connect(sock, service.sockaddr(), service.sockaddr_len());
+   * </code>
+   * @return <tt>const</tt> pointer to the internal sockaddr structure containing the service address
+   * @exception cool::ng::exception::bad_conversion thrown if the service object is not valid
+   */
+  dlldecl const struct sockaddr* sockaddr() const;
+  /**
+   * Return the size of the socket address structure.
+   *
+   * Returns the size of the <tt>sockaddr</tt> structure needed to represent the service @ref address.
+   *
+   * @return the size of the <tt>sockaddr</tt> structure.
+   * @exception cool::ng::exception::bad_conversion thrown if this object does not contain a valid
+   * service information due to the default construction.
+   */
+  dlldecl socklen_t sockaddr_len() const;
+  /**
+   * Return the domain of the network socket required for the service.
+   *
+   * Returns a numerical value of the network domain, required for the communication for this service. The
+   * returned value is such that can be directly used with the socket(2) call to allocate a new network
+   * socket, as in the following code fragment:
+   *
+   * <code>
+   *   auto sock = socket(service.socket_domain(), service.socket_type(), 0);
+   * </code>
+   * @return AF_INET if the if the address of the network service is @ref version::ipv4 "IPv4" address
+   * @return AF_INET6 if the if the address of the network service is @ref version::ipv6 "IPv6" address
+   */
+  int socket_domain() const
+  {
+    return static_cast<const address&>(m_host).version() == version::ipv6 ? AF_INET6 : AF_INET;
+  }
+  /**
+   * Return the type of the network socket required for the service.
+   *
+   * Returns a numerical value of the socket type, required for the communication for this service. The
+   * returned value is such that can be directly used with the socket(2) call to allocate a new network
+   * socket, as in the following code fragment:
+   *
+   * <code>
+   *   auto sock = socket(service.socket_domain(), service.socket_type(), 0);
+   * </code>
+   * @return SOCK_DGRAM if the transport protocol for this service is transport::udp
+   * @return SOCK_STREAM if the transport protocol for this service is transport::tcp
+   * @exception cool::ng::exception::bad_conversion thrown if the transport protocol is not known due
+   *  to the default construction
+   */
+  int socket_type() const
+  {
+    switch (m_proto)
+    {
+      case transport::unknown: throw cool::ng::exception::bad_conversion();
+      case transport::udp:     return SOCK_DGRAM;
+      case transport::tcp:     return SOCK_STREAM;
+    }
+  }
+  /**
+   * Return the @ref address "IP address" of the service endpoint.
+   */
+  const address& host() const
+  {
+    return static_cast<const address&>(m_host);
+  }
+  /**
+   * Return the port number of the service endpoint.
+   */
+  uint16_t port() const
+  {
+    return m_port;
+  }
+  /**
+   * Return the @ref transport "transport protocol" used by the service.
+   */
+  transport transport_protocol() const
+  {
+    return m_proto;
+  }
+  /**
+   * Present the service information in a textual format as URI.
+   *
+   * Returns the URI string containing the service information.
+   *
+   * @param os_ reference to the output stream to write the text to
+   * @param style_ the @ref style "visual style" to use for textual presentation of the IP address of the service
+   * @exception cool::ng::bad_conversion thrown if this service object is not valid (was default constructed), or
+   *  if the requested @ref style "visual style" cannot be applied to the @ref address "IP address" of the service
+   */
+  dlldecl std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const;
+
+ private:
+  dlldecl void assign(const struct sockaddr* sa_);
+  dlldecl void assign(const std::string& s_);
+  void sync();
+
+ private:
+  transport      m_proto;
+  host_container m_host;
+  uint16_t       m_port;
+  union {
+    mutable struct sockaddr_in   m_in;
+    mutable struct sockaddr_in6  m_in6;
+  };
+};
+
 /**
  * @ingroup ip
  * Write an IP address to the output character stream.
@@ -1684,6 +2065,20 @@ inline std::ostream& operator <<(std::ostream& os, const address& val)
 {
   return val.visualize(os);
 }
+
+/**
+ * @ingroup ip
+ * Write a service URI to the output character stream.
+ *
+ * Generates the URI of the service to the output stream.
+ *
+ * @see @ref cool::ng::ip::service::visualize() "service::visualize()" for more details.
+ */
+inline std::ostream& operator <<(std::ostream& os, const service& val)
+{
+  return val.visualize(os, style::customary);
+}
+
 /**
  * @ingroup ip
  * Read an IP address from the input character stream.
@@ -1715,100 +2110,31 @@ inline std::istream& operator >>(std::istream& is, address& val)
 {
   return detail::sin(is, val);
 }
-/**
- * @ingroup ip
- * @ref ipv4::host "IPv4 host address" literal.
- *
- * Enables coding the IPv4 host addresses as a literal constants, eg:
- *
- * <code>
- *   auto host = "192.168.1.1"_ipv4;
- * </code>
- * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv4 host address.
-*/
-inline ipv4::host operator "" _ipv4(const char* lit_, std::size_t len)
-{
-  return detail::literal_ipv4(lit_);
-}
-/**
- * @ingroup ip
- * @ref ipv6::host "IPv6 host address" literal.
- *
- * Enables coding the IPv6 host addresses as a  literal constants, eg:
- *
- * <code>
- *   auto host = "0:12f5:3:a3f8::3:1"_ipv6;
- * </code>
- *
- * The address string can be written in any @ref style "visual style" suitable for IPv6 host addresses.
- * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv6 host address.
-*/
-inline ipv6::host operator "" _ipv6(const char* lit_, std::size_t len)
-{
-  return detail::literal_ipv6(lit_);
-}
-/**
- * @ingroup ip
- * @ref ipv4::network "IPv4 network address" literal.
- *
- * Enables coding the IPv4 network addresses as a  literal constants, eg:
- *
- * <code>
- *   auto net = "192.168.3.0/24"_ipv4_net;
- * </code>
- *
- * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv4 network address.
-*/
-
-inline ipv4::network operator "" _ipv4_net(const char* lit_, std::size_t len)
-{
-  return detail::literal_ipv4_net(lit_);
-}
-/**
- * @ingroup ip
- * @ref ipv6::network "IPv6 network address" literal.
- *
- * Enables coding the IPv6 network addresses as a  literal constants, eg:
- *
- * <code>
- *   auto net = "::ffff:0:0/96"_ipv6_net;
- * </code>
- *
- * The address string can be written in any @ref style "visual style" suitable for IPv6 network addresses.
- * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IPv6 network address.
-*/
-inline ipv6::network operator "" _ipv6_net(const char* lit_, std::size_t len)
-{
-  return detail::literal_ipv6_net(lit_);
-}
 
 /**
  * @ingroup ip
- * @ref address "IP address" literal.
+ * Read a service URI from the input character stream.
  *
- * Enables coding of any IP addresses as a  literal constants, eg:
+ * Reads and parsers the service URI from the input stream and updates the service object  with the new
+ * information. Reading of the input stream will stop at the first character that cannot be
+ * interpreted as a part of the URI. This character will be the next character available in the input stream.
  *
- * <code>
- *   auto something = "0:12f5:3:a3f8::3:1"_ip;
- * </code>
- *
- * The implementation will examine the address literal to determine what the address represents and
- * return the shared pointer to the appropriate object. The address string can be written in any recognized
- * @ref style "visual style".
- *
- * @exception cool::ng::exception::bad_conversion thrown if the literal is not a valid IP address.
- * @exception cool::ng::exception::out_of_range thrown if the network mask exceeds the number of
- * address bits for given @ref ip::version "IP address version".
-*/
-std::shared_ptr<address> operator "" _ip(const char * lit_, std::size_t len)
+ * @param is_ the input stream
+ * @param svc_ service object to be updated
+ * @exception cool::exception::bad_conversion thrown if the URI is malformed.
+ * @see service::visualize() for more information on the URI format
+ */
+inline std::istream& operator >>(std::istream& is_, service& svc_)
 {
-  return detail::literal_ip(lit_);
+  return detail::sin(is_, svc_);
 }
 
 } } } // namespaces cool::ng::ip
 
+#if COOL_DONT_POLLUTE_GLOBAL_NAMESPACE != 1
 using cool::ng::ip::operator "" _ip;
 using cool::ng::ip::operator "" _ipv4;
 using cool::ng::ip::operator "" _ipv6;
+#endif
 
 #endif
