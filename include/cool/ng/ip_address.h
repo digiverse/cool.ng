@@ -936,8 +936,8 @@ class network : public ip::network
     return *this;
   }
 
-  bool in(const ip::network& net_) const override;
-  bool is(ip::attribute) const override;
+  dlldecl bool in(const ip::network& net_) const override;
+  dlldecl bool is(ip::attribute) const override;
 
   // network interface
   dlldecl bool has(const ip::address& other_) const override;
@@ -1526,7 +1526,7 @@ class host_container
  /**
   * Destructor
   */
-  ~host_container();
+  dlldecl ~host_container();
   /**
    * Default constructor.
    *
@@ -2041,7 +2041,7 @@ class service
  private:
   dlldecl void assign(const struct sockaddr* sa_);
   dlldecl void assign(const std::string& s_);
-  void sync();
+  dlldecl void sync();
 
  private:
   transport      m_proto;
