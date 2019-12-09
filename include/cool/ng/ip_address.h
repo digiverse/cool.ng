@@ -728,7 +728,7 @@ class host : public ip::host
   // ---- type conversion operators
   EXPLICIT_ operator const uint8_t * () const override
   {
-    return m_data;
+    return m_data.data();
   }
   dlldecl EXPLICIT_ operator struct in_addr() const override;
   dlldecl EXPLICIT_ operator struct in6_addr() const override;
@@ -901,7 +901,7 @@ class network : public ip::network
   }
   EXPLICIT_ operator const uint8_t * () const override
   {
-    return m_data;
+    return m_data.data();
   }
   dlldecl EXPLICIT_ operator struct in_addr() const override;
   dlldecl EXPLICIT_ operator struct in6_addr() const override;
@@ -1158,7 +1158,7 @@ class host : public ip::host
   }
   EXPLICIT_ operator const uint8_t * () const override
   {
-    return m_data;
+    return m_data.data();
   }
   dlldecl EXPLICIT_ operator struct in_addr() const override;
   dlldecl EXPLICIT_ operator struct in6_addr() const override;
@@ -1323,7 +1323,7 @@ class network : public ip::network
   }
   EXPLICIT_ operator const uint8_t * () const override
   {
-    return m_data;
+    return m_data.data();
   }
   dlldecl EXPLICIT_ operator struct in_addr() const override;
   EXPLICIT_ operator struct in6_addr() const override

@@ -120,6 +120,7 @@ set( COOL_NG_API_DOCUMENTATION_FILES
   doc/api/mainpage.dox
   doc/api/module-async.dox
   doc/api/module-ip.dox
+  doc/api/module-util.dox
 )
 
 set( COOL_NG_API_HEADERS
@@ -178,12 +179,14 @@ set( COOL_NG_IMPL_COMMON_HEADERS
     include/cool/ng/impl/async/event_sources_types.h
     include/cool/ng/impl/async/net_server.h
     include/cool/ng/impl/async/net_stream.h
+    include/cool/ng/impl/binary.h
 )
 
 set( COOL_NG_LIB_COMMON_SRCS
   ${COOL_NG_HOME}/lib/src/bases.cpp
   ${COOL_NG_HOME}/lib/src/exception.cpp
   ${COOL_NG_HOME}/lib/src/error.cpp
+  ${COOL_NG_HOME}/lib/src/binary.cpp
   ${COOL_NG_HOME}/lib/src/ip_address.cpp
   ${COOL_NG_HOME}/lib/src/async/runner.cpp
 #  ${COOL_NG_HOME}/lib/src/async/event_sources.cpp

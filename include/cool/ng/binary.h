@@ -19,282 +19,351 @@
  * IN THE SOFTWARE.
  */
 
-#if !defined(BINARY_H_HEADER_GUARD)
-#define BINARY_H_HEADER_GUARD
+#if !defined(cool_ng_fe6a3cb0_03a1_4de1_b25a_422f5121523a)
+#define      cool_ng_fe6a3cb0_03a1_4de1_b25a_422f5121523a
 
 #include <initializer_list>
+#include <string>
+#include <iostream>
 #include <cstring>
 #include <cstdint>
+#include <array>
 
-#include "impl/platform.h"
 #include "cool/ng/exception.h"
+#include "impl/platform.h"
+#include "impl/binary.h"
 
 namespace cool { namespace ng { namespace util {
 
 /**
  * Binary buffer.
  *
- * Binary buffer is a fixed size array of bytes that supports bitwise operations
- * on entire array.
+ * Binary buffer is a fixed size array of bits that supports the bitwise operations on the entire buffer. The
+ * binary is modeled as a sequence of bits laid out in the following order:
  *
+ * <pre>
+ *   0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 ...           8*size()-1
+ * +-----------------------+-----------------------+-...----------------------+
+ * |MSB                    |                       |                       LSB|
+ * +-----------------------+-----------------------+-...----------------------+
+ *      byte index 0           byte index 1              byte index size()-1
+ * </pre>
+ *
+ * The MSB (most significant bit) has bit index 0 and the LSB (least significant bit) has bit index <tt>8 * size() - 1</tt>.
  * @tparam Size Number of bytes in binary buffer.
  */
-template <std::size_t Size> class binary
+template <std::size_t Size> class binary : public std::array<uint8_t, Size>
 {
  public:
   /**
-   * Constructs a binary array and zeros its contents.
+   * Visual style to use  for textual presentation of the binary.
+   *
+   * All visual styles will display the byte values in the form of initializer list. The chosen visual style determines
+   * the numberic base and the form of the displayed numbers. The following are valid visual styles:
+   *   - <tt>style:decimal</tt> will display bytes values as decimal numbers, eg: <tt>{ 12, 42, 255, 197 }</tt>
+   *   - <tt>style:hex</tt> will display bytes values as hexadecimal  numbers, eg: <tt>{ 0xc, 0x2a, 0xff, 0xc5 }</tt>
+   *   - <tt>style:hex_no_prefix</tt> will display bytes values as hexadecimal  numbers without the leading
+   *    <tt>0x</tt> prefix, eg: <tt>{ c, 2a, ff, c5 }</tt>
+   *   - <tt>style:octal</tt> will display bytes values as octal  numbers, eg: <tt>{ 014, 052, 0377, 0305 }</tt>
+   *   - <tt>style:octal_no_prefix</tt> will display bytes values as octal  numbers without the leading
+   *    <tt>0</tt> prefix, eg: <tt>{ 14, 52, 377, 305 }</tt>
    */
-  binary()
-  {
-    ::memset(m_data, 0, Size);
-  }
-  /**
-   * Constructs a binary buffer from an array. The byte array is assumed
-   * to be at least as large as this binary buffer.
-   */
-  binary(uint8_t const data[])
-  {
-    ::memcpy(m_data, data, Size);
-  }
-  /**
-   * Constructs a binary buffer and initializes its values from the initialization
-   * least. If the list is larger than the binary buffer, excessive bytes are
-   * ignored. If the list is shorter than the buffer, only first few bytes
-   * of the buffer are initialized and the remaining elements are set to 0.
-   */
-  binary(std::initializer_list<uint8_t> args)
-  {
-    ::memset(m_data, 0, Size);
-    std::size_t limit = args.size() < Size ? args.size() : Size;
-    std::size_t index = 0;
+  using style = detail::binary::style;
 
-    for (auto iter = args.begin(); index < limit ; ++iter)
-      m_data[index++] = *iter;
+ public:
+  /**
+   * Construct a zeroed binary.
+   *
+   * Constructs a new binary and sets  the value of all bits to 0.
+   */
+  inline binary() noexcept
+  {
+    detail::binary::initialize(this->data(), this->size());
   }
   /**
-   * Assigns the contents of the byte array to the consecutive bytes in
-   * the binary buffer. It is assumed that the size of the array matches or
-   * exceeds the size of the binary buffer.
+   * Construct a binary buffer from the array of bytes.
+   *
+   * Construct a binary buffer from the array of bytes. The specified byte array is assumed
+   * to contain exactly the size of the binary bytes.
+   *
+   * @param data_ byte array to construct the binary from.
    */
-  binary& operator =(uint8_t const val[])
+  inline binary(uint8_t const data_[]) noexcept
   {
-    ::memcpy(m_data, val, Size);
+    detail::binary::copy(this->data(), this->size(), data_, this->size());
+  }
+  /**
+   * Construct a binary buffer from the array of bytes.
+   *
+   * Construct a binary buffer from the array of bytes with the specified size. If the specfied array is smaller
+   * than the size of this binary, only the <tt>size_</tt> of bytes will be copied to the rightmost
+   * (LSB) bytes of the binary with the zero-padding to the left (MSB) bytes. If the specified array is larger
+   * than the size of this binary, only the rightmost bytes from the specified array will be copied.
+   * @param data_ byte array to construct the binary from.
+   * @param size_ size of the byte array
+   */
+  inline binary(uint8_t const data_[], std::size_t size_) noexcept
+  {
+    detail::binary::copy(this->data(), this->size(), data_, size_);
+  }
+  /**
+   * Construct a binary buffer from the initializer list.
+   *
+   * Constructs a binary buffer and initializes its values from the initializer list. If the list is larger than this
+   * binary, only thesize of this  binary bytes from the end of the list will be used. If the list is smaller than
+   * this binary, the righmost bytes (LSB) will be set from the list, with zero-padding to the left.
+   * @param list_ initializer list to construct the binary from
+   */
+  inline binary(std::initializer_list<uint8_t> list_) noexcept
+  {
+    detail::binary::initialize(this->data(), this->size(), list_);
+  }
+  /**
+   * Construct a binary from another binary
+   *
+   * Construct a binary from the fixed size array.  If the array is larger than this binary, only the
+   * rightmost bytes from the fixed size array will be used. If the array is smaller than
+   * this  binary, the righmost bytes (LSB) will be set from the the array bytes, with zero-padding to the left.
+   * @tparam ArrSize the size, in bytes, of the array, auto-deduced.
+   * @param arr_ the fixed size array to construct this binary from
+   */
+  template <std::size_t ArrSize>
+  inline binary(const std::array<uint8_t, ArrSize>& arr_) noexcept
+  {
+    detail::binary::copy(this->data(), this->size(), arr_.data(), arr_.size());
+  }
+  /**
+   * Assignment operator.
+   *
+   * Assigns the contents of the byte array to the consecutive bytes in this binary. The specified byte array
+   * is assumed to contain exactly the size of this binary bytes.
+   *
+   * @param data_ byte array which elements to assign to this binary..
+   * @return <tt>*this</tt>
+   */
+  inline binary& operator =(uint8_t const data_[]) noexcept
+  {
+    detail::binary::copy(this->data(), this->size(), data_, this->size());
     return *this;
   }
   /**
-   * Assigns the contents of another binary buffer to this binary buffer. If
-   * another binary is larger than this, only the first part of it is used. When
-   * the other binary is smaller, only the first part of this binary will be
-   * set, and the remaining bytes will be zeroed.
+   * Assignment operator.
+   *
+   * Assigns the contents of the fixed size array to this binary. If the array is larger than this binary, only the
+   * rightmost bytes from the array will  be used. If the array is smaller than this binary, bytes
+   * from the array will be copied to the rightmost (LSB) byte positions of this binary, and the remaining
+   * leftmost bytes will remain intact.
+   *
+   * @tparam ArrSize the size, in bytes, of the array, auto-deduced.
+   * @param arr_ the fixed size array whcih conents to copy to this binary
+   * @return <tt>*this</tt>
    */
-  template <std::size_t OtherSize>
-  binary& operator =(binary<OtherSize>& other)
+  template <std::size_t ArrSize>
+  inline binary& operator =(const std::array<uint8_t, ArrSize>& arr_) noexcept
   {
-    if (OtherSize > Size)
-    {
-      ::memcpy(m_data, other.m_data, Size);
-    }
-    else
-    {
-      ::memset(m_data, 0, Size);
-      ::memcpy(m_data, other.m_data, OtherSize);
-    }
+    detail::binary::copy(this->data(), this->size(), arr_.data(), arr_.size(), false);
     return *this;
   }
-#if 0
+  // ----- Bitwise AND
   /**
-   * Returns reference to the byte at the specified index.
+   * Perform bitwise AND and assign.
    *
-   * @exception cool::exception::out_of_range thrown if the index is out of range
-   */
-  uint8_t& operator[](std::size_t index)
-  {
-    if (index > Size)
-      throw exception::out_of_range();
-    return m_data[index];
-  }
-  /**
-   * Returns reference to the byte at the specified index.
+   * Perform bitwise AND operation on all bytes in the binary with the corresponding bytes from the
+   * specified byte array. The size of the byte array is assumed to equal to the size of the binary.
    *
-   * @exception cool::exception::out_of_range thrown if the index is out of range
+   * @param rhs_ byte array, right hand side operand
+   * @return <tt>*this</tt>
    */
-  const uint8_t& operator[](std::size_t index) const
+  inline binary& operator &=(uint8_t const rhs_[]) noexcept
   {
-    if (index > Size)
-      throw exception::out_of_range();
-    return m_data[index];
-  }
-#endif
-  /**
-   * Returns raw pointer to the array of bytes of this binary buffer.
-   */
-  operator uint8_t* ()
-  {
-    return m_data;
+    detail::binary::op_and(this->data(), this->size(), rhs_, this->size());
+    return *this;
   }
   /**
-   * Returns raw pointer to the array of bytes of this binary buffer.
-   */
-  operator const uint8_t* () const
-  {
-    return m_data;
-  }
-  /**
-   * Compares the contents of this binary buffer with the contents of another
-   * binary buffer.
+   * Perform bitwise AND and assign.
    *
-   * @param other other binary buffer to compare with
-   * @return true if all bytes in both binary buffers are equal, false otherwise
+   * Perform bitwise AND operation on all bytes in the binary with the corresponding bytes from the
+   * fixed size array and assigns the result to this binary. If the sizes of the operands differ, only the
+   * rightmost bytes of the longer are used or modified.
+   *
+   * @param rhs_ right hand side operand
+   * @return <tt>*this</tt>
    */
-  bool operator ==(const binary& other) const
+  template <std::size_t ArrSize>
+  inline binary& operator &=(const std::array<uint8_t, ArrSize>& rhs_) noexcept
   {
-    return ::memcmp(m_data, other.m_data, Size) == 0;
+    detail::binary::op_and(this->data(), this->size(), rhs_.data(), rhs_.size());
+    return *this;
   }
   /**
-   * Compares the contents of this binary buffer with the contents of the
-   * byte array. It is assumed that the byte array is large enough to compare
-   * all the bytes of the binary buffer with the respective bytes in the array.
+   * Perform bitwise AND on the binary and the byte array.
    *
-   * @param data byte array to compare with
-   * @return true if all compared bytes bytes are equal, false otherwise
+   * It is assumed that the byte array is of the same size as binary.
+   * @param lhs_ left hand side operand
+   * @param rhs_ right hand side operand
+   * @return binary containing the result of the operation
+   * @see operator &=(const std::array<uint8_t&, ArrSize>& rhs_)
    */
-  bool operator ==(uint8_t const data[]) const
+  friend inline binary operator &(binary lhs_, uint8_t const rhs_[]) noexcept
   {
-    return ::memcmp(m_data, data, Size) == 0;
+    lhs_ &= rhs_;
+    return lhs_;
   }
   /**
-   * Compares the contents of this binary buffer with the contents of another
-   * binary buffer.
+   * Perform bitwise AND on the binary and the  fixed size array.
    *
-   * @param other other binary buffer to compare with
-   * @return false if all bytes in both binary buffers are equal, true otherwise
+   * @param lhs_ left hand side operand
+   * @param rhs_ right hand side operand
+   * @return binary containing the result of the operation
+   * @see operator &=(const std::array<uint8_t&, ArrSize>& rhs_)
+   * @note While this operator overload retains commutative property as far as the values of affected bytes
+   * are concerned, it is not commutative regarding the type of the result.. The type of the result is the type
+   * of the left operand.
    */
-  bool operator !=(const binary& other) const
+  template <std::size_t ArrSize>
+  friend inline binary operator &(binary lhs_, const std::array<uint8_t, ArrSize>& rhs_) noexcept
   {
-    return ::memcmp(m_data, other.m_data, Size) != 0;
+    lhs_ &= rhs_;
+    return lhs_;
+  }
+  // ----- Bitwise OR
+  /**
+   * Perform bitwise OR and assign.
+   *
+   * Perform bitwise OR operation on all bytes in the binary with the corresponding bytes from the
+   * specified byte array. The size of the byte array is assumed to equal to the size of the binary.
+   *
+   * @param rhs_ byte array, right hand side operand
+   * @return <tt>*this</tt>
+   */
+  inline binary& operator |=(uint8_t const rhs_[]) noexcept
+  {
+    detail::binary::op_or(this->data(), this->size(), rhs_, this->size());
+    return *this;
   }
   /**
-   * Compares the contents of this binary buffer with the contents of the
-   * byte array. It is assumed that the byte array is large enough to compare
-   * all the bytes of the binary buffer with the respective bytes in the array.
+   * Perform bitwise OR and assign.
    *
-   * @param data byte array to compare with
-   * @return false if all compared bytes bytes are equal, true otherwise
+   * Perform bitwise OR operation on all bytes in the binary with the corresponding bytes from the
+   * fixed size array and assigns the result to this binary. If the sizes of the operands differ, only the
+   * rightmost bytes of the longer are used or modified.
+   *
+   * @param rhs_ right hand side operand
+   * @return <tt>*this</tt>
    */
-  bool operator !=(uint8_t const data[]) const
+  template <std::size_t ArrSize>
+  inline binary& operator |=(const std::array<uint8_t, ArrSize>& rhs_) noexcept
   {
-    return ::memcmp(m_data, data, Size) != 0;
+    detail::binary::op_or(this->data(), this->size(), rhs_.data(), rhs_.size());
+    return *this;
   }
   /**
-   * Perform bitwise AND operation on all bytes in the binary buffer
-   * with the corresponding bytes from another binary buffer and returns
-   * result in a new binary buffer.
+   * Perform bitwise OR on the binary and the byte array.
    *
-   * @param other right hand side operand
-   * @return new binary buffer with results
+   * It is assumed that the byte array is of the same size as binary.
+   * @param lhs_ left hand side operand
+   * @param rhs_ right hand side operand
+   * @return binary containing the result of the operation
+   * @see operator |=(const std::array<uint8_t&, ArrSize>& rhs_)
    */
-  binary operator &(const binary& other) const
+  friend inline binary operator |(binary lhs_, uint8_t const rhs_[]) noexcept
   {
+    lhs_ |= rhs_;
+    return lhs_;
+  }
+  /**
+   * Perform bitwise OR on the binary and the  fixed size array.
+   *
+   * @param lhs_ left hand side operand
+   * @param rhs_ right hand side operand
+   * @return binary containing the result of the operation
+   * @see operator |=(const std::array<uint8_t&, ArrSize>& rhs_)
+   * @note While this operator overload retains commutative property as far as the values of affected bytes
+   * are concerned, it is not commutative regarding the type of the result.. The type of the result is the type
+   * of the left operand.
+   */
+  template <std::size_t ArrSize>
+  friend inline binary operator |(binary lhs_, const std::array<uint8_t, ArrSize>& rhs_) noexcept
+  {
+    lhs_ |= rhs_;
+    return lhs_;
+  }
+  // ----- Bitwise XOR
+  /**
+   * Perform bitwise XOR and assign.
+   *
+   * Perform bitwise XOR operation on all bytes in the binary with the corresponding bytes from the
+   * specified byte array. The size of the byte array is assumed to equal to the size of the binary.
+   *
+   * @param rhs_ byte array, right hand side operand
+   * @return <tt>*this</tt>
+   */
+  inline binary& operator ^=(uint8_t const rhs_[]) noexcept
+  {
+    detail::binary::op_xor(this->data(), this->size(), rhs_, this->size());
+    return *this;
+  }
+  /**
+   * Perform bitwise XOR and assign.
+   *
+   * Perform bitwise XOR operation on all bytes in the binary with the corresponding bytes from the
+   * fixed size array and assigns the result to this binary. If the sizes of the operands differ, only the
+   * rightmost bytes of the longer are used or modified.
+   *
+   * @param rhs_ right hand side operand
+   * @return <tt>*this</tt>
+   */
+  template <std::size_t ArrSize>
+  inline binary& operator ^=(const std::array<uint8_t, ArrSize>& rhs_) noexcept
+  {
+    detail::binary::op_xor(this->data(), this->size(), rhs_.data(), rhs_.size());
+    return *this;
+  }
+  /**
+   * Perform bitwise XOR on the binary and the byte array.
+   *
+   * It is assumed that the byte array is of the same size as binary.
+   * @param lhs_ left hand side operand
+   * @param rhs_ right hand side operand
+   * @return binary containing the result of the operation
+   * @see operator ^=(const std::array<uint8_t&, ArrSize>& rhs_)
+   */
+  friend inline binary operator ^(binary lhs_, uint8_t const rhs_[]) noexcept
+  {
+    lhs_ ^= rhs_;
+    return lhs_;
+  }
+  /**
+   * Perform bitwise XOR on the binary and the  fixed size array.
+   *
+   * @param lhs_ left hand side operand
+   * @param rhs_ right hand side operand
+   * @return binary containing the result of the operation
+   * @see operator |=(const std::array<uint8_t&, ArrSize>& rhs_)
+   * @note While this operator overload retains commutative property as far as the values of affected bytes
+   * are concerned, it is not commutative regarding the type of the result.. The type of the result is the type
+   * of the left operand.
+   */
+  template <std::size_t ArrSize>
+  friend inline binary operator ^(binary lhs_, const std::array<uint8_t, ArrSize>& rhs_) noexcept
+  {
+    lhs_ ^= rhs_;
+    return lhs_;
+  }
+/**
+ * Perform bitwise NOT on the fixed size array.
+ *
+ * Performs bitwise NOT operation on all bytes in the fixed size array and returns
+ * result in a new binary.
+ *
+ * @return new binary with the result
+ */
+ friend inline binary operator ~(const std::array<uint8_t, Size>& op_)
+ {
     binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = m_data[i] & other.m_data[i];
+    detail::binary::op_not(res.data(), res.size(), op_.data(), op_.size());
     return res;
-  }
-  /**
-   * Perform bitwise AND operation on all bytes in the binary buffer
-   * with the corresponding bytes from the specified byte array and returns
-   * result in a new binary buffer.
-   *
-   * @param data byte array, right hand side operand
-   * @return new binary buffer with results
-   * @note The operator assumes that the byte array is at least as large as the
-   *   binary buffer.
-   */
-  binary operator &(uint8_t const data[]) const
-  {
-    binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = m_data[i] & data[i];
-    return res;
-  }
-  /**
-   * Performs bitwise OR operation on all bytes in the binary buffer
-   * with the corresponding bytes from another binary buffer and returns
-   * result in a new binary buffer.
-   *
-   * @param other right hand side operand
-   * @return new binary buffer with results
-   */
-  binary operator |(const binary& other) const
-  {
-    binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = m_data[i] & other.m_data[i];
-    return res;
-  }
-  /**
-   * Performs bitwise OR operation on all bytes in the binary buffer
-   * with the corresponding bytes from the specified byte array and returns
-   * result in a new binary buffer.
-   *
-   * @param data byte array, right hand side operand
-   * @return new binary buffer with results
-   * @note The operator assumes that the byte array is at least as large as the
-   *   binary buffer.
-   */
-  binary operator |(uint8_t const data[]) const
-  {
-    binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = m_data[i] & data[i];
-    return res;
-  }
-  /**
-   * Perform bitwise XOR operation on all bytes in the binary buffer
-   * with the corresponding bytes from another binary buffer and returns
-   * result in a new binary buffer.
-   *
-   * @param other right hand side operand
-   * @return new binary buffer with results
-   */
-  binary operator ^(const binary& other) const
-  {
-    binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = m_data[i] & other.m_data[i];
-    return res;
-  }
-  /**
-   * Perform bitwise XOR operation on all bytes in the binary buffer
-   * with the corresponding bytes from the specified byte array and returns
-   * result and returns result in a new binary buffer.
-   *
-   * @param data byte array, right hand side operand
-   * @return new binary buffer with results
-   * @note The operator assumes that the byte array is at least as large as the
-   *   binary buffer.
-   */
-  binary operator ^(uint8_t const data[]) const
-  {
-    binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = m_data[i] & data[i];
-    return res;
-  }
-  /**
-   * Performs bitwise NOT operation on all bytes in the binary buffer and returns
-   * result in a new binary buffer.
-   *
-   * @return new binary buffer with results
-   */
-  binary operator~() const
-  {
-    binary res;
-    for (std::size_t i = 0; i < Size; ++i)
-      res[i] = ~m_data[i];
-    return res;
-  }
+ }
   /**
    * Set byte values in the binary buffer from the byte values in the
    * specified byte array starting at the specified offset.
@@ -310,7 +379,7 @@ template <std::size_t Size> class binary
     if (start >= Size)
       throw exception::out_of_range();
     int n = Size - start;
-    ::memcpy(&m_data[start], data, n);
+    ::memcpy(&this->data()[start], data, n);
   }
   /**
    * Set byte values in the binary buffer from the byte values in the
@@ -332,18 +401,197 @@ template <std::size_t Size> class binary
     int n = Size - start;
     if (n > size)
       n = size;
-    ::memcpy(&m_data[start], data, n);
+    ::memcpy(&this->data()[start], data, n);
   }
   /**
-   * Returns the binary buffer size in bytes
+   * Present the binary in the textual format.
+   *
+   * Writes the byte values of the binary into the output formatted character stream. The byte values are
+   * written according to the selected visual @ref style.
+   *
+   * @param os_ reference to the output character stream
+   * @param style_ visual @ref style to use, <tt>style::hex</tt> being the default style
+   * @return reference to the output character stream
    */
-  static std::size_t size()
+  inline std::ostream& visualize(std::ostream& os_, style style_ = style::hex) const
   {
-    return Size;
+    return detail::binary::visualize(os_, style_, this->data(), this->size());
+  }
+  /**
+   * Operator overload to present the binary in the textual format.
+   *
+   * Writes the byte values of the binary into the output formatted character stream using the <tt>style::hex</tt>
+   * visual @ref style.
+   * @param os_ reference to the output character stream
+   * @param b_ binary to write to the output stream
+   * @return reference to the output character stream
+   */
+  friend inline std::ostream& operator <<(std::ostream& os_, const binary& b_)
+  {
+    return b_.visualize(os_);
+  }
+  /**
+   * @defgroup comparison Comparison operators.
+   *
+   * The comparison operator overloads compare two binary instances, or a binary with the array of bytes.
+   * When comparing a binary with the array  of bytes, it is assumed that the length of the array matches the
+   * size of the binary. The comparison is based on the following rules:
+   *
+   *   - if the operands differ in size, they are considered not to be equal. The shorter operand is considered
+   *   to be _less_ than the longer;
+   *   - if sizes are the same, the contents of the operands are lexicographically compared; the first
+   *   mismatching byte value determines whether one operand is _less_ than the other
+   */
+  /// @ingroup comparison
+  /// Comparison operator.
+  template<std::size_t Size2>
+  friend inline bool operator ==(const binary& lhs_, const binary<Size2>& rhs_) noexcept
+  {
+    return lhs_.equals(rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator ==(const binary& lhs_, const uint8_t rhs_[]) noexcept
+  {
+    return lhs_.equals(rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator ==(const uint8_t lhs_[], const binary& rhs_) noexcept
+  {
+    return rhs_.equals(lhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  template<std::size_t Size2>
+  friend inline bool operator !=(const binary& lhs_, const binary<Size2>& rhs_) noexcept
+  {
+    return !(lhs_ == rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator !=(const binary& lhs_, const uint8_t rhs_[]) noexcept
+  {
+    return !(lhs_ == rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator !=(const uint8_t lhs_[], const binary& rhs_) noexcept
+  {
+    return !(lhs_ == rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  template<std::size_t Size2>
+  friend inline bool operator <(const binary& lhs_, const binary<Size2>& rhs_) noexcept
+  {
+    return lhs_.less(rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator <(const binary& lhs_, uint8_t const rhs_[]) noexcept
+  {
+    return lhs_.less(rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator <(uint8_t const lhs_[], const binary& rhs_) noexcept
+  {
+    return !rhs_.less_eq(lhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  template<std::size_t Size2>
+  friend inline bool operator <=(const binary& lhs_, const binary<Size2>& rhs_) noexcept
+  {
+    return lhs_.less_eq(rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator <=(const binary& lhs_, uint8_t const rhs_[]) noexcept
+  {
+    return lhs_.less_eq(rhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator <=(uint8_t const lhs_[], const binary& rhs_) noexcept
+  {
+    return !rhs_.less(lhs_);
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  template<std::size_t Size2>
+  friend inline bool operator >(const binary& lhs_, const binary<Size2>& rhs_) noexcept
+  {
+    return rhs_ < lhs_;
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator >(const binary& lhs_, uint8_t const rhs_[]) noexcept
+  {
+    return rhs_ < lhs_;
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator >(uint8_t const lhs_[], const binary& rhs_) noexcept
+  {
+    return rhs_ < lhs_;
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  template<std::size_t Size2>
+  friend inline bool operator >=(const binary& lhs_, const binary<Size2>& rhs_) noexcept
+  {
+    return rhs_ <= lhs_;
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator >=(const binary& lhs_, uint8_t const rhs_[]) noexcept
+  {
+    return rhs_ <= lhs_;
+  }
+  /// @ingroup comparison
+  /// Comparison operator.
+  friend inline bool operator >=(uint8_t const lhs_[], const binary& rhs_) noexcept
+  {
+    return rhs_ <= lhs_;
   }
 
  private:
-  uint8_t m_data[Size];
+  inline bool equals(const uint8_t data_[]) const noexcept
+  {
+    return ::memcmp(this->data(), data_, this->size()) == 0;
+  }
+  template<std::size_t ArrSize>
+  inline bool equals(const binary<ArrSize>& arr_) const noexcept
+  {
+    return this->size() != arr_.size() ? false : (0 == ::memcmp(this->data(), arr_.data(),  this->size()));
+  }
+  inline bool less(uint8_t const data_[]) const noexcept
+  {
+    return ::memcmp(this->data(), data_, this->size()) < 0;
+  }
+  template<std::size_t ArrSize>
+  inline bool less(const binary<ArrSize>& arr_) const noexcept
+  {
+    return this->size() != arr_.size() ?
+          (this->size() < arr_.size())  :
+          (::memcmp(this->data(), arr_.data(), this->size()) < 0);
+
+  }
+  inline bool less_eq(uint8_t const data_[]) const noexcept
+  {
+    return !(::memcmp(this->data(), data_, this->size()) > 0);
+  }
+  template<std::size_t ArrSize>
+  inline bool less_eq(const binary<ArrSize>& arr_) const noexcept
+  {
+    return this->size() != arr_.size() ?
+          (this->size() < arr_.size())  :
+          !(::memcmp(this->data(), arr_.data(), this->size()) > 0);
+
+  }
+
 };
 
 } } } // namespace

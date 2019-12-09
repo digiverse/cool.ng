@@ -596,7 +596,7 @@ void parser::parse()
 parser::operator const uint8_t*()
 {
   parse();
-  return static_cast<uint8_t*>(m_address);
+  return static_cast<const uint8_t*>(m_address.data());
 }
 
 void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mask)
@@ -633,7 +633,7 @@ void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mas
       mask = aux;
     }
 
-    addr = aux_addr;
+    addr = aux_addr.data();
   }
   catch (const cool::ng::exception::parsing_error&)
   {
@@ -809,7 +809,7 @@ bool parser::is_digit(char c_, base b_)
 parser::operator const uint8_t*()
 {
   parse();
-  return static_cast<uint8_t*>(m_address);
+  return m_address.data();
 }
 
 parser::token parser::fetch(std::string& str_, base b_)
@@ -1016,8 +1016,7 @@ class visualizer
  public:
   visualizer(std::ostream& os_, const binary_t& b_)
     : m_stream(os_)
-    , m_buffer(static_cast<const uint8_t*>(b_))
-//    , m_delimiter(s_ == ip::style::microsoft ? '-' : ':')
+    , m_buffer(b_.data())
   { /* noop */ }
   std::ostream& operator()(ip::style s_);
   std::ostream& operator()()
@@ -1169,7 +1168,7 @@ void parse(std::istream& is, binary_t& val, std::size_t& mask, bool require_mask
       }
     }
 
-    val = addr;
+    val = addr.data();
   }
   catch (const cool::ng::exception::parsing_error&)
   {
@@ -1193,12 +1192,12 @@ std::istream& sin(std::istream& is, cool::ng::ip::address& val)
         if (val.kind() == ip::kind::host)
         {
           ipv4::parse(is, addr, mask, false);
-          val = ip::ipv4::host(static_cast<const uint8_t*>(addr));
+          val = ip::ipv4::host(addr.data());
         }
         else
         {
           ipv4::parse(is, addr, mask, true);
-          val = ip::ipv4::network(mask, static_cast<const uint8_t*>(addr));
+          val = ip::ipv4::network(mask, addr.data());
         }
         break;
       }
@@ -1209,12 +1208,12 @@ std::istream& sin(std::istream& is, cool::ng::ip::address& val)
         if (val.kind() == ip::kind::host)
         {
           ipv6::parse(is, addr, mask, false);
-            val = ip::ipv6::host(static_cast<const uint8_t*>(addr));
+            val = ip::ipv6::host(addr.data());
           }
           else
           {
             ipv6::parse(is, addr, mask, true);
-            val = ip::ipv6::network(mask, static_cast<const uint8_t*>(addr));
+            val = ip::ipv6::network(mask, addr.data());
           }
         }
         break;
@@ -1266,11 +1265,11 @@ host::operator struct in_addr() const
   struct in_addr result;
 
   if (in(rfc_ipv4map) || in(rfc_ipv4translate))
-    ::memcpy(static_cast<void*>(&result), m_data+12, 4);
+    ::memcpy(static_cast<void*>(&result), m_data.data() + 12, 4);
   else
     throw exception::bad_conversion();
 
-  ::memcpy(static_cast<void*>(&result), m_data+12, 4);
+  ::memcpy(static_cast<void*>(&result), m_data.data() + 12, 4);
   return result;
 }
 
@@ -1278,7 +1277,7 @@ host::operator struct in6_addr() const
 {
   struct in6_addr result;
 
-  ::memcpy(static_cast<void*>(&result), m_data, m_data.size());
+  ::memcpy(static_cast<void*>(&result), m_data.data(), m_data.size());
   return result;
 }
 
@@ -1390,7 +1389,7 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   if (mask_size > size() * 8)
     throw exception::out_of_range();
   // zero host part of the address
-  m_data = m_data & detail::calculate_mask<16>(m_length);
+  m_data &= detail::calculate_mask<16>(m_length);
 }
 
 bool network::equals(const ip::address &other) const
@@ -1440,7 +1439,7 @@ network::operator struct in6_addr() const
 {
   struct in6_addr result;
 
-  ::memcpy(static_cast<void*>(&result), m_data, m_data.size());
+  ::memcpy(static_cast<void*>(&result), m_data.data(), m_data.size());
   return result;
 }
 
@@ -1551,7 +1550,7 @@ bool host::equals(const ip::address &other) const
   if (kind() == ip::kind::host)
   {
     if (other.in(ipv6::rfc_ipv4map) || other.in(ipv6::rfc_ipv4translate))
-      return ::memcmp(m_data, static_cast<const uint8_t*>(other) + 12, 4) == 0;
+      return ::memcmp(m_data.data(), static_cast<const uint8_t*>(other) + 12, 4) == 0;
   }
 
   return false;
@@ -1566,7 +1565,7 @@ host::operator struct in_addr() const
 {
   struct in_addr result;
 
-  ::memcpy(static_cast<void*>(&result), m_data, m_data.size());
+  ::memcpy(static_cast<void*>(&result), m_data.data(), m_data.size());
   return result;
 }
 
@@ -1575,7 +1574,7 @@ host::operator struct in6_addr() const
   struct in6_addr result;
 
   ::memcpy(static_cast<void*>(&result), static_cast<const uint8_t*>(ipv6::rfc_ipv4map), 12);
-  ::memcpy(static_cast<uint8_t*>(static_cast<void*>(&result)) + 12, m_data, 4);
+  ::memcpy(static_cast<uint8_t*>(static_cast<void*>(&result)) + 12, m_data.data(), 4);
   return result;
 }
 
@@ -1668,7 +1667,7 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
 {
   if (mask_size > size() * 8)
     throw exception::out_of_range();
-  m_data = m_data & detail::calculate_mask<4>(m_length);
+  m_data &= detail::calculate_mask<4>(m_length);
 }
 
 bool network::equals(const ip::address &other) const
@@ -1695,7 +1694,7 @@ network::operator struct in_addr() const
 {
   struct in_addr result;
 
-  ::memcpy(static_cast<void*>(&result), m_data, m_data.size());
+  ::memcpy(static_cast<void*>(&result), m_data.data(), m_data.size());
   return result;
 }
 

@@ -24,8 +24,6 @@
 #if !defined(cool_ng_f36a3cb0_dda1_4de1_b25a_912f5951523a)
 #define      cool_ng_f36a3cb0_dda1_4de1_b25a_912f5951523a
 
-
-
 #if defined(WINDOWS_TARGET) && !defined(COOL_NG_STATIC_LIBRARY)
 #  if defined(COOL_NG_BUILD)
 #    define dlldecl __declspec( dllexport )
@@ -38,13 +36,16 @@
 
 #if defined(WINDOWS_TARGET)
 
-// MS compilers don't allow explicit virtual conversion operators!!!
+// Pre-VS2019 MS compilers don't allow explicit virtual conversion operators!!!
+#if _MSC_VER >= 1920
+#define EXPLICIT_ explicit
+#else
 #define EXPLICIT_
+#endif
 
-#define INETADDR_STORAGE_
 // Visual Studio 2013 does not support c++11 specifiers noexcept
 // and constexpr
-# if _MSC_VER == 1800
+# if _MSC_VER < 1900
 #  define NOEXCEPT_
 #  define CONSTEXPR_
 # else

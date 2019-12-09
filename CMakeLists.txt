@@ -182,6 +182,7 @@ set( executor_SRCS tests/unit/executor/executor.cpp )
 set( ip_address_SRCS tests/unit/net/ip_address.cpp )
 set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp )
 set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )
+set( utilities_SRCS tests/unit/utilities/binary.cpp)
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
@@ -281,6 +282,7 @@ if( COOL_NG_UNIT_TESTS )
 
 internal_unit_test( run_queue  tests/unit/run_queue/run_queue.cpp )
 api_unit_test( ip_address ${ip_address_SRCS} )
+api_unit_test( utilities ${utilities_SRCS} )
 #api_unit_test( task ${task_SRCS} )
 
 endif()

@@ -1,0 +1,14 @@
+
+/**
+@defgroup util Utilities Module
+
+A collection of miscellaneous utility classes.
+
+*/
+
+/**
+@namespace cool::ng::util
+@ingroup util
+
+This namespace contains a collection of miscellaneous utility classes.
+*/
