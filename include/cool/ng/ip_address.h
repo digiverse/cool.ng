@@ -958,18 +958,22 @@ class network : public ip::network
   std::size_t m_length;
 };
 
+/*
+TODO: fix this list, see
+https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
+ */
 /**
  * Constant representing IPv6 loopback address.
  */
-const host loopback = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+const host loopback = { 1 };
 /**
  * Constant representing IPv6 unspecified host address.
  */
-const host unspecified = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+const host unspecified;
 /**
  * Constant representing IPv6 unspecified network address.
  */
-const network unspecified_network = { 0, { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+const network unspecified_network(0);
 /**
  * Naming convenience - IPv6 equivalent of ipv4::any for bind.
  */
@@ -982,20 +986,27 @@ const host any;
  * mechanism, as specified in RFC 4291. Addresses within this range should
  * not appear on the public Internet.
  */
-const network rfc_ipv4map = { 96, { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff } };
+const network rfc_ipv4map = { 96, { 0xff, 0xff, 0, 0, 0, 0 } };
 /**
  * Reserved IPv6 address range 100::/64.
  *
  * This is Discard Prefix, as specified in RFC 6666.
  */
-const network rfc_discard = { 64, { 0x01 } };
+const network rfc_discard = { 64, { 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
 /**
  * Reserved IPv6 address range 64:ff9b::/96.
  *
  * This block is Well-known Prefix used for IPv4/Ipv6 address translation,
  * as specified in RFC 6052.
  */
-const network rfc_ipv4translate = { 96, { 0x00, 0x64, 0xff, 0x9b } };
+const network rfc_ipv4translate = { 96, { 0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
+/**
+ * Reserved IPv6 address range 64:ff9b:1::/48.
+ *
+ * This block is Well-known Prefix used for IPv4/Ipv6 address translation for local use,
+ * as specified in RFC 8215.
+ */
+const network rfc_ipv4localtrans = { 48, { 0x00, 0x64, 0xff, 0x9b, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
 /**
  * Reserved IPv6 address range 2001::/32.
  *
@@ -1005,34 +1016,34 @@ const network rfc_ipv4translate = { 96, { 0x00, 0x64, 0xff, 0x9b } };
  * more IPv4 Network Address Translations (NATs) to obtain IPv6
  * connectivity by tunneling packets over UDP.
  */
-const network rfc_teredo = { 8, { 0x20, 0x01 } };
+const network rfc_teredo = { 32, { 0x20, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 /**
  * Reserved IPv6 address range 2001:db8::/32.
  *
  * This block is is used for addresses used in documentation,
  * as specified in RFC 5737.
  */
-const network rfc_doc = { 32, { 0x20, 0x01, 0xdb, 0x80 } };
+const network rfc_doc = { 32, { 0x20, 0x01, 0xdb, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 /**
  * Reserved IPv6 address range fc00::/7.
  *
  * This block is is used for unique local addresses,
  * as specified in RFC 4193.
  */
-const network rfc_local = { 7, { 0xfc } };
+const network rfc_local = { 7, { 0xfc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 /**
  * Reserved IPv6 address range fe80::/10.
  *
  * This block is is reserved for link local addresses. The actual allocation
  * range for link local addresses is fe80::/64.
  */
-const network rfc_link = { 10, { 0xfe, 0x80 } };
+const network rfc_link = { 10, { 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
 /**
  * Reserved IPv6 address range ff00::/8.
  *
  * This block is is reserved for multicast addresses.
  */
-const network rfc_mcast = { 8, { 0xff } };
+const network rfc_mcast = { 8, { 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 
 } // namespace ipv6
 
@@ -1414,34 +1425,34 @@ const network rfc_broadcast = { 8, { 0, 0, 0, 0} };  // TODO:
  *
  * 24-bit block private network (former class A) as specified by RFC 1918.
  */
-const network rfc_private_24 = { 24, { 10 } };
+const network rfc_private_24 = { 24, { 10, 0, 0, 0 } };
 /**
  * Reserved IPv4 address range 172.16.0.0/20.
  *
  * 20-bit block private network (formerly 16 class B private networks)
  * as specified by RFC 1918.
  */
-const network rfc_private_20 = { 20, { 172, 16 } };
+const network rfc_private_20 = { 20, { 172, 16, 0, 0 } };
 /**
  * Reserved IPv4 address range 192.168.0.0/16.
  *
  * 16-bit block private network (formerly 256 class C private networks)
  * as specified by RFC 1918.
  */
-const network rfc_private_16 = { 16, { 192, 168 } };
+const network rfc_private_16 = { 16, { 192, 168, 0, 0 } };
 /**
  * Reserved IPv4 address range 100.64.0.0/10.
  *
  * Reserved for use with Carrier-grade NAT, as specified by RFC 6598.
  */
-const network rfc_carrier_nat = { 10, { 100, 64 } };
+const network rfc_carrier_nat = { 10, { 100, 64, 0, 0 } };
 /**
  * Reserved IPv4 address range 127.0.0.0/8.
  *
  * Reserved for loopback addresses to the local host, as specified by
  * RFC 990.
  */
-const network rfc_loopback = { 8, { 127 } };
+const network rfc_loopback = { 8, { 127, 0, 0, 0 } };
 /**
  * Reserved IPv4 address range 169.254.0.0/16.
  *
@@ -1449,68 +1460,68 @@ const network rfc_loopback = { 8, { 127 } };
  * where stable IP address cannot be obtained by other means, as specified by
  * RFC 3927.
  */
-const network rfc_unset = { 16, { 169, 254 } };
+const network rfc_unset = { 16, { 169, 254, 0, 0 } };
 /**
  * Reserved IPv4 address range 192.0.0.0/24.
  *
  * Reserved for IANA IPv4 Special Purpose Address Registry, as specified by
  * RFC 5736.
  */
-const network rfc_iana_private = { 24, { 192 } };
+const network rfc_iana_private = { 24, { 192, 0, 0, 0 } };
 /**
  * Reserved IPv4 address range 192.0.2.0/24.
  *
  * Reserved as TEST-NET for use solely in documentation and example source
  * code, as specified by RFC 5737.
  */
-const network rfc_test = { 24, { 192, 0, 2 } };
+const network rfc_test = { 24, { 192, 0, 2, 0 } };
 /**
  * Reserved IPv4 address range 198.51.100.0/24.
  *
  * Reserved as TEST-NET-2 for use solely in documentation and example source
  * code, as specified by RFC 5737.
  */
-const network rfc_test_2 = { 24, { 198, 51, 100 } };
+const network rfc_test_2 = { 24, { 198, 51, 100, 0 } };
 /**
  * Reserved IPv4 address range 203.0.113.0/24.
  *
  * Reserved as TEST-NET-3 for use solely in documentation and example source
  * code, as specified by RFC 5737.
  */
-const network rfc_test_3 = { 24, { 203, 0, 113 } };
+const network rfc_test_3 = { 24, { 203, 0, 113, 0 } };
 /**
  * Reserved IPv4 address range 192.88.99.0/24.
  *
  * Used by 6to4 anycast relays, as specified by RFC 3068.
  */
-const network rfc_6to4_anycast = { 24, { 192, 88, 99 } };
+const network rfc_6to4_anycast = { 24, { 192, 88, 99, 0 } };
 /**
  * Reserved IPv4 address range 198.18.0.0/15.
  *
  * Used for testing inter-network communication between two separate
  * subnets, as specified by RFC 2544.
  */
-const network rfc_test_comm = { 15, { 198, 18 } };
+const network rfc_test_comm = { 15, { 198, 18, 0, 0 } };
 /**
  * Reserved IPv4 address range 224.0.0.0/4.
  *
  * Reserved as MCAST-TEST-NET for use solely in documentation and example source
  * code, as specified by RFC 5771.
  */
-const network rfc_mcast = { 4, { 224 } };
+const network rfc_mcast = { 4, { 224, 0, 0, 0 } };
 /**
  * Reserved IPv4 address range 233.252.0.0/24.
  *
  * Reserved as MCAST-TEST-NET for use solely in documentation and example source
  * code, as specified by RFC 5771.
  */
-const network rfc_test_mcast = { 24, { 233, 252 } };
+const network rfc_test_mcast = { 24, { 233, 252, 0, 0 } };
 /**
  * Reserved IPv4 address range 240.0.0.0/4.
  *
  * Reserved for future use, as specified by RFC 5771.
  */
-const network rfc_future = { 4, { 240 } };
+const network rfc_future = { 4, { 240, 0, 0, 0 } };
 
 } // namespace ipv4
 

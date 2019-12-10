@@ -596,7 +596,7 @@ void parser::parse()
 parser::operator const uint8_t*()
 {
   parse();
-  return static_cast<const uint8_t*>(m_address.data());
+  return m_address.data();
 }
 
 void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mask)
@@ -633,7 +633,7 @@ void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mas
       mask = aux;
     }
 
-    addr = aux_addr.data();
+    addr = aux_addr;
   }
   catch (const cool::ng::exception::parsing_error&)
   {
@@ -1168,7 +1168,7 @@ void parse(std::istream& is, binary_t& val, std::size_t& mask, bool require_mask
       }
     }
 
-    val = addr.data();
+    val = addr;
   }
   catch (const cool::ng::exception::parsing_error&)
   {
