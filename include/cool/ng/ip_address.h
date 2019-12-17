@@ -79,14 +79,41 @@ enum class kind {
 };
 
 /**
- * Enumeration listing possible attributes of IP address.
+ * Enumeration listing attributes of an IP address.
+ * @see address::is() method
  */
 enum class attribute
 {
-  loopback,     //!< IP address is a loopback address of device
-  unspecified,  //!< IP address is not specified (includes IPv4 INADDR_ANY)
-  ipv4mapped,   //!< IP address is IPv6 address mapped from IPv4 space
-  assigned      //!< IP address is reserved number by one or more RFCs
+  loopback         = 0x0001, //!< IP address is a loopback address of a device
+  unspecified      = 0x0002, //!< IP address is not specified (includes IPv4 INADDR_ANY)
+  /**
+   * IP address is an IPv6 address mapped from the IPv4 address space
+   *
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
+   *   addresses.
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
+   */
+  ipv4originated   = 0x0004,
+  assigned         = 0x0008,  //!< IP address is in the address range reserved number by one or more RFCs
+  /**
+   * Globally reachable addresses may be reached from any point in the Internat. The IP addresses are
+   * globally reachable by default. A scope og certain address ranges may be limited by one or more
+   * protocol standards (FCSs) and an appropriate address range reservation is registered with IANA. Also
+   * note that while some reserved address ranges may be declared not to be globally reachable, the
+   * applicaiton level protocols may, in turn, specify their subranges to be globally reachable again.
+   */
+   global          = 0x0010,
+   /**
+    * Forwardable addresses may be forwarded by one or more routing devices. The IP addresses are
+    * forwadable by default. A scope og certain address ranges may be limited to a host or to a single
+    * link by one or more protocol standards (FCSs) and an appropriate address range reservation is
+    * registered with IANA.
+    */
+   forwardable     = 0x0020,
+   source          = 0x0040, //!< The IP address is valid for use as a source address of the IP frame.
+   destination     = 0x0080, //!< The IP address is valid for use as a destiantion address of the IP frame.
+   multicast       = 0x0100, //!< The IP address is a multicast address
 };
 
 /**
@@ -126,10 +153,10 @@ enum class style {
   /**
    * Canonical style of writing the IPv6 addresses, as specified by RFC 5952. In this style the leading
    * zeros in each group of four hex digits (quad) are not shown and the longest
-   * sequence of zero quads is compressed to '<tt>::</tt>'. IPv4 mapped host addresses are shown in
-   * @ref style::dotted_quad "dotted-quad" style. This style can be used for both host and network  addresses.
-   * Network addresses have a network mask size suffix, separated
-   * by the forward slash ('<tt>/</tt>). Examples:
+   * sequence of zero quads is compressed to '<tt>::</tt>'. @ref attribute::ipv4originated "IPv4 originated"
+   * host addresses are shown in @ref style::dotted_quad "dotted-quad" style. This style can be used for
+   * both host and network  addresses with the latter having a network mask size suffix (CIDR notation)
+   * separated by the forward slash ('<tt>/</tt>). Examples:
    *
    * <code>
    * 3:f12:1:1:ac4f:600:a0:3f40
@@ -137,6 +164,10 @@ enum class style {
    * ::%ffff:192.168.3.14
    * 12::%ac4f:600:0:0/96
    * </code>
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
+   *   addresses.
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    */
   canonical,
   /**
@@ -227,16 +258,16 @@ class address
    * @ref version() "IP protocol version", and contain the same IP address value. However, the
    * @ref host address object of @ref version::ipv6 "IPv6" protocol version may compare the equal to
    * the @ref host address object of @ref version::ipv4 "IPv4" protocol version if the former was created
-   * by @ref ipv6::rfc_ipv4map "mapping" or @ref ipv6::rfc_ipv4translate "translating" the latter into the
+   * by @ref attribute::ipv4originated "mapping or translating" the latter into the
    * IPv6 address space. When comparing the two @ref ip::network "network" address object they have
    * to have equal address mask lengths, too.
    *
    * @param other_ an IP address object to compare to this object
    * @return true if two address objects compare equal, false if not
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
-   *   addresses
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    * @see @ref cool::ng::ip::operator ==(const cool::ng::ip::address&, const cool::ng::ip::address&)
    *   "== operator" overload
    * @see @ref cool::ng::ip::operator !=(const cool::ng::ip::address&, const cool::ng::ip::address&)
@@ -253,11 +284,7 @@ class address
    * @return
    * @see @ref cool::ng::ip::operator <<(std::ostream& os, const cool::ng::ip::address& val)
    *   "<< operator" overload
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
-   *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
-   *   addresses
-  */
+   */
   virtual std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const = 0;
   /**
    * Return the version of IP address.
@@ -283,15 +310,14 @@ class address
    * @return Pointer to a sequence of bytes, in the network order, containing the byte representation of
    * this IP address. The sequence is @ref size() bytes long.
    */
-  virtual EXPLICIT_ operator const uint8_t * () const = 0;
+  EXPLICIT_ virtual operator const uint8_t * () const = 0;
   /**
    * Type conversion operator.
    *
    * Converts this IP address into the IPv4 address structure. The IPv6 host and network addresses in
    * general cannot be converted into the IPv4 address structure due to the lack of the address space;
-   * however, IPv6 host addresses that were generated by either @ref ipv6::rfc_ipv4map "mapping" or
-   * @ref ipv6::rfc_ipv4translate "translating" the IPv4 host address into the IPv6 host address can
-   * be converted by using the least significant four bytes of the IPv6 address only.
+   * however, IPv6 host addresses that have @ref attribute::ipv4originated "IPv4 origins" can
+   * be converted to an IPv4 address structure by using the least significant four bytes of the IPv6 address only.
    *
    * @return <tt>struct in_addr</tt> filled with IPv4 address corresponding to the address contained in
    *   this address object.
@@ -299,39 +325,39 @@ class address
    * @exception exception::bad_conversion if this address object cannot be converted into the IPv4 address
    *  structure.
    *
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    *   addresses
    */
-  virtual EXPLICIT_ operator struct in_addr() const = 0;
+  EXPLICIT_ virtual operator struct in_addr() const = 0;
   /**
    * Type conversion operator.
    *
    * Converts this IP address into the IPv4 address structure. The IPv4 host addresses can be converted
-   * into the IPv6 address structure by creating a @ref ipv6::rfc_ipv4map "mapped" IPv6 address first
-   * and the using this to fill the IPv6 address structure. Such mapping woud be meaningless for IPv4
-   * network addresses which thus cannot be converted into the IPv6 address structure.
+   * into the IPv6 address structure by creating a @ref attribute::ipv4originated "mapped" IPv6 address first
+   * and then using this address to fill the IPv6 address structure. Such mapping would be meaningless for
+   * the IPv4 network addresses which thus cannot be converted into the IPv6 address structure.
    *
    * @return <tt>struct in6_addr</tt> filled with IPv6 address represented by
    *   this address object.
    * @exception exception::bad_conversion if this address object cannot be converted into the  IPv6
    * address structure
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    */
-  virtual EXPLICIT_ operator struct in6_addr() const = 0;
+  EXPLICIT_ virtual operator struct in6_addr() const = 0;
   /**
    * Type conversion operator.
    *
-   * Converts the IP address into the textual presentation. The IPv4 addresses are converted into the text
-   * using common @ref style::dot_decimal "dot-decimal" visual  style. The IPv6 addresses are converted
-   * into the text using the @ref style::canonical "canonical" visual style. If this IP address object is a network
-   * address, the network mask length is appended using the CIDR notation.
+   * Converts the IP address into the textual presentation using the @ref style::customary
+   * "common visual style". If this IP address object is a network address, the network mask length is
+   * appended using the CIDR notation.
    *
    * @return string containing the textual presentation of this IP address
    */
-  virtual EXPLICIT_ operator std::string() const = 0;
+  EXPLICIT_ virtual operator std::string() const = 0;
   /**
    * Return size of the internal array.
    *
@@ -346,22 +372,25 @@ class address
    * permitted if both this object and the <tt>other</tt> parameter match in @ref cool::ng::ip::kind "kind" and
    * @ref cool::ng::ip::version "version", with the following exceptions:
    *   - it is possible to assign @ref ipv4::host "IPv4 host" address to @ref ipv6::host "IPv6 host" address object; the
-   *    resulting IPv6 address will receive the @ref ipv6::rfc_ipv4map "standard SIIT prefix" <tt>::%ffff:0:0/96</tt>.
+   *    resulting IPv6 address will receive the @ref ipv6::assigned::ipv4map "standard SIIT prefix" <tt>::%ffff:0:0/96</tt>.
    *   - it is possible to assign an @ref ipv6::host "IPv6 host" to the @ref ipv4::host "IPv4  host" address object
-   *    if the IPv6 host address is either @ref ipv6::rfc_ipv4map "mapped" or @ref ipv6::rfc_ipv4translate
-   *    "translated" IPv4 host address.
+   *    if the IPv6 host address @ref attribute::ipv4originated "originated in the IPv4" address space
    *   - it is possible to assign @ref ip::host "host" address to a @ref ip::network "network" address object
    *    of the same @ref ip::version "version". The network object will apply its @ref ip::network::mask()
    *    "network mask" to the host address and use it as the network address.
    *   - as an exception to the above rule, it is possible to assign IPv6 host address object to the IPv4
-   *    network address object if the IPv6 host address is either @ref ipv6::rfc_ipv4map "mapped" or
-   *    @ref ipv6::rfc_ipv4translate "translated" IPv4 host address.
+   *    network address object if the IPv6 host address @ref attribute::ipv4originated "originated in the IPv4"
+   *    address space
    *
    *  In all other cases the operator will throw.
    *
    * @param rhs_ the IP address object which value to assign to this object.
    * @return <tt>*this</tt>
    * @exception exception::bad_conversion thrown if an address cannot be assigned
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
+   *   addresses.
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    */
   virtual address& operator =(const address& rhs_)
   {
@@ -393,8 +422,8 @@ class address
    *  - if this address object is an @ref ipv4::network "IPv4 network object", the current
    *   network mask is applied to the supplied address and the result is used as an IPv4
    *   network address.
-   *  - if this address objec is an @ref ipv6::host "IPv6 host object", the supplied address
-   *   is prefixed with the  @ref ipv6::rfc_ipv4map "standard SIIT network prefix"
+   *  - if this address object is an @ref ipv6::host "IPv6 host object", the supplied address
+   *   is prefixed with the  @ref ipv6::assigned::ipv4map "standard SIIT network prefix"
    *   <tt>::%ffff:0:0/96</tt> and used as an IPv6 host address.
    *
    *  In all other cases the operator will throw.
@@ -402,8 +431,7 @@ class address
    * @return <tt>*this</tt>
    * @exception exception::bad_conversion if the source address is
    *   incompatible with the desitnation address
-   *
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    */
   virtual address& operator =(const struct in_addr& rhs_)
@@ -416,9 +444,8 @@ class address
    * Assigns the IPv6 address contained in <tt>struct in6_addr</tt> to this
    * address object, as follows:
    *  - if this address object is an @ref ipv4::host "IPv4 host object", the supplied
-   *   the supplied IPv6 address must be a host address and must belong to one
-   *   of the IPv4 mapping networks, The the IPv4 host address is set by using the
-   *   trailing 4 bytes of the IPv6 address.
+   *   the supplied IPv6 address must be a host address @ref attributte::ipv4originated "originated in the IPv4"
+   *   address space. The the IPv4 host address is set by using the trailing 4 bytes of the IPv6 address.
    *  - if this address object is an @ref ipv6::host "IPv6 host object", the supplied address
    *   is used directly, without further checks.
    *  - if this address object is an @ref ipv6::network "IPv6 network object", the current
@@ -430,12 +457,11 @@ class address
    * @param rhs_ IPv6 address structure containing an IP address
    * @return <tt>*this</tt>
    * @exception exception::bad_conversion if the source address is
-   *   incompatible with the desitnation address
-   *
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   *   incompatible with the destination address type
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
-   *   addresses
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    */
   virtual address& operator =(const struct in6_addr& rhs_)
   {
@@ -622,6 +648,59 @@ class network : public address
 };
 
 /**
+ * A structure representing data about address range reserved for special purposes.
+ *
+ * @see @ref ipv6::assigned "IPv6 numbers reserved for special purposes"
+ * @see @ref ipv4::assigned "IPv4 numbers reserved for special purposes"
+ */
+class assigned_number
+{
+ public:
+  /**
+   * Virtual dtor for interface class.
+   */
+  virtual ~assigned_number()
+  { /* noop */ }
+  /**
+   * Return the address range reserved for special purposes.
+   */
+  virtual const network& address() const = 0;
+  /**
+   * Return the brief description of the reserved address range.
+   */
+  virtual const char* description() const = 0;
+  /**
+   * Return the name of the standard that reserved the address range.
+   */
+  virtual const char* reference() const = 0;
+  /**
+   * Return true if the addresses from the reserved range are valid as source addresses of the IP frame, false if not.
+   * @see @ref attribute::source
+   */
+  virtual bool valid_as_source() const = 0;
+  /**
+   * Return true if the addresses from the reserved range are valid as destination addresses of the IP frame, false if not.
+   * @see @ref attribute::destination
+   */
+  virtual bool valid_as_destination() const = 0;
+  /**
+   * Return true if the addresses from the reserved range can be forwarded by network routing nodes.
+   * @see @ref attribute::forwardable
+   */
+  virtual bool is_forwardable() const = 0;
+  /**
+   * Return true if the addresses from the reserved range may be globally reachable.
+   * @see @ref attribute::global.
+   */
+  virtual bool is_global() const = 0;
+  /**
+   * Return true if the addresses from the reserved range are multicast addresses.
+   * @see @ref attribute::multicast.
+   */
+  virtual bool is_mcast() const = 0;
+};
+
+/**
  * This namespace contains implementation related classes for IPv6 host nad network addresses.
  */
 namespace ipv6 {
@@ -632,10 +711,126 @@ namespace ipv6 {
 using binary_t = cool::ng::util::binary<16>;
 
 /**
+ * IANA special purpose IPv6 addresses.
+ *
+ * Various protocol and application level RFC specifications reserve certain address ranges for the
+ * special purposes. The Internet Assigned Numbers Authority (IANA) maintains the registry of reserved ranges.
+ * This enumeration lists the special purpose addresses as of December 2019. For the latest status
+ * check the <a href="https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml">
+ * IANA IPv6 Special-Purpose Address Registry</a>.
+ */
+class dlldecl assigned
+{
+ public:
+  enum {
+    unspecified = 0,  //!< IPv6 address range ::/128 reserved by RFC4291
+    loopback,         //!< IPv6 address range ::1/128 reserved by RFC4291
+    ipv4map,          //!< IPv6 address range ::%ffff:0:0/96 reserved by RFC4291
+    ipv4xlat,         //!< IPv6 address range 64:ff9b::/96 reserved by RFC6052
+    ipv4xlat_local,   //!< IPv6 address range 64:ff9b:1::/48 reserved by RFC8215
+    discard,          //!< IPv6 address range 100::/64 reserved by RFC8215
+    ietf,             //!< IPv6 address range 2001::/23 reserved by RFC2928
+    ietf_teredo,      //!< IPv6 address range 2001::/32 reserved by RFC4380
+    ietf_pcp_anycast, //!< IPv6 address range 2001:1::1/128 reserved by RFC7723
+    ietf_nat_anycast, //!< IPv6 address range 2001:1::2/128 reserved by RFC8155
+    ietf_benchmark,   //!< IPv6 address range 2001:2::/48 reserved by RFC5180
+    ietf_amt,         //!< IPv6 address range 2001:3::/32 reserved by RFC7450
+    ietf_as112,       //!< IPv6 address range 2001:4:112::/48 reserved by RFC7535
+    ietf_orchid_v2,   //!< IPv6 address range 2001:20::/28 reserved by RFC7343
+    documentation,    //!< IPv6 address range 2001:db8::/32 reserved by RFC3849
+    rfc_6to4,         //!< IPv6 address range 2002::/16 reserved by RFC3056
+    as112_delegation, //!< IPv6 address range 2620:4f:8000::/48 reserved by RFC7534
+    multicast,        //!< IPV6 address range ff00::/8 reserved by RFC 2373 for multicast
+    local,            //!< IPv6 address range fc00::/7 reserved by RFC4193
+    link_local,       //!< IPv6 address range fe80::/10 reserved by RFC4291
+  };
+  /**
+   * Number of builtin special purpose addresses.
+   */
+  static const std::size_t count;
+  /**
+   * Return special purpose address identified by its enumerator.
+   * @param what_ an integer value of the special purpose addresses' enumerator
+   * @return the special purpose address range identified by its enumerator
+   * @exception cool::ng::exception::out_of_range thrown if the enumerator's integer value exceeds the
+   * number of registered special purpose addresses.
+   */
+  static const network& get(std::size_t what_);
+  /**
+   * Return special purpose address identified by its enumerator.
+   * @param what_ an integer value of the special purpose addresses' enumerator
+   * @return the @ref assigned_number structure  identified by its enumerator
+   * @exception cool::ng::exception::out_of_range thrown if the enumerator's integer value exceeds the
+   * number of registered special purpose addresses.
+   */
+  static const assigned_number& get_info(std::size_t what_);
+  /**
+   * Add a special purpose address range.
+   *
+   * Adds a special purpose address range to the table of registered address ranges reserved for special
+   * purposes. The added address range will be taken into account by queries made via @ref get(), @ref get_info()
+   * and @ref address::is() methods.
+   *
+   * @param addr_  the special purpose address range denoted as the network address combined with
+   * the bit mask
+   * @param desc_ a brief description of the reserved address range
+   * @param ref_ a reference to the document that is a base for reserving the range
+   * @param is_src_ set to @c true if the addresses from this range are valid as source addresses of
+   * the IP frames
+   * @param is_dst_ set to @c true if the addresses from this range are valid as destiantion addresses of
+   * the IP frames
+   * @param is_fwd_ set to @c true if the addresses from this range may be forwarded by the network
+   * routing nodex
+   * @param is_glob_ set to @c true if the addresses from this range may be globally reachable
+   * @param is_mcast_ set to @c true if the addresses from this range ara multicast addresses
+   *
+   * @return an address range enumerator that can be used for queries via @ref get() or @ref get_info()
+   * methods.
+   * @warning The table of the special purpose numbers @em does @em not make a copy of the
+   * @ref network object specified via @c addr_ parameter. It stores the address of the original object.
+   * This implies that the original object must exist from the moment it was added to the table of special
+   * purpose addresses until the end of the program execution. It must not be dynamically allocated.
+   * Modifying the original of the added object may yield an undefined behavior. The same ilimitations apply
+   * to the description and reference texts specified via @c desc_ and @c ref_ parameters, if their
+   * values are not @c nullptr.
+   * @note This function allows the users to extend the table with their custom address ranges.  It also
+   * allows the user code to adjust the provided table with the recent reservations that may have been
+   * made to the reference
+   * <a href="https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml">
+   * IANA IPv6 Special-Purpose Address Registry</a> and are not yet reflected in the provided table.
+   */
+  static std::size_t add(
+      const network& addr_
+    , const char* desc_
+    , const char* ref_
+    , bool is_src_
+    , bool is_dst_
+    , bool is_fwd_
+    , bool is_glob_
+    , bool is_mcast_ = false
+  );
+};
+
+
+/**
  * Implementation class for IPv6 host addresses.
  */
-class host : public ip::host
+class dlldecl host : public ip::host
 {
+ public:
+ /**
+  * Constant representing IPv6 loopback address.
+  */
+  static host const loopback;
+ /**
+  * Constant representing unspecified IPv6 host address.
+  */
+  static host const unspecified;
+ /**
+  * Constant representing <tt>IN6_ADDR_ANY</tt>.
+  */
+  static host const any;
+
  public:
   // ==== ctors
   /**
@@ -647,13 +842,13 @@ class host : public ip::host
    * Construct a host address object from another address object.
    *
    * The other address object can be another IPv6 host address or an @ref ipv4::host "IPv4 host"
-   * address. In the latter case the new host address object will receive a stanard @ref rfc_ipv4map
+   * address. In the latter case the new host address object will receive  stanard @ref reserved::ipv4map
    * "SIIT prefix" for mapped addresses (<tt>:</tt><tt>:ffff:0:0/96</tt>).
    *
    * @param other_ the other IP address
    * @exception exception::bad_conversion thrown if other address object
    *   is not IPv6 host or IPv4 host address object.
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
    */
   explicit host(const ip::address& other_)
@@ -685,8 +880,10 @@ class host : public ip::host
    * Construct a host address object from IPv4 address structure.
    *
    * @param data_     IPv4 structure with network address.
-   * @note The constructed object is an IPv4 mapped address with the
-   *   @ref rfc_ipv4map "standard network prefix" for mapped addresses.
+   * @note The constructed object is an @ref attribute::ipv4originated "IPv4 mapped address" with the
+   *   @ref ipv6::assigned::ipv4map "standard network prefix" for mapped addresses.
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
+   *   addresses.
    */
   explicit host(const struct in_addr& data_)
   {
@@ -716,8 +913,7 @@ class host : public ip::host
    *            0x00, 0x00, 0x00, 0x00,
    *            0x01, 0x02, 0x03, 0x04 };
    * @endcode
-   * If the list contains fewer than 16 values the remaining values are
-   * set to 0.
+   * If the list contains fewer than 16 values the remaining bytes to the left are set to 0.
    *
    * @param data_     initializer list containing network address bytes.
    */
@@ -730,9 +926,9 @@ class host : public ip::host
   {
     return m_data.data();
   }
-  dlldecl EXPLICIT_ operator struct in_addr() const override;
-  dlldecl EXPLICIT_ operator struct in6_addr() const override;
-  dlldecl EXPLICIT_ operator std::string () const override;
+  EXPLICIT_ operator struct in_addr() const override;
+  EXPLICIT_ operator struct in6_addr() const override;
+  EXPLICIT_ operator std::string () const override;
 
   // ---- assignment operators
   host& operator =(const ip::address& rhs_) override
@@ -760,8 +956,8 @@ class host : public ip::host
     return *this;
   }
   //---- other methods
-  dlldecl bool equals(const ip::address& other_) const override;
-  dlldecl std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const override;
+  bool equals(const ip::address& other_) const override;
+  std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::host;
@@ -775,15 +971,15 @@ class host : public ip::host
   {
     return m_data.size();
   };
-  dlldecl bool in(const ip::network& net_) const override;
-  dlldecl bool is(ip::attribute attr_) const override;
+  bool in(const ip::network& net_) const override;
+  bool is(ip::attribute attr_) const override;
 
  private:
-  dlldecl void assign(const ip::address& rhs_) override;
-  dlldecl void assign(const struct in_addr& rhs_) override;
-  dlldecl void assign(const struct in6_addr& rhs_) override;
-  dlldecl void assign(uint8_t const rhs_[]) override;
-  dlldecl void assign(const std::string& rhs_) override;
+  void assign(const ip::address& rhs_) override;
+  void assign(const struct in_addr& rhs_) override;
+  void assign(const struct in6_addr& rhs_) override;
+  void assign(uint8_t const rhs_[]) override;
+  void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
@@ -792,18 +988,19 @@ class host : public ip::host
 /**
  * Implementation class for IPv6 network addresses.
  */
-class network : public ip::network
+class dlldecl network : public ip::network
 {
  public:
   /**
-   * Construct a network address object with the @ref unspecified_network "unspecified network address".
+   * Construct a network address object with the @ref ipv6::assigned::unspecified "unspecified network address".
    */
-  explicit network() : m_length(0)
+  explicit network() : m_length(128)
   { /* noop */ }
   /**
    * Construct a network address object with the specified mask size and an unspecified address.
    * @param mask_size_ number of bits, from the left, of the network address part (network mask)
    * @exception exception::out_of_range thrown if mask size exceeds 128 bits.
+   * @note All address bytes are set to 0.
    */
   explicit network(std::size_t mask_size_) : m_length(mask_size_)
   {
@@ -870,7 +1067,7 @@ class network : public ip::network
    * @param data_      initializer list containing network address bytes.
    * @exception exception::out_of_range thrown if the mask size exceeds 128 bits.
    */
-  dlldecl network(std::size_t mask_size_, std::initializer_list<uint8_t> data_);
+  network(std::size_t mask_size_, std::initializer_list<uint8_t> data_);
   /**
    * Construct a network address object from the host address.
    *
@@ -888,8 +1085,8 @@ class network : public ip::network
   }
 
   // address interface
-  dlldecl bool equals(const ip::address& other_) const override;
-  dlldecl std::ostream& visualize(std::ostream &os_, style style_ = style::customary) const override;
+  bool equals(const ip::address& other_) const override;
+  std::ostream& visualize(std::ostream &os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::network;
@@ -903,10 +1100,10 @@ class network : public ip::network
   {
     return m_data.data();
   }
-  dlldecl EXPLICIT_ operator struct in_addr() const override;
-  dlldecl EXPLICIT_ operator struct in6_addr() const override;
-  dlldecl EXPLICIT_ operator std::string () const override;
-  dlldecl std::size_t size() const override
+  EXPLICIT_ operator struct in_addr() const override;
+  EXPLICIT_ operator struct in6_addr() const override;
+  EXPLICIT_ operator std::string () const override;
+  std::size_t size() const override
   {
     return m_data.size();
   };
@@ -936,114 +1133,27 @@ class network : public ip::network
     return *this;
   }
 
-  dlldecl bool in(const ip::network& net_) const override;
-  dlldecl bool is(ip::attribute) const override;
+  bool in(const ip::network& net_) const override;
+  bool is(ip::attribute) const override;
 
   // network interface
-  dlldecl bool has(const ip::address& other_) const override;
+  bool has(const ip::address& other_) const override;
   std::size_t mask() const override
   {
     return m_length;
   }
 
  private:
-  dlldecl void assign(const ip::address& rhs_) override;
-  dlldecl void assign(const struct in_addr& rhs_) override;
-  dlldecl void assign(const struct in6_addr& rhs_) override;
-  dlldecl void assign(uint8_t const rhs_[]) override;
-  dlldecl void assign(const std::string& rhs_) override;
+  void assign(const ip::address& rhs_) override;
+  void assign(const struct in_addr& rhs_) override;
+  void assign(const struct in6_addr& rhs_) override;
+  void assign(uint8_t const rhs_[]) override;
+  void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
   std::size_t m_length;
 };
-
-/*
-TODO: fix this list, see
-https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
- */
-/**
- * Constant representing IPv6 loopback address.
- */
-const host loopback = { 1 };
-/**
- * Constant representing IPv6 unspecified host address.
- */
-const host unspecified;
-/**
- * Constant representing IPv6 unspecified network address.
- */
-const network unspecified_network(0);
-/**
- * Naming convenience - IPv6 equivalent of ipv4::any for bind.
- */
-const host any;
-/**
- * Reserved IPv6 address range ::%ffff:0:0/96.
- *
- * The IPv6 network prefix for IPv4 @ref ipv4::host "host" addresses
- * mapped into IPv6 address space via Stateless IP/ICMP Translation (SIIT)
- * mechanism, as specified in RFC 4291. Addresses within this range should
- * not appear on the public Internet.
- */
-const network rfc_ipv4map = { 96, { 0xff, 0xff, 0, 0, 0, 0 } };
-/**
- * Reserved IPv6 address range 100::/64.
- *
- * This is Discard Prefix, as specified in RFC 6666.
- */
-const network rfc_discard = { 64, { 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
-/**
- * Reserved IPv6 address range 64:ff9b::/96.
- *
- * This block is Well-known Prefix used for IPv4/Ipv6 address translation,
- * as specified in RFC 6052.
- */
-const network rfc_ipv4translate = { 96, { 0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
-/**
- * Reserved IPv6 address range 64:ff9b:1::/48.
- *
- * This block is Well-known Prefix used for IPv4/Ipv6 address translation for local use,
- * as specified in RFC 8215.
- */
-const network rfc_ipv4localtrans = { 48, { 0x00, 0x64, 0xff, 0x9b, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
-/**
- * Reserved IPv6 address range 2001::/32.
- *
- * This block is is used for Teredo tunneling, as specified in RFC 4380.
- *
- * @note Teredo tunneling is a technology that allows nodes located behind one or
- * more IPv4 Network Address Translations (NATs) to obtain IPv6
- * connectivity by tunneling packets over UDP.
- */
-const network rfc_teredo = { 32, { 0x20, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
-/**
- * Reserved IPv6 address range 2001:db8::/32.
- *
- * This block is is used for addresses used in documentation,
- * as specified in RFC 5737.
- */
-const network rfc_doc = { 32, { 0x20, 0x01, 0xdb, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
-/**
- * Reserved IPv6 address range fc00::/7.
- *
- * This block is is used for unique local addresses,
- * as specified in RFC 4193.
- */
-const network rfc_local = { 7, { 0xfc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
-/**
- * Reserved IPv6 address range fe80::/10.
- *
- * This block is is reserved for link local addresses. The actual allocation
- * range for link local addresses is fe80::/64.
- */
-const network rfc_link = { 10, { 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  } };
-/**
- * Reserved IPv6 address range ff00::/8.
- *
- * This block is is reserved for multicast addresses.
- */
-const network rfc_mcast = { 8, { 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 
 } // namespace ipv6
 
@@ -1057,10 +1167,129 @@ namespace ipv4 {
 using binary_t = cool::ng::util::binary<4>;
 
 /**
+ * IANA special purpose IPv4 addresses.
+ *
+ * Various protocol and application level RFC specifications reserve certain address ranges for the
+ * special purposes. The Internet Assigned Numbers Authority (IANA) maintains the registry of reserved ranges.
+ * This enumeration lists the special purpose addresses as of December 2019. For the latest status
+ * check the <a href="https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml">
+ * IANA IPv4 Special-Purpose Address Registry</a>.
+ */
+class dlldecl assigned
+{
+ public:
+  enum {
+    unspecified = 0,   //!< Unspecified IPv4 network address range <tt>0.0.0.0/8</tt> (RFC 1122)
+    private_1,         //!< IPv4 address range <tt>10.0.0.0/24</tt> reserved by RFC 1918
+    shared_space,      //!< IPv4 address range <tt>100.64.0.0/10</tt> reserved by RFC 6598
+    loopback,          //!<  IPv4 address range<tt> 127.0.0.0/8</tt>  reserved by RFC 1122 for localhost.
+    private_2,         //!< IPv4 address range <tt>172.16.0.0/12</tt> reserved by RFC 1918
+    ietf,              //!< IPv4 address range <tt>192.0.0.0/24</tt> reserved by RFC 6980
+    ietf_continuity,   //!< IPv4 address range <tt>192.0.0.0/32</tt> reserved by RFC 7335
+    ietf_dummy,        //!< IPv4 address range <tt>192.0.0.8/32</tt> reserved by RFC 7600
+    ietf_pcp_anycast,  //!< IPv4 address range <tt>192.0.0.9/32</tt> reserved by RFC 7723
+    ietf_nat_anycast,  //!< IPv4 address range <tt>192.0.0.10/32</tt> reserved by RFC 7723
+    ietf_discovery_1,  //!< IPv4 address range <tt>192.0.0.170/32</tt> reserved by RFC 7050
+    ietf_discovery_2,  //!< IPv4 address range <tt>192.0.0.171/32</tt> reserved by RFC 7050
+    test_net_1,        //!< IPv4 address range <tt>192.0.2.0/24</tt> reserved by RFC 5737
+    as112,             //!< IPv4 address range <tt>192.31.196.0/24</tt> reserved by RFC 7535
+    amt,               //!< IPv4 address range <tt>192.52.193.0/24</tt> reserved by RFC 7535
+    private_3,         //!< IPv4 address range <tt>192.168.0.0/16</tt> reserved by by RFC 1918
+    as112_delegation,  //!< IPv4 address range <tt>192.175.48.0/24</tt> reserved by RFC 7534
+    benchmark,         //!< IPv4 address range <tt>198.18.0.0/15</tt> reserved by by RFC 2544
+    test_net_2,        //!< IPv4 address range <tt>198.51.100.0/24</tt> reserved by RFC 5737
+    test_net_3,        //!< IPv4 address range <tt>203.0.113.0/24</tt> reserved by RFC 5737
+    multicast,         //!< IPv4 address range <tt>224.0.0.0/4</tt> reserved by RFC 1112 for multicast (former class D)
+    future_use,        //!< IPv4 address range <tt>240.0.0.0/4</tt> reserved by RFC 5771
+    broadcast,         //!< IPv4 address range <tt>255.255.255.255/32</tt> reserved by RFC 8190
+    link_local         //!< IPv4 address range <tt>169.254.0.0/16</tt> reserved by RFC 3927 for link local addresses
+  };
+
+  /**
+   * Number of builtin special purpose addresses.
+   */
+  static const std::size_t count;
+  /**
+   * Return special purpose address identified by its enumerator.
+   * @param what_ an integer value of the special purpose addresses' enumerator
+   * @exception cool::ng::exception::out_of_range thrown if the enumerator's integer value exceeds the
+   * number of registered special purpose addresses.
+   */
+  static const network& get(std::size_t what_);
+  /**
+   * Return special purpose address identified by its enumerator.
+   * @param what_ an integer value of the special purpose addresses' enumerator
+   * @return the @ref assigned_number structure  identified by its enumerator
+   * @exception cool::ng::exception::out_of_range thrown if the enumerator's integer value exceeds the
+   * number of registered special purpose addresses.
+   */
+  static const assigned_number& get_info(std::size_t what_);
+  /**
+   * Add a special purpose address range.
+   *
+   * Adds a special purpose address range to the table of registered address ranges reserved for special
+   * purposes. The added address range will be taken into account by queries made via @ref get(), @ref get_info()
+   * and @ref address::is() methods.
+   *
+   * @param addr_  the special purpose address range denoted as the network address combined with
+   * the bit mask
+   * @param desc_ a brief description of the reserved address range
+   * @param ref_ a reference to the document that is a base for reserving the range
+   * @param is_src_ set to @c true if the addresses from this range are valid as source addresses of
+   * the IP frames
+   * @param is_dst_ set to @c true if the addresses from this range are valid as destiantion addresses of
+   * the IP frames
+   * @param is_fwd_ set to @c true if the addresses from this range may be forwarded by the network
+   * routing nodex
+   * @param is_glob_ set to @c true if the addresses from this range may be globally reachable
+   * @param is_mcast_ set to @c true if the addresses from this range ara multicast addresses
+   *
+   * @return an address range enumerator that can be used for queries via @ref get() or @ref get_info()
+   * methods.
+   * @warning The table of the special purpose numbers @em does @em not make a copy of the
+   * @ref network object specified via @c addr_ parameter. It stores the address of the original object.
+   * This implies that the original object must exist from the moment it was added to the table of special
+   * purpose addresses until the end of the program execution. It must not be dynamically allocated.
+   * Modifying the original of the added object may yield an undefined behavior. The same ilimitations apply
+   * to the description and reference texts specified via @c desc_ and @c ref_ parameters, if their
+   * values are not @c nullptr.
+   * @note This function allows the users to extend the table with their custom address ranges.  It also
+   * allows the user code to adjust the provided table with the recent reservations that may have been
+   * made to the reference
+   * <a href="https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml">
+   * IANA IPv4 Special-Purpose Address Registry</a> and are not yet reflected in the provided table.
+   */
+  static std::size_t add(
+      const network& addr_
+    , const char* desc_
+    , const char* ref_
+    , bool is_src_
+    , bool is_dst_
+    , bool is_fwd_
+    , bool is_glob_
+  , bool is_mcast_ = false
+  );
+};
+
+/**
  * Implementation class for IPv4 host addresses.
  */
-class host : public ip::host
+class dlldecl host : public ip::host
 {
+ public:
+  /**
+   * Constant representing IPv4 loopback address.
+  */
+  static const host loopback;
+  /**
+   * Constant representing unspecified IPv4 address.
+  */
+  static const host unspecified;
+  /**
+   * Constant representing IPv4 INADDR_ANY address.
+  */
+  static const host any;
+
  public:
   /**
    * Construct a host address object with the @ref unspecified "unspecified host address".
@@ -1071,16 +1300,16 @@ class host : public ip::host
    * Construct a host address object from another address object.
    *
    * The other address object must be either another IPv4 host address object, or
-   * an @ref ipv6::host "IPv6 host" address object that was @ref ipv6::rfc_ipv4map
-   * "mapped" or @ref ipv6::rfc_ipv4translate "translated" from the IPv4 host address
+   * an @ref ipv6::host "IPv6 host" address object that @ref attribute::ipv4originated
+   * "that originated from the IPv4 address space".
    *
    * @param other_ the other IP address
    * @exception exception::bad_conversion thrown if other address object
    *   is neither IPv4 host address nor mapped or translated IPv6 host address.
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
-   *   addresses
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    */
   explicit host(const ip::address& other_)
   {
@@ -1103,16 +1332,16 @@ class host : public ip::host
    * Construct a host address object from IPv6 address structure.
    *
    * Such construction is only possible if the IPv6 address structure contains
-   * an IPv6 address that was mapped or translated from the IPv4 address..
+   * an IPv6 address that @ref attribute::ipv4originated "that originated from the IPv4 address space".
    *
-   * @param data_      IPv6 structure with network address.
+   * @param data_   IPv6 structure with network address.
    * @exception exception::bad_conversion thrown if specified address
    *   is not valid.
    *
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
-   *   addresses
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    */
   explicit host(const struct in6_addr& data_)
   {
@@ -1157,8 +1386,8 @@ class host : public ip::host
   { /* noop */ }
 
   // address interface
-  dlldecl  bool equals(const ip::address& other_) const override;
-  dlldecl  std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const override;
+  bool equals(const ip::address& other_) const override;
+  std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::host;
@@ -1171,9 +1400,9 @@ class host : public ip::host
   {
     return m_data.data();
   }
-  dlldecl EXPLICIT_ operator struct in_addr() const override;
-  dlldecl EXPLICIT_ operator struct in6_addr() const override;
-  dlldecl EXPLICIT_ operator std::string() const override;
+  EXPLICIT_ operator struct in_addr() const override;
+  EXPLICIT_ operator struct in6_addr() const override;
+  EXPLICIT_ operator std::string() const override;
   std::size_t size() const override
   {
     return m_data.size();
@@ -1204,15 +1433,15 @@ class host : public ip::host
     return *this;
   }
 
-  dlldecl bool in(const ip::network& net) const override;
-  dlldecl bool is(ip::attribute) const override;
+  bool in(const ip::network& net) const override;
+  bool is(ip::attribute) const override;
 
  private:
-  dlldecl void assign(const ip::address& rhs_) override;
-  dlldecl void assign(const struct in_addr& rhs_) override;
-  dlldecl void assign(const struct in6_addr& rhs_) override;
-  dlldecl void assign(uint8_t const rhs_[]) override;
-  dlldecl void assign(const std::string& rhs_) override;
+  void assign(const ip::address& rhs_) override;
+  void assign(const struct in_addr& rhs_) override;
+  void assign(const struct in6_addr& rhs_) override;
+  void assign(uint8_t const rhs_[]) override;
+  void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
@@ -1221,13 +1450,13 @@ class host : public ip::host
 /**
  * Implementation class for IPv4 network addresses.
  */
-class network : public ip::network
+class dlldecl network : public ip::network
 {
  public:
   /**
-   * Construct a network address object with the @ref unspecified_network "unspecified network address".
+   * Construct a network address object with the @ref reserved::unspecified "unspecified network address".
    */
-  explicit network() : m_length(0)
+  explicit network() : m_length(8)
   { /* noop */ }
   /**
    * Construct a network address object with the specified mask size and an unspecified address.
@@ -1244,19 +1473,18 @@ class network : public ip::network
    *
    * Constructs a network address object by applying the specified network mask to
    * the host address object, or a new network mask to the nework address object.  The parameter may
-   * be an IPv4 network address, or either an IPv4 host address or an IPv6 host address which was
-   * @ref ipv6::rfc_ipv4map "mapped" or @ref ipv6::rfc_ipv4translate "translated" from IPv4 host address.
+   * be an IPv4 network address, or either an IPv4 host address or an IPv6 host address
+   * @ref attribute::ipv4originated "that originated from the IPv4 address space".
    *
    * @param mask_size_ number of bits, from the left, of the network address part (network mask)
    * @param other_   the host  address object which IP address to  use
    * @exception exception::out_of_range thrown if mask_size exceeds 32 bits.
    * @exception exception::bad_conversion thown if the host address object is an @ref ipv6::host
-   * "IPv6 host" address object which was not @ref ipv6::rfc_ipv4map "mapped" or @ref ipv6::rfc_ipv4translate
-   * "translated" from IPv4 host address, or an IPv6 network address object.
-   * @see @ref ipv6::rfc_ipv4map "IPv6 network prefix" for IPv4 mapped
+   * "IPv6 host" address object  @ref attribute::ipv4originated "not originated from the IPv4 address space".
+   * @see @ref ipv6::assigned::ipv4map "IPv6 network prefix" for IPv4 mapped
    *   addresses.
-   * @see @ref ipv6::rfc_ipv4translate "IPv6 network prefix" for IPv4 translated
-   *   addresses
+   * @see IPv6 %network prefix for @ref ipv6::assigned::ipv4xlat "translated" and
+   *  @ref ipv6::assigned::ipv4xlat_local "locally translated" IPv4 addresses
    */
   explicit network(std::size_t mask_size_, const ip::address& other_) : m_length(mask_size_)
   {
@@ -1319,11 +1547,11 @@ class network : public ip::network
    * @param data_     initializer list containing network address bytes.
    * @exception exception::out_of_range thrown if mask size exceeds 32 bits.
    */
-  dlldecl network(std::size_t mask_size_, std::initializer_list<uint8_t> data_);
+  network(std::size_t mask_size_, std::initializer_list<uint8_t> data_);
 
   // address interface
-  dlldecl bool equals(const ip::address& other_) const override;
-  dlldecl std::ostream& visualize(std::ostream &os_, style style_ = style::customary) const override;
+  bool equals(const ip::address& other_) const override;
+  std::ostream& visualize(std::ostream &os_, style style_ = style::customary) const override;
   ip::kind kind() const override
   {
     return ip::kind::network;
@@ -1336,12 +1564,12 @@ class network : public ip::network
   {
     return m_data.data();
   }
-  dlldecl EXPLICIT_ operator struct in_addr() const override;
+  EXPLICIT_ operator struct in_addr() const override;
   EXPLICIT_ operator struct in6_addr() const override
   {
     throw cool::ng::exception::bad_conversion();
   }
-  dlldecl EXPLICIT_ operator std::string () const override;
+  EXPLICIT_ operator std::string () const override;
   std::size_t size() const override
   {
     return m_data.size();
@@ -1372,156 +1600,27 @@ class network : public ip::network
     return *this;
   }
 
-  dlldecl bool in(const ip::network& net_) const override;
-  dlldecl bool is(ip::attribute attr_) const override;
+  bool in(const ip::network& net_) const override;
+  bool is(ip::attribute attr_) const override;
 
   // network interface
-  dlldecl bool has(const ip::address& other_) const override;
+  bool has(const ip::address& other_) const override;
   std::size_t mask() const override
   {
     return m_length;
   }
 
  private:
-  dlldecl void assign(const ip::address& rhs_) override;
-  dlldecl void assign(const struct in_addr& rhs_) override;
-  dlldecl void assign(const struct in6_addr& rhs_) override;
-  dlldecl void assign(uint8_t const rhs_[]) override;
-  dlldecl void assign(const std::string& rhs_) override;
+  void assign(const ip::address& rhs_) override;
+  void assign(const struct in_addr& rhs_) override;
+  void assign(const struct in6_addr& rhs_) override;
+  void assign(uint8_t const rhs_[]) override;
+  void assign(const std::string& rhs_) override;
 
  private:
   binary_t m_data;
   std::size_t m_length;
 };
-
-/**
- * Constant representing IPv4 loopback address.
- */
-const host loopback = { 127, 0, 0, 1 };
-/**
- * Constant representing unspecified IPv4 host address.
- */
-const host unspecified = { 0, 0, 0, 0 };
-/**
- * Constant representing unspecified IPv4 network address.
- */
-const network unspecified_network = { 0, { 0, 0, 0, 0 } };
-/**
- * Constant representing IPv4 INADDR_ANY address.
- */
-const host any;
-/**
- * IPv4  broadcast IP address.
- */
-const host broadcast = { 255, 255, 255, 255 };
-/**
- * Reserved IPv4 address range 0.0.0.0/8.
- *
- * Local broadcast source address as specified by RFC 1700.
- */
-const network rfc_broadcast = { 8, { 0, 0, 0, 0} };  // TODO:
-/**
- * Reserved IPv4 address range 10.0.0.0/24.
- *
- * 24-bit block private network (former class A) as specified by RFC 1918.
- */
-const network rfc_private_24 = { 24, { 10, 0, 0, 0 } };
-/**
- * Reserved IPv4 address range 172.16.0.0/20.
- *
- * 20-bit block private network (formerly 16 class B private networks)
- * as specified by RFC 1918.
- */
-const network rfc_private_20 = { 20, { 172, 16, 0, 0 } };
-/**
- * Reserved IPv4 address range 192.168.0.0/16.
- *
- * 16-bit block private network (formerly 256 class C private networks)
- * as specified by RFC 1918.
- */
-const network rfc_private_16 = { 16, { 192, 168, 0, 0 } };
-/**
- * Reserved IPv4 address range 100.64.0.0/10.
- *
- * Reserved for use with Carrier-grade NAT, as specified by RFC 6598.
- */
-const network rfc_carrier_nat = { 10, { 100, 64, 0, 0 } };
-/**
- * Reserved IPv4 address range 127.0.0.0/8.
- *
- * Reserved for loopback addresses to the local host, as specified by
- * RFC 990.
- */
-const network rfc_loopback = { 8, { 127, 0, 0, 0 } };
-/**
- * Reserved IPv4 address range 169.254.0.0/16.
- *
- * Reserved for dynamically auto-generated link local addresses used in situations
- * where stable IP address cannot be obtained by other means, as specified by
- * RFC 3927.
- */
-const network rfc_unset = { 16, { 169, 254, 0, 0 } };
-/**
- * Reserved IPv4 address range 192.0.0.0/24.
- *
- * Reserved for IANA IPv4 Special Purpose Address Registry, as specified by
- * RFC 5736.
- */
-const network rfc_iana_private = { 24, { 192, 0, 0, 0 } };
-/**
- * Reserved IPv4 address range 192.0.2.0/24.
- *
- * Reserved as TEST-NET for use solely in documentation and example source
- * code, as specified by RFC 5737.
- */
-const network rfc_test = { 24, { 192, 0, 2, 0 } };
-/**
- * Reserved IPv4 address range 198.51.100.0/24.
- *
- * Reserved as TEST-NET-2 for use solely in documentation and example source
- * code, as specified by RFC 5737.
- */
-const network rfc_test_2 = { 24, { 198, 51, 100, 0 } };
-/**
- * Reserved IPv4 address range 203.0.113.0/24.
- *
- * Reserved as TEST-NET-3 for use solely in documentation and example source
- * code, as specified by RFC 5737.
- */
-const network rfc_test_3 = { 24, { 203, 0, 113, 0 } };
-/**
- * Reserved IPv4 address range 192.88.99.0/24.
- *
- * Used by 6to4 anycast relays, as specified by RFC 3068.
- */
-const network rfc_6to4_anycast = { 24, { 192, 88, 99, 0 } };
-/**
- * Reserved IPv4 address range 198.18.0.0/15.
- *
- * Used for testing inter-network communication between two separate
- * subnets, as specified by RFC 2544.
- */
-const network rfc_test_comm = { 15, { 198, 18, 0, 0 } };
-/**
- * Reserved IPv4 address range 224.0.0.0/4.
- *
- * Reserved as MCAST-TEST-NET for use solely in documentation and example source
- * code, as specified by RFC 5771.
- */
-const network rfc_mcast = { 4, { 224, 0, 0, 0 } };
-/**
- * Reserved IPv4 address range 233.252.0.0/24.
- *
- * Reserved as MCAST-TEST-NET for use solely in documentation and example source
- * code, as specified by RFC 5771.
- */
-const network rfc_test_mcast = { 24, { 233, 252, 0, 0 } };
-/**
- * Reserved IPv4 address range 240.0.0.0/4.
- *
- * Reserved for future use, as specified by RFC 5771.
- */
-const network rfc_future = { 4, { 240, 0, 0, 0 } };
 
 } // namespace ipv4
 
@@ -1531,13 +1630,13 @@ const network rfc_future = { 4, { 240, 0, 0, 0 } };
  * This container is a replacement for cumbersone <tt>struct sockaddr_storage</tt>
  * address container.
  */
-class host_container
+class dlldecl host_container
 {
  public:
  /**
   * Destructor
   */
-  dlldecl ~host_container();
+  ~host_container();
   /**
    * Default constructor.
    *
@@ -1547,7 +1646,7 @@ class host_container
    *     host_container() == ipv6::unspecified
    * </code>
    */
-  host_container() : m_v6(ipv6::unspecified)
+  host_container() : m_v6(ipv6::host::unspecified)
   { /* noop */ }
   /**
    * Copy constructor.
@@ -1597,7 +1696,7 @@ class host_container
    * @param other_ the host_container object to copy the value from
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const host_container& other_);
+  host_container& operator =(const host_container& other_);
   /**
    * Assignment operator.
    *
@@ -1609,7 +1708,7 @@ class host_container
    * @exception cool::ng::exception::bad_conversion thrown if the provided address is not a @ref host
    *  address.
    */
-  dlldecl host_container& operator =(const address& data_);
+  host_container& operator =(const address& data_);
   /**
    * Assignment operator.
    *
@@ -1619,7 +1718,7 @@ class host_container
    * @param data_ an IPv4 address structure containing the host address
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const struct in_addr& data_);
+  host_container& operator =(const struct in_addr& data_);
   /**
    * Assignment operator.
    *
@@ -1629,7 +1728,7 @@ class host_container
    * @param data_ an IPv6 address structure containing the host address
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const struct in6_addr& data_);
+  host_container& operator =(const struct in6_addr& data_);
   /**
    * Assignment operator.
    *
@@ -1640,7 +1739,7 @@ class host_container
    * @param data_ the <tt>sockaddr_storage</tt> address structure containing the host address
    * @return reference to this host_container object
    */
-  dlldecl host_container& operator =(const struct sockaddr_storage& data_);
+  host_container& operator =(const struct sockaddr_storage& data_);
   /**
    * Type conversion operator
    *
@@ -1658,7 +1757,7 @@ class host_container
    *
    * @return const pointer to the @ref address stored in this object.
    */
-  EXPLICIT_ operator const address*() const { return static_cast<const address*>(static_cast<const void*>(&m_v4)); }
+  explicit operator const address*() const { return static_cast<const address*>(static_cast<const void*>(&m_v4)); }
   /**
    * Type conversion operator.
    *
@@ -1668,7 +1767,7 @@ class host_container
    *
    * @return <tt>sockaddr_storage</tt> structure reflecting the currently stored IP address.
    */
-  dlldecl EXPLICIT_ operator struct sockaddr_storage() const;
+  explicit operator struct sockaddr_storage() const;
 
  private:
   void release();
@@ -1810,7 +1909,7 @@ std::shared_ptr<address> operator "" _ip(const char * lit_, std::size_t len_)
  * This class combines all three data elements and can be used to represent either the service provides side
  * or the service consumer side of the communication.
  */
-class service
+class dlldecl service
 {
  public:
   /**
@@ -1825,7 +1924,7 @@ class service
    * Construct a service object for the service using the specified transport protocol.
    *
    * Such service object, while having valid service data, cannot be used to implement or contact
-   * actual network service since its network address is set to @ref ipv6::unspecified and it service
+   * actual network service since its network address is set to @ref ipv6::host::unspecified and it service
    * port to 0. It can be used, however, as a target for assigning <tt>sockaddr</tt> structure with the
    * actual service information.
    * @param t_ The @ref transport used by the service
@@ -1905,7 +2004,7 @@ class service
    * @see @ref  style "Visual styles" for textual presentation of IP addresses
    * @see RFC 3986: <i>Uniform Resource Identifier (URI): Generic Syntax</i>
    */
-  dlldecl service& operator =(const std::string& uri_)
+  service& operator =(const std::string& uri_)
   {
     assign(uri_); return *this;
   }
@@ -1939,7 +2038,7 @@ class service
    * @return true if the service information was set
    * @return false if this object was default constructed and the service information was not set
    */
-  EXPLICIT_ operator bool () const  { return m_proto != transport::unknown; }
+  explicit operator bool () const  { return m_proto != transport::unknown; }
   /**
    * Type conversion operator.
    *
@@ -1950,7 +2049,7 @@ class service
    * service information due to the default construction.
    * @see service::operator =(const std::string&)
    */
-  dlldecl EXPLICIT_ operator std::string() const;
+  explicit operator std::string() const;
   /**
    * Get the <tt>sockaddr</tt> pointer.
    *
@@ -1964,7 +2063,7 @@ class service
    * @return <tt>const</tt> pointer to the internal sockaddr structure containing the service address
    * @exception cool::ng::exception::bad_conversion thrown if the service object is not valid
    */
-  dlldecl const struct sockaddr* sockaddr() const;
+  const struct sockaddr* sockaddr() const;
   /**
    * Return the size of the socket address structure.
    *
@@ -1974,7 +2073,7 @@ class service
    * @exception cool::ng::exception::bad_conversion thrown if this object does not contain a valid
    * service information due to the default construction.
    */
-  dlldecl socklen_t sockaddr_len() const;
+  socklen_t sockaddr_len() const;
   /**
    * Return the domain of the network socket required for the service.
    *
@@ -2011,9 +2110,10 @@ class service
   {
     switch (m_proto)
     {
-      case transport::unknown: throw cool::ng::exception::bad_conversion();
       case transport::udp:     return SOCK_DGRAM;
       case transport::tcp:     return SOCK_STREAM;
+      case transport::unknown:
+      default:                  throw cool::ng::exception::bad_conversion();
     }
   }
   /**
@@ -2047,12 +2147,12 @@ class service
    * @exception cool::ng::bad_conversion thrown if this service object is not valid (was default constructed), or
    *  if the requested @ref style "visual style" cannot be applied to the @ref address "IP address" of the service
    */
-  dlldecl std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const;
+  std::ostream& visualize(std::ostream& os_, style style_ = style::customary) const;
 
  private:
-  dlldecl void assign(const struct sockaddr* sa_);
-  dlldecl void assign(const std::string& s_);
-  dlldecl void sync();
+  void assign(const struct sockaddr* sa_);
+  void assign(const std::string& s_);
+  void sync();
 
  private:
   transport      m_proto;

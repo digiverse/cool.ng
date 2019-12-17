@@ -105,7 +105,7 @@ COOL_AUTO_TEST_CASE(T001,
     BOOST_CHECK_THROW(a6 = rn4, cool::ng::exception::bad_conversion);
     BOOST_CHECK_THROW(a6 = rn6, cool::ng::exception::bad_conversion);
     BOOST_CHECK_NO_THROW(a6 = ra4);
-    BOOST_CHECK(a6.in(ipv6::rfc_ipv4map));
+    BOOST_CHECK(a6.in(ipv6::assigned::get(ipv6::assigned::ipv4map)));
   }
   {
     {
@@ -171,17 +171,17 @@ COOL_AUTO_TEST_CASE(T002,
   const in6_addr a3 = static_cast<in6_addr>(ipv6::host(s3));
 
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
 
     BOOST_CHECK_THROW(a = a1, cool::ng::exception::bad_conversion);
-    BOOST_CHECK_EQUAL(a, ipv4::loopback);
+    BOOST_CHECK_EQUAL(a, ipv4::host::loopback);
     BOOST_CHECK_NO_THROW(a = a2);
     BOOST_CHECK_EQUAL(a, ipv4::host("172.14.3.1"));
     BOOST_CHECK_NO_THROW(a = a3);
     BOOST_CHECK_EQUAL(a, ipv4::host("172.14.5.99"));
   }
   {
-    ipv6::host a(ipv6::loopback);
+    ipv6::host a(ipv6::host::loopback);
 
     BOOST_CHECK_NO_THROW(a = a1);
     BOOST_CHECK_EQUAL(a, ipv6::host(s1));
@@ -215,7 +215,7 @@ COOL_AUTO_TEST_CASE(T003,
   const in_addr a1 = static_cast<in_addr>(ipv4::host(s1));
 
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
 
     BOOST_CHECK_NO_THROW(a = a1);
     BOOST_CHECK_EQUAL(a, ipv4::host("172.14.3.1"));
@@ -235,7 +235,7 @@ COOL_AUTO_TEST_CASE(T003,
     }
   }
   {
-    ipv6::host a(ipv6::loopback);
+    ipv6::host a(ipv6::host::loopback);
 
     BOOST_CHECK_NO_THROW(a = a1);
     BOOST_CHECK_EQUAL(a, ipv6::host("::ffff:172.14.3.1"));
@@ -281,25 +281,25 @@ COOL_AUTO_TEST_CASE(T005,
   *utf::description("operator =(const std::string&)"))
 {
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
     BOOST_CHECK_NO_THROW(a = "192.168.3.99");
     BOOST_CHECK_EQUAL(a, ipv4::host({ 192, 168, 3, 99}));
   }
   {
     {
-      ipv4::network a(ipv4::rfc_test);
+      ipv4::network a(ipv4::assigned::get(ipv4::assigned::test_net_1));
       BOOST_CHECK_NO_THROW(a = "192.168.3.99/23");
       BOOST_CHECK_EQUAL(a.mask(), 23);
       BOOST_CHECK_EQUAL(a, ipv4::network(23, { 192, 168, 2, 0}));
     }
     {
-      ipv4::network a(ipv4::rfc_test);
+      ipv4::network a(ipv4::assigned::get(ipv4::assigned::test_net_1));
       BOOST_CHECK_THROW(a = "192.168.3.99", cool::ng::exception::bad_conversion);
     }
   }
   {
     {
-      ipv6::host a(ipv6::loopback);
+      ipv6::host a(ipv6::host::loopback);
       BOOST_CHECK_NO_THROW(a = "2605:2700:0000:0003:0000:0000:4713:93e3"); // fully expanded
       BOOST_CHECK_EQUAL(a, ipv6::host({ 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x93, 0xe3}));
       BOOST_CHECK_NO_THROW(a = "2605:2700:0:3:0:0:4713:93e3"); // expanded
@@ -341,25 +341,25 @@ COOL_AUTO_TEST_CASE(T005,
   }
   {
     {
-      ipv6::network a(ipv6::rfc_mcast);
+      ipv6::network a(ipv6::assigned::get(ipv6::assigned::multicast));
       BOOST_CHECK_NO_THROW(a = "2605:2700:0000:0003:0000:0000:4713:93e3/113"); // fully expanded
       BOOST_CHECK_EQUAL(a.mask(), 113);
       BOOST_CHECK_EQUAL(a, ipv6::network(113, { 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x80, 0}));
     }
     {
-      ipv6::network a(ipv6::rfc_mcast);
+      ipv6::network a(ipv6::assigned::get(ipv6::assigned::multicast));
       BOOST_CHECK_NO_THROW(a = "2605:2700:0:3:0:0:4713:93e3/113"); // expanded
       BOOST_CHECK_EQUAL(a.mask(), 113);
       BOOST_CHECK_EQUAL(a, ipv6::network(113, { 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x80, 0}));
     }
     {
-      ipv6::network a(ipv6::rfc_mcast);
+      ipv6::network a(ipv6::assigned::get(ipv6::assigned::multicast));
       BOOST_CHECK_NO_THROW(a = "2605:2700:0:3::4713:93e3/113"); // canonical
       BOOST_CHECK_EQUAL(a.mask(), 113);
       BOOST_CHECK_EQUAL(a, ipv6::network(113, { 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x80, 0}));
     }
     {
-      ipv6::network a(ipv6::rfc_mcast);
+      ipv6::network a(ipv6::assigned::get(ipv6::assigned::multicast));
       BOOST_CHECK_NO_THROW(a = "2605-2700-0-3--4713-93e3/113"); // microsoft
       BOOST_CHECK_EQUAL(a.mask(), 113);
       BOOST_CHECK_EQUAL(a, ipv6::network(113, { 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x80, 0}));
@@ -377,7 +377,7 @@ COOL_AUTO_TEST_CASE(T005,
   {
     // -- invalid characters
     {
-      ipv4::host a(ipv4::loopback);
+      ipv4::host a(ipv4::host::loopback);
       BOOST_CHECK_THROW(a = "192", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "192.", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "192.168", cool::ng::exception::bad_conversion);
@@ -392,10 +392,10 @@ COOL_AUTO_TEST_CASE(T005,
       BOOST_CHECK_THROW(a = "192.168.3:99", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "192.168.3. 99", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "sometimes something goes wrong", cool::ng::exception::bad_conversion);
-      BOOST_CHECK_EQUAL(a, ipv4::loopback);
+      BOOST_CHECK_EQUAL(a, ipv4::host::loopback);
     }
     {
-      ipv4::network a(ipv4::rfc_test);
+      ipv4::network a(ipv4::assigned::get(ipv4::assigned::test_net_1));
       BOOST_CHECK_THROW(a = "192", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "192.", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "192.168", cool::ng::exception::bad_conversion);
@@ -414,10 +414,10 @@ COOL_AUTO_TEST_CASE(T005,
       BOOST_CHECK_THROW(a = "192.168.3.0/33", cool::ng::exception::out_of_range);
       BOOST_CHECK_THROW(a = "192.168.3.0/ 32", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "sometimes // something goes wrong", cool::ng::exception::bad_conversion);
-      BOOST_CHECK_EQUAL(a, ipv4::rfc_test);
+      BOOST_CHECK_EQUAL(a, ipv4::assigned::get(ipv4::assigned::test_net_1));
     }
     {
-      ipv6::host a(ipv6::loopback);
+      ipv6::host a(ipv6::host::loopback);
 
       BOOST_CHECK_THROW(a = ":200", cool::ng::exception::bad_conversion);
       BOOST_CHECK_THROW(a = "200", cool::ng::exception::bad_conversion);
@@ -444,7 +444,7 @@ COOL_AUTO_TEST_CASE(T005,
 
       // microsoft style and dot-decimal
       BOOST_CHECK_THROW(a = "--fffe-192.168.3.99", cool::ng::exception::bad_conversion);
-      BOOST_CHECK_EQUAL(a, ipv6::loopback);
+      BOOST_CHECK_EQUAL(a, ipv6::host::loopback);
     }
     {
       ipv6::network a;
@@ -459,38 +459,38 @@ COOL_AUTO_TEST_CASE(T006,
 {
   {
     ipv4::host a;
-    BOOST_CHECK_EQUAL(a, ipv4::unspecified);
+    BOOST_CHECK_EQUAL(a, ipv4::host::unspecified);
   }
   {
     {
       ipv4::network a;
-      BOOST_CHECK_EQUAL(a.mask(), 0);
-      BOOST_CHECK_EQUAL(a, ipv4::unspecified_network);
+      BOOST_CHECK_EQUAL(a.mask(), 8);
+      BOOST_CHECK_EQUAL(a, ipv4::assigned::get(ipv4::assigned::unspecified));
     }
     {
       ipv4::network a;
       BOOST_CHECK_THROW(ipv4::network(33), cool::ng::exception::out_of_range);
       BOOST_CHECK_NO_THROW(a = ipv4::network(17));
       BOOST_CHECK_EQUAL(a.mask(), 17);
-      BOOST_CHECK_EQUAL(memcmp(static_cast<const uint8_t*>(a), static_cast<const uint8_t*>(ipv4::unspecified), 4), 0);
+      BOOST_CHECK_EQUAL(memcmp(static_cast<const uint8_t*>(a), static_cast<const uint8_t*>(ipv4::host::unspecified), 4), 0);
     }
   }
   {
     ipv6::host a;
-    BOOST_CHECK_EQUAL(a, ipv6::unspecified);
+    BOOST_CHECK_EQUAL(a, ipv6::host::unspecified);
   }
   {
     {
       ipv6::network a;
-      BOOST_CHECK_EQUAL(a.mask(), 0);
-      BOOST_CHECK_EQUAL(a, ipv6::unspecified_network);
+      BOOST_CHECK_EQUAL(a.mask(), 128);
+      BOOST_CHECK_EQUAL(a, ipv6::assigned::get(ipv6::assigned::unspecified));
     }
     {
       ipv6::network a;
       BOOST_CHECK_THROW(ipv6::network(129), cool::ng::exception::out_of_range);
       BOOST_CHECK_NO_THROW(a = ipv6::network(42));
       BOOST_CHECK_EQUAL(a.mask(), 42);
-      BOOST_CHECK_EQUAL(memcmp(static_cast<const uint8_t*>(a), static_cast<const uint8_t*>(ipv6::unspecified), 16), 0);
+      BOOST_CHECK_EQUAL(memcmp(static_cast<const uint8_t*>(a), static_cast<const uint8_t*>(ipv6::host::unspecified), 16), 0);
     }
   }
 }
@@ -596,7 +596,7 @@ COOL_AUTO_TEST_CASE(T009,
   const in6_addr a3 = static_cast<in6_addr>(ipv6::host(s3));
 
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
 
     BOOST_CHECK_THROW(a = ipv4::host(a1), cool::ng::exception::bad_conversion);
     BOOST_CHECK_NO_THROW(a = ipv4::host(a2));
@@ -605,7 +605,7 @@ COOL_AUTO_TEST_CASE(T009,
     BOOST_CHECK_EQUAL(a, ipv4::host("172.14.5.99"));
   }
   {
-    ipv6::host a(ipv6::loopback);
+    ipv6::host a(ipv6::host::loopback);
 
     BOOST_CHECK_NO_THROW(a = ipv6::host(a1));
     BOOST_CHECK_EQUAL(a, ipv6::host(s1));
@@ -633,7 +633,7 @@ COOL_AUTO_TEST_CASE(T010,
   const in_addr a1 = static_cast<in_addr>(ipv4::host(s1));
 
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
 
     BOOST_CHECK_NO_THROW(a = ipv4::host(a1));
     BOOST_CHECK_EQUAL(a, ipv4::host("172.14.3.1"));
@@ -646,7 +646,7 @@ COOL_AUTO_TEST_CASE(T010,
     BOOST_CHECK_THROW(a = ipv4::network(33, a1), cool::ng::exception::out_of_range);
   }
   {
-    ipv6::host a(ipv6::loopback);
+    ipv6::host a(ipv6::host::loopback);
 
     BOOST_CHECK_NO_THROW(a = ipv6::host(a1));
     BOOST_CHECK_EQUAL(a, ipv6::host("::ffff:172.14.3.1"));
@@ -657,14 +657,14 @@ COOL_AUTO_TEST_CASE(T011,
   *utf::description("ctor(const std::string&)"))
 {
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
     BOOST_CHECK_NO_THROW(a = ipv4::host("192.168.3.99"));
     BOOST_CHECK_EQUAL(a, ipv4::host({ 192, 168, 3, 99}));
     BOOST_CHECK_THROW(a = ipv4::host("2605:2700:0000:0003:0000:0000:4713:93e3"), cool::ng::exception::bad_conversion);
   }
   {
     {
-      ipv4::network a(ipv4::rfc_test);
+      ipv4::network a(ipv4::assigned::get(ipv4::assigned::test_net_1));
       BOOST_CHECK_NO_THROW(a = ipv4::network("192.168.3.99/23"));
       BOOST_CHECK_EQUAL(a.mask(), 23);
       BOOST_CHECK_EQUAL(a, ipv4::network(23, { 192, 168, 2, 0}));
@@ -674,7 +674,7 @@ COOL_AUTO_TEST_CASE(T011,
   }
   {
     {
-      ipv6::host a(ipv6::loopback);
+      ipv6::host a(ipv6::host::loopback);
       BOOST_CHECK_NO_THROW(a = "2605:2700:0000:0003:0000:0000:4713:93e3"); // fully expanded
       BOOST_CHECK_EQUAL(a, ipv6::host({ 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x93, 0xe3}));
       BOOST_CHECK_NO_THROW(a = "2605:2700:0:3:0:0:4713:93e3"); // expanded
@@ -715,7 +715,7 @@ COOL_AUTO_TEST_CASE(T011,
   }
   {
     {
-      ipv6::network a(ipv6::rfc_mcast);
+      ipv6::network a(ipv6::assigned::get(ipv6::assigned::multicast));
       BOOST_CHECK_NO_THROW(a = ipv6::network("2605:2700:0000:0003:0000:0000:4713:93e3/113")); // fully expanded
       BOOST_CHECK_EQUAL(a.mask(), 113);
       BOOST_CHECK_EQUAL(a, ipv6::network(113, { 0x26, 0x05, 0x27, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0x47, 0x13, 0x80, 0}));
@@ -739,7 +739,7 @@ COOL_AUTO_TEST_CASE(T012,
   *utf::description("ctor(std::initializer_list<uint8_t>)"))
 {
   {
-    ipv4::host a(ipv4::loopback);
+    ipv4::host a(ipv4::host::loopback);
     BOOST_CHECK_NO_THROW(a = ipv4::host({ 192, 168, 3, 99 }));
     BOOST_CHECK_EQUAL(a, ipv4::host("192.168.3.99"));
   }
@@ -1036,7 +1036,7 @@ COOL_AUTO_TEST_CASE(T019,
 
     BOOST_CHECK(!"10.35.12.161"_ipv4.equals("192.168.206.40"_ipv4));
     BOOST_CHECK(!"10.35.12.161"_ipv4.equals("10.35.12.161/8"_ipv4_net));
-    BOOST_CHECK(!"10.35.12.161"_ipv4.equals(ipv6::rfc_ipv4map));
+    BOOST_CHECK(!"10.35.12.161"_ipv4.equals(ipv6::assigned::get(ipv6::assigned::ipv4map)));
   }
   // IPv4 network
   {
@@ -1091,7 +1091,7 @@ COOL_AUTO_TEST_CASE(T020,
 
     BOOST_CHECK("10.35.12.161"_ipv4 != "192.168.206.40"_ipv4);
     BOOST_CHECK("10.35.12.161"_ipv4 != "10.35.12.161/8"_ipv4_net);
-    BOOST_CHECK("10.35.12.161"_ipv4 != ipv6::rfc_ipv4map);
+    BOOST_CHECK("10.35.12.161"_ipv4 != ipv6::assigned::get(ipv6::assigned::ipv4map));
   }
   // IPv4 network
   {
@@ -1268,6 +1268,252 @@ COOL_AUTO_TEST_CASE(T021,
   BOOST_CHECK_EQUAL(false, net4_1.has(host6_1));
 }
 
+COOL_AUTO_TEST_CASE(T022,
+  *utf::description("address::is())"))
+{
+
+  BOOST_CHECK( ipv4::host::loopback.is(attribute::assigned));
+  BOOST_CHECK( ipv6::host::loopback.is(attribute::assigned));
+  BOOST_CHECK( ipv4::host::any.is(attribute::assigned));
+  BOOST_CHECK( ipv6::host::any.is(attribute::assigned));
+  BOOST_CHECK( ipv4::host::unspecified.is(attribute::assigned));
+  BOOST_CHECK( ipv6::host::unspecified.is(attribute::assigned));
+
+  BOOST_CHECK( ipv4::host::loopback.is(attribute::ipv4originated));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::ipv4originated));
+  BOOST_CHECK( ipv4::host::any.is(attribute::ipv4originated));
+  BOOST_CHECK(!ipv6::host::any.is(attribute::ipv4originated));
+  BOOST_CHECK( ipv4::host::unspecified.is(attribute::ipv4originated));
+  BOOST_CHECK(!ipv6::host::unspecified.is(attribute::ipv4originated));
+
+  BOOST_CHECK( ipv4::host::loopback.is(attribute::loopback));
+  BOOST_CHECK( ipv6::host::loopback.is(attribute::loopback));
+  BOOST_CHECK( ipv4::host::any.is(attribute::unspecified));
+  BOOST_CHECK( ipv6::host::any.is(attribute::unspecified));
+  BOOST_CHECK( ipv4::host::unspecified.is(attribute::unspecified));
+  BOOST_CHECK( ipv6::host::unspecified.is(attribute::unspecified));
+
+  BOOST_CHECK(!ipv4::host::loopback.is(attribute::unspecified));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::unspecified));
+  BOOST_CHECK(!ipv4::host::any.is(attribute::loopback));
+  BOOST_CHECK(!ipv6::host::any.is(attribute::loopback));
+  BOOST_CHECK(!ipv4::host::unspecified.is(attribute::loopback));
+  BOOST_CHECK(!ipv6::host::unspecified.is(attribute::loopback));
+
+  BOOST_CHECK(!ipv4::host::loopback.is(attribute::multicast));
+  BOOST_CHECK(!ipv4::host::loopback.is(attribute::source));
+  BOOST_CHECK(!ipv4::host::loopback.is(attribute::destination));
+  BOOST_CHECK(!ipv4::host::loopback.is(attribute::forwardable));
+  BOOST_CHECK(!ipv4::host::loopback.is(attribute::global));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::multicast));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::source));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::destination));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::forwardable));
+  BOOST_CHECK(!ipv6::host::loopback.is(attribute::global));
+
+  BOOST_CHECK(!ipv4::host::any.is(attribute::multicast));
+  BOOST_CHECK( ipv4::host::any.is(attribute::source));
+  BOOST_CHECK(!ipv4::host::any.is(attribute::destination));
+  BOOST_CHECK(!ipv4::host::any.is(attribute::forwardable));
+  BOOST_CHECK(!ipv4::host::any.is(attribute::global));
+  BOOST_CHECK(!ipv6::host::any.is(attribute::multicast));
+  BOOST_CHECK( ipv6::host::any.is(attribute::source));
+  BOOST_CHECK(!ipv6::host::any.is(attribute::destination));
+  BOOST_CHECK(!ipv6::host::any.is(attribute::forwardable));
+  BOOST_CHECK(!ipv6::host::any.is(attribute::global));
+
+  BOOST_CHECK(ipv4::assigned::get(ipv4::assigned::multicast).is(attribute::multicast));
+  BOOST_CHECK(ipv6::assigned::get(ipv6::assigned::multicast).is(attribute::multicast));
+
+  BOOST_CHECK_THROW(ipv6::assigned::get(ipv6::assigned::count).is(attribute::multicast), cool::ng::exception::out_of_range);
+  BOOST_CHECK_THROW(ipv4::assigned::get(ipv4::assigned::count).is(attribute::multicast), cool::ng::exception::out_of_range);
+  BOOST_CHECK_THROW(ipv6::assigned::get(ipv6::assigned::count + 1).is(attribute::multicast), cool::ng::exception::out_of_range);
+  BOOST_CHECK_THROW(ipv4::assigned::get(ipv4::assigned::count + 1).is(attribute::multicast), cool::ng::exception::out_of_range);
+
+  // check attributes for primary asigned range and then subranges
+  // IETF assigned numbers range 192.0.0.0/24 for IPv4
+  {
+    ipv4::host h("192.0.0.200");  // host within range but outside subranges
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::source));
+    BOOST_CHECK(!h.is(attribute::destination));
+    BOOST_CHECK(!h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+  }
+  { // 192.0.0.9/32 subrange (PCP anycast)
+    ipv4::host h("192.0.0.9");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+  }
+  { // 192.0.0.0/29 subrange
+    ipv4::host h("192.0.0.3");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+  }
+  { // 192.0.0.0/29 subrange, network address this time
+    ipv4::network h("192.0.0.4/30");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+  }
+  // IETF assigned numbers range 192.0.0.0/24 for IPv6
+  {
+    ipv6::host h("2001:013a::12"); // host within range but outside subranges
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::source));
+    BOOST_CHECK(!h.is(attribute::destination));
+    BOOST_CHECK(!h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+  }
+  {
+    ipv6::host h("2001::3a:12");  // TEREDO subrange
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+  }
+  {
+    ipv6::host h("2001:1::1");  // PCP anycast
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+  }
+  {
+    ipv6::host h("2001:2:0:c00::/50");  // benchmarkin subrange, network address this time
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+  }
+
+  // random non-assigned address
+  {
+    ipv4::host h("193.201.50.15");
+    BOOST_REQUIRE(!h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK( h.is(attribute::ipv4originated));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+  {
+    ipv4::network h("193.201.50.0/24");
+    BOOST_REQUIRE(!h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK( h.is(attribute::ipv4originated));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+  {
+    ipv6::host h("a:bcde:f000::3a:20");
+    BOOST_REQUIRE(!h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK(!h.is(attribute::ipv4originated));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+  {
+    ipv6::network h("a:bcde:f000::3a:0/112");
+    BOOST_REQUIRE(!h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK(!h.is(attribute::ipv4originated));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+  // multicast addresses
+  {
+    ipv4::host h("224.3.8.122");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK( h.is(attribute::ipv4originated));
+    BOOST_CHECK(!h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK( h.is(attribute::multicast));
+  }
+  {
+    ipv6::host h("ff00:1:2:3::de42");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK(!h.is(attribute::ipv4originated));
+    BOOST_CHECK(!h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK( h.is(attribute::multicast));
+  }
+  // IPv6 addresses mapped or translated from IPv4
+  {
+    ipv6::host h("::ffff:192.168.3.12");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK( h.is(attribute::ipv4originated));
+    BOOST_CHECK(!h.is(attribute::source));
+    BOOST_CHECK(!h.is(attribute::destination));
+    BOOST_CHECK(!h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+  {
+    ipv6::host h("64:ff9b::192.168.3.12");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK( h.is(attribute::ipv4originated));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK( h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+  {
+    ipv6::host h("64:ff9b:1::192.168.3.12");
+    BOOST_REQUIRE(h.is(attribute::assigned));
+    BOOST_CHECK(!h.is(attribute::loopback));
+    BOOST_CHECK(!h.is(attribute::unspecified));
+    BOOST_CHECK( h.is(attribute::ipv4originated));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK( h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+    BOOST_CHECK(!h.is(attribute::multicast));
+  }
+
+}
+
+
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(host_container_)
@@ -1275,25 +1521,25 @@ BOOST_AUTO_TEST_SUITE(host_container_)
 COOL_AUTO_TEST_CASE(T001,
   *utf::description("ctor host_container()"))
 {
-  BOOST_CHECK_EQUAL(host_container(), ipv6::unspecified);
+  BOOST_CHECK_EQUAL(host_container(), ipv6::host::unspecified);
 }
 
 COOL_AUTO_TEST_CASE(T002,
   *utf::description("ctor host_container(const address&)"))
 {
   {
-    host_container c(ipv4::loopback);
-    BOOST_CHECK_EQUAL(c, ipv4::loopback);
+    host_container c(ipv4::host::loopback);
+    BOOST_CHECK_EQUAL(c, ipv4::host::loopback);
   }
   {
-    host_container c(ipv6::loopback);
-    BOOST_CHECK_EQUAL(c, ipv6::loopback);
+    host_container c(ipv6::host::loopback);
+    BOOST_CHECK_EQUAL(c, ipv6::host::loopback);
   }
   {
-    host_container c(ipv6::loopback);
-    BOOST_CHECK_THROW(c = host_container(ipv6::rfc_ipv4map), cool::ng::exception::bad_conversion);
-    BOOST_CHECK_THROW(c = host_container(ipv4::rfc_unset), cool::ng::exception::bad_conversion);
-    BOOST_CHECK_EQUAL(c, ipv6::loopback);
+    host_container c(ipv6::host::loopback);
+    BOOST_CHECK_THROW(c = host_container(ipv6::assigned::get(ipv6::assigned::ipv4map)), cool::ng::exception::bad_conversion);
+    BOOST_CHECK_THROW(c = host_container(ipv4::assigned::get(ipv4::assigned::unspecified)), cool::ng::exception::bad_conversion);
+    BOOST_CHECK_EQUAL(c, ipv6::host::loopback);
   }
 }
 
@@ -1348,19 +1594,19 @@ COOL_AUTO_TEST_CASE(T006,
 {
   {
     host_container c;
-    BOOST_CHECK_NO_THROW(c = ipv4::loopback);
-    BOOST_CHECK_EQUAL(c, ipv4::loopback);
+    BOOST_CHECK_NO_THROW(c = ipv4::host::loopback);
+    BOOST_CHECK_EQUAL(c, ipv4::host::loopback);
   }
   {
     host_container c;
-    BOOST_CHECK_NO_THROW(c = ipv6::loopback);
-    BOOST_CHECK_EQUAL(c, ipv6::loopback);
+    BOOST_CHECK_NO_THROW(c = ipv6::host::loopback);
+    BOOST_CHECK_EQUAL(c, ipv6::host::loopback);
   }
   {
-    host_container c(ipv6::loopback);
-    BOOST_CHECK_THROW(c = ipv6::rfc_ipv4map, cool::ng::exception::bad_conversion);
-    BOOST_CHECK_THROW(c = ipv4::rfc_unset, cool::ng::exception::bad_conversion);
-    BOOST_CHECK_EQUAL(c, ipv6::loopback);
+    host_container c(ipv6::host::loopback);
+    BOOST_CHECK_THROW(c = ipv6::assigned::get(ipv6::assigned::ipv4map), cool::ng::exception::bad_conversion);
+    BOOST_CHECK_THROW(c = ipv4::assigned::get(ipv4::assigned::unspecified), cool::ng::exception::bad_conversion);
+    BOOST_CHECK_EQUAL(c, ipv6::host::loopback);
   }
 }
 
@@ -1748,7 +1994,7 @@ COOL_AUTO_TEST_CASE(T008,
 }
 
 COOL_AUTO_TEST_CASE(T009,
-*utf::description("service::sockaddr() const"))
+  *utf::description("service::sockaddr() const"))
 {
   {
     service s;
@@ -1789,4 +2035,447 @@ COOL_AUTO_TEST_CASE(T009,
 
 BOOST_AUTO_TEST_SUITE_END()
 
+BOOST_AUTO_TEST_SUITE(assigned_)
+
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("assigned::get_info()"))
+{
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::unspecified);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "::/128");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::loopback);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "::1/128");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ipv4map);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "::ffff:0:0/96");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ipv4xlat);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "64:ff9b::/96");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ipv4xlat_local);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "64:ff9b:1::/48");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::discard);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "100::/64");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001::/23");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_teredo);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001::/32");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_pcp_anycast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:1::1/128");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_nat_anycast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:1::2/128");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_benchmark);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:2::/48");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_amt);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:3::/32");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_as112);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:4:112::/48");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::ietf_orchid_v2);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:20::/28");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::documentation);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2001:db8::/32");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::rfc_6to4);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "2002::/16");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::local);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "fc00::/7");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::link_local);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "fe80::/10");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv6::assigned::get_info(ipv6::assigned::multicast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "ff00::/8");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK( a.is_mcast());
+  }
+  // ============================ IPv4 ==============================
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::unspecified);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "0.0.0.0/8");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::loopback);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "127.0.0.0/8");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::private_1);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "10.0.0.0/8");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::shared_space);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "100.64.0.0/10");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::link_local);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "169.254.0.0/16");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::private_2);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "172.16.0.0/12");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.0/24");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf_continuity);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.0/29");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf_dummy);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.8/32");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf_pcp_anycast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.9/32");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf_nat_anycast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.10/32");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf_discovery_1);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.170/32");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::ietf_discovery_2);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.0.171/32");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::test_net_1);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.0.2.0/24");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::as112);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.31.196.0/24");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::amt);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.52.193.0/24");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::private_3);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.168.0.0/16");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::as112_delegation);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "192.175.48.0/24");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::benchmark);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "198.18.0.0/15");
+    BOOST_CHECK( a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::test_net_2);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "198.51.100.0/24");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::test_net_3);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "203.0.113.0/24");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::future_use);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "240.0.0.0/4");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK(!a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::broadcast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "255.255.255.255/32");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK(!a.is_forwardable());
+    BOOST_CHECK(!a.is_global());
+    BOOST_CHECK(!a.is_mcast());
+  }
+  {
+    auto&& a = ipv4::assigned::get_info(ipv4::assigned::multicast);
+    BOOST_CHECK_EQUAL(static_cast<std::string>(a.address()), "224.0.0.0/4");
+    BOOST_CHECK(!a.valid_as_source());
+    BOOST_CHECK( a.valid_as_destination());
+    BOOST_CHECK( a.is_forwardable());
+    BOOST_CHECK( a.is_global());
+    BOOST_CHECK( a.is_mcast());
+  }
+
+}
+
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("assigned::add()"))
+{
+  {
+    ipv4::network n("192.100.99.0/24");
+    ipv4::host h("192.100.99.42");
+
+    BOOST_CHECK(!h.is(attribute::assigned));
+    auto index = ipv4::assigned::add(n, "", nullptr, true, false, true, false, true);
+    BOOST_CHECK_EQUAL(index, ipv4::assigned::count);
+
+    BOOST_CHECK( h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK(!h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+    BOOST_CHECK( h.is(attribute::multicast));
+
+    auto&& aux = ipv4::assigned::get_info(index);
+    BOOST_CHECK_EQUAL(aux.address(), n);
+    BOOST_CHECK_EQUAL("", aux.description());
+    BOOST_CHECK_EQUAL("", aux.reference());
+  }
+  {
+    ipv6::network n("ab::cdef:0:0/96");
+    ipv6::host h("ab::cdef:0:12a");
+
+    BOOST_CHECK(!h.is(attribute::assigned));
+    auto index = ipv6::assigned::add(n, nullptr, nullptr, true, false, true, false, true);
+    BOOST_CHECK_EQUAL(index, ipv6::assigned::count);
+
+    BOOST_CHECK( h.is(attribute::assigned));
+    BOOST_CHECK( h.is(attribute::source));
+    BOOST_CHECK(!h.is(attribute::destination));
+    BOOST_CHECK( h.is(attribute::forwardable));
+    BOOST_CHECK(!h.is(attribute::global));
+    BOOST_CHECK( h.is(attribute::multicast));
+
+    auto&& aux = ipv6::assigned::get_info(index);
+    BOOST_CHECK_EQUAL(aux.address(), n);
+    BOOST_CHECK_EQUAL("", aux.description());
+    BOOST_CHECK_EQUAL("", aux.reference());
+  }
+}
+
+BOOST_AUTO_TEST_SUITE_END()
 

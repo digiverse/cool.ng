@@ -22,6 +22,7 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
+#include <vector>
 
 #include "cool/ng/ip_address.h"
 
@@ -290,6 +291,8 @@ const struct sockaddr* service::sockaddr() const
     case version::ipv6:
       return reinterpret_cast<const struct sockaddr*>(&m_in6);
   }
+
+  throw cool::ng::exception::bad_conversion();
 }
 
 socklen_t service::sockaddr_len() const
@@ -305,6 +308,8 @@ socklen_t service::sockaddr_len() const
     case version::ipv6:
       return sizeof(m_in6);
   }
+
+  throw cool::ng::exception::bad_conversion();
 }
 
 void service::assign(const struct sockaddr *sa_)
@@ -446,67 +451,307 @@ private:
 
 typedef refwrap<ip::address> list_t;
 
-namespace ipv4 {
 
-  const list_t assigned_list[] = {
-    cool::ng::ip::ipv4::loopback,
-    cool::ng::ip::ipv4::any,
-    cool::ng::ip::ipv4::broadcast,
-    cool::ng::ip::ipv4::rfc_broadcast,
-    cool::ng::ip::ipv4::rfc_private_24,
-    cool::ng::ip::ipv4::rfc_private_20,
-    cool::ng::ip::ipv4::rfc_private_16,
-    cool::ng::ip::ipv4::rfc_carrier_nat,
-    cool::ng::ip::ipv4::rfc_loopback,
-    cool::ng::ip::ipv4::rfc_unset,
-    cool::ng::ip::ipv4::rfc_iana_private,
-    cool::ng::ip::ipv4::rfc_test,
-    cool::ng::ip::ipv4::rfc_test_2,
-    cool::ng::ip::ipv4::rfc_test_3,
-    cool::ng::ip::ipv4::rfc_6to4_anycast,
-    cool::ng::ip::ipv4::rfc_test_comm,
-    cool::ng::ip::ipv4::rfc_mcast,
-    cool::ng::ip::ipv4::rfc_test_mcast,
-    cool::ng::ip::ipv4::rfc_future
-  };
+template <typename T, typename eT>
+class special_numbers_base
+{
+ public:
+  using value_type = T;
+  using vector_type = std::vector<value_type>;
+  using enum_type = eT;
 
-    const std::size_t assigned_list_size = sizeof(assigned_list)/sizeof(refwrap<ip::address>);
+ protected:
+  special_numbers_base() = delete;
+  special_numbers_base(std::size_t n_) : m_assigned_numbers(n_)
+  { /* noop */ }
+
+ public:
+  inline typename vector_type::const_iterator cbegin() const
+  {
+    return m_assigned_numbers.cbegin();
+  }
+  inline typename vector_type::const_iterator cend() const
+  {
+   return m_assigned_numbers.cend();
+  }
+  inline const value_type& at(std::size_t ndx) const
+  {
+    if (ndx >= m_assigned_numbers.size())
+      throw cool::ng::exception::out_of_range();
+    return m_assigned_numbers[ndx];
+  }
+
+  std::size_t size() const
+  {
+    return m_assigned_numbers.size();
+  }
+
+  void add(const value_type& v_)
+  {
+    m_assigned_numbers.push_back(v_);
+  }
+
+ protected:
+  vector_type m_assigned_numbers;
+};
+
+template <typename T>
+bool is_special_number(const T& table_, const ip::address& what_)
+{
+  for (auto it = table_.cbegin(); it != table_.cend(); ++it)
+    if (what_.in(*it->m_address))
+      return true;
+  return false;
+}
+
+const uint32_t default_attributes =
+    static_cast<int>(ip::attribute::source)
+  | static_cast<int>(ip::attribute::destination)
+  | static_cast<int>(ip::attribute::forwardable)
+  | static_cast<int>(ip::attribute::global)
+;
+
+template <typename T>
+bool has_attribute(const T& table_, const ip::address& what_, ip::attribute which_)
+{
+  auto selected = table_.cend();
+
+  // find the narrower address range it belongs to
+  for (auto it = table_.cbegin(); it != table_.cend(); ++it)
+  {
+    if (what_.in(*it->m_address))
+    {
+      if (selected != table_.cend())
+      {
+        if (selected->m_address->mask() < it->m_address->mask())
+          selected = it;
+      }
+      else
+      {
+        selected = it;
+      }
+    }
+  }
+
+  return (((selected == table_.cend() ? default_attributes : selected->m_attributes) ) & static_cast<int>(which_)) != 0;
+}
+
+namespace ipv4
+{
+
+const ip::ipv4::host loopback = { 127, 0, 0, 1 };
+const ip::ipv4::host unspecified = { 0, 0, 0, 0 };
+const ip::ipv4::host any;
+
+
+const ip::ipv4::network unspecified_network =  {  8, {   0, 0, 0, 0 } };
+const ip::ipv4::network rfc_private_1 =        {  8, {  10, 0, 0, 0 } };
+const ip::ipv4::network rfc_shared_space =     { 10, { 100, 64, 0, 0 } };
+const ip::ipv4::network rfc_loopback =         {  8, { 127, 0, 0, 0 } };
+const ip::ipv4::network rfc_link_local =       { 16, { 169, 254, 0, 0 } };
+const ip::ipv4::network rfc_private_2 =        { 12, { 172, 16, 0, 0 } };
+const ip::ipv4::network ietf =                 { 24, { 192, 0, 0, 0 } };
+const ip::ipv4::network ietf_continuity =      { 29, { 192, 0, 0, 0 } };
+const ip::ipv4::network ietf_dummy =           { 32, { 192, 0, 0, 8 } };
+const ip::ipv4::network ietf_pcp_anycast =     { 32, { 192, 0, 0, 9 } };
+const ip::ipv4::network ietf_nat_anycast =     { 32, { 192, 0, 0, 10 } };
+const ip::ipv4::network ietf_discovery_1 =     { 32, { 192, 0, 0, 170 } };
+const ip::ipv4::network ietf_discovery_2 =     { 32, { 192, 0, 0, 171 } };
+const ip::ipv4::network rfc_test_net_1 =       { 24, { 192, 0, 2, 0 } };
+const ip::ipv4::network rfc_as112 =            { 24, { 192, 31, 196, 0 } };
+const ip::ipv4::network rfc_amt =              { 24, { 192, 52, 193, 0 } };
+const ip::ipv4::network rfc_private_3 =        { 16, { 192, 168, 0, 0 } };
+const ip::ipv4::network rfc_as112_delegation = { 24, { 192, 175, 48, 0 } };
+const ip::ipv4::network rfc_benchmark =        { 15, { 198, 18, 0, 0 } };
+const ip::ipv4::network rfc_test_net_2 =       { 24, { 198, 51, 100, 0 } };
+const ip::ipv4::network rfc_test_net_3 =       { 24, { 203, 0, 113, 0 } };
+const ip::ipv4::network rfc_multicast =        {  4, { 224, 0, 0, 0 } };
+const ip::ipv4::network rfc_future_use =       {  4, { 240, 0, 0, 0 } };
+const ip::ipv4::network rfc_broadcast =        { 32, { 255, 255, 255, 255 } };
+
+class special_number : public detail::special_number<ip::ipv4::network>
+                     , public ip::assigned_number
+{
+ public:
+  special_number() : ip::detail::special_number<ip::ipv4::network>()
+  { /* noop */}
+  special_number(const ip::ipv4::network* n_, const char* a_, const char* b_, bool c_, bool d_, bool e_, bool f_, bool  g_, bool h_ = false)
+    : detail::special_number<ip::ipv4::network>(
+          n_
+        , a_
+        , b_
+        ,   (c_ ? static_cast<int>(ip::attribute::source) : 0)
+          | (d_ ? static_cast<int>(ip::attribute::destination) : 0)
+          | (e_ ? static_cast<int>(ip::attribute::forwardable) : 0)
+          | (f_ ? static_cast<int>(ip::attribute::global) : 0)
+          | (g_ ? static_cast<int>(ATTR_IPv4_ORIGINATED) : 0)
+          | (h_ ? static_cast<int>(ip::attribute::multicast) : 0)
+      )
+  { /* noop */ }
+
+  const network& address()  const override   { return *m_address; }
+  const char* description() const override   { return m_name; }
+  const char* reference() const override     { return m_ref; }
+  bool valid_as_source() const override      { return (m_attributes & static_cast<int>(ip::attribute::source)) != 0; }
+  bool valid_as_destination() const override { return (m_attributes & static_cast<int>(ip::attribute::destination)) != 0; }
+  bool is_forwardable() const override       { return (m_attributes & static_cast<int>(ip::attribute::forwardable)) != 0; }
+  bool is_global() const override            { return (m_attributes & static_cast<int>(ip::attribute::global)) != 0; }
+  bool is_mcast() const override             { return (m_attributes & static_cast<int>(ip::attribute::multicast)) != 0; }
+
+};
+
+class special_numbers : public special_numbers_base<special_number, ip::ipv4::assigned>
+{
+ public:
+  special_numbers();
+};
+
+special_numbers::special_numbers() : special_numbers_base(enum_type::count)
+{
+
+  m_assigned_numbers[enum_type::unspecified]      = value_type(&unspecified_network, "This host on this network", "RFC1122", true, false, false, false, false);
+  m_assigned_numbers[enum_type::private_1]        = value_type(&rfc_private_1, "Private use", "RFC1918", true, true, true, false, false);
+  m_assigned_numbers[enum_type::shared_space]     = value_type(&rfc_shared_space, "Shared address space", "RFC6598", true, true, true, false, false);
+  m_assigned_numbers[enum_type::loopback]         = value_type(&rfc_loopback, "Loopback", "RFC1122", false, false, false, false, false);
+  m_assigned_numbers[enum_type::private_2]        = value_type(&rfc_private_2, "Private use", "RFC1918", true, true, true, false, false);
+  m_assigned_numbers[enum_type::ietf]             = value_type(&ietf, "IETF protocol assignments", "RFC6980", false, false, false, false, false);
+  m_assigned_numbers[enum_type::ietf_continuity]  = value_type(&ietf_continuity, "IPv4 Service Continuity Prefix", "RFC7335", true, true, true, false, false);
+  m_assigned_numbers[enum_type::ietf_dummy]       = value_type(&ietf_dummy, "IPv4 dummy address", "RFC7600", true, false, false, false, false);
+  m_assigned_numbers[enum_type::ietf_pcp_anycast] = value_type(&ietf_pcp_anycast, "Port control protocol anycast", "RFC7723", true, true, true, true, false);
+  m_assigned_numbers[enum_type::ietf_nat_anycast] = value_type(&ietf_nat_anycast, "Traversal using relays around NAT snycast", "RFC8155", true, true, true, true, false);
+  m_assigned_numbers[enum_type::ietf_discovery_1] = value_type(&ietf_discovery_1, "NAT64/DNS64 discovery", "RFC7050", false, false, false, false, false);
+  m_assigned_numbers[enum_type::ietf_discovery_2] = value_type(&ietf_discovery_2, "NAT64/DNS64 discovery", "RFC7050", false, false, false, false, false);
+  m_assigned_numbers[enum_type::test_net_1]       = value_type(&rfc_test_net_1, "Documentation (TEST-NET-1)", "RFC5737", false, false, false, false, false);
+  m_assigned_numbers[enum_type::as112]            = value_type(&rfc_as112, "AS112-v4", "RFC7535", true, true, true, true, false);
+  m_assigned_numbers[enum_type::amt]              = value_type(&rfc_amt, "Automatic multicast tunneling", "RFC7450", true, true, true, true, false);
+  m_assigned_numbers[enum_type::private_3]        = value_type(&rfc_private_3, "Private use", "RFC1918", true, true, true, false, false);
+  m_assigned_numbers[enum_type::as112_delegation] = value_type(&rfc_as112_delegation, "Direct Delegation AS112 Service", "RFC7534", true, true, true, true, false);
+  m_assigned_numbers[enum_type::benchmark]        = value_type(&rfc_benchmark, "Benchmarking", "RFC2544", true, true, true, false, false);
+  m_assigned_numbers[enum_type::test_net_2]       = value_type(&rfc_test_net_2, "Documentation (TEST-NET-2)", "RFC5737", false, false, false, false, false);
+  m_assigned_numbers[enum_type::test_net_3]       = value_type(&rfc_test_net_3, "Documentation (TEST-NET-3)", "RFC5737", false, false, false, false, false);
+  m_assigned_numbers[enum_type::multicast]        = value_type(&rfc_multicast, "Multicast", "RFC1112", false, true, true, true, false, true);
+  m_assigned_numbers[enum_type::future_use]       = value_type(&rfc_future_use, "Reserved", "RFC5771", false, false, false, false, false);
+  m_assigned_numbers[enum_type::broadcast]        = value_type(&rfc_broadcast,"Limited broadcast", "RFC8190", false, true, false, false, false);
+  m_assigned_numbers[enum_type::link_local]       = value_type(&rfc_link_local, "Link local", "RFC3927", true, true, false, false, false);
+}
+
+special_numbers& get_assigned_numbers()
+{
+  static special_numbers assigned;
+
+  return assigned;
+}
 
 } // namespace ipv4
 
 namespace ipv6 {
-  const list_t assigned_list[] = {
-    cool::ng::ip::ipv6::loopback,
-    cool::ng::ip::ipv6::unspecified,
-    cool::ng::ip::ipv6::rfc_ipv4map,
-    cool::ng::ip::ipv6::rfc_teredo,
-    cool::ng::ip::ipv6::rfc_ipv4translate,
-    cool::ng::ip::ipv6::rfc_discard,
-    cool::ng::ip::ipv6::rfc_doc,
-    cool::ng::ip::ipv6::rfc_local,
-    cool::ng::ip::ipv6::rfc_link,
-    cool::ng::ip::ipv6::rfc_mcast
-  };
 
-  const std::size_t assigned_list_size = sizeof(assigned_list)/sizeof(refwrap<ip::address>);
+const ip::ipv6::host loopback = { 1 };
+const ip::ipv6::host unspecified;
+const ip::ipv6::host any;
+const ip::ipv6::network rfc_unspecified(128);
+const ip::ipv6::network rfc_loopback =            { 128, {                                                                                             0x01 } };
+const ip::ipv6::network rfc_ipv4map =             {  96, {                                                               0xff, 0xff, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_ipv4translate =       {  96, { 0x00, 0x64, 0xff, 0x9b, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_ipv4translate_local = {  48, { 0x00, 0x64, 0xff, 0x9b, 0x00, 0x01, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_discard =             {  64, { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_ietf =                {  23, { 0x20, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network ietf_teredo =             {  32, { 0x20, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network ietf_pcp_anycast =        { 128, { 0x20, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 } };
+const ip::ipv6::network ietf_nat_anycast =        { 128, { 0x20, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02 } };
+const ip::ipv6::network rfc_benchmark =           {  48, { 0x20, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_amt =                 {  32, { 0x20, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_as112 =               {  48, { 0x20, 0x01, 0x00, 0x04, 0x01, 0x12, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_orchid_v2 =           {  28, { 0x20, 0x01, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_documentation =       {  32, { 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_6to4 =                {  16, { 0x20, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_as112_delegation =    {  48, { 0x26, 0x20, 0x00, 0x4f, 0x80, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_multicast =           {   8, { 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_local =               {   7, { 0xfc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+const ip::ipv6::network rfc_link_local =          {  10, { 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } };
+
+class special_number : public detail::special_number<ip::ipv6::network>
+                     , public ip::assigned_number
+{
+ public:
+  special_number() : detail::special_number<ip::ipv6::network>()
+  { /* noop */}
+  special_number(const ip::ipv6::network* n_, const char* a_, const char* b_, bool c_, bool d_, bool e_, bool f_, bool  g_, bool h_ =  false)
+    : detail::special_number<ip::ipv6::network>(
+          n_
+        , a_
+        , b_
+        ,   (c_ ? static_cast<int>(ip::attribute::source) : 0)
+          | (d_ ? static_cast<int>(ip::attribute::destination) : 0)
+          | (e_ ? static_cast<int>(ip::attribute::forwardable) : 0)
+          | (f_ ? static_cast<int>(ip::attribute::global) : 0)
+          | (g_ ? static_cast<int>(ATTR_IPv4_ORIGINATED) : 0)
+          | (h_ ? static_cast<int>(ip::attribute::multicast) : 0)
+      )
+  { /* noop */ }
+
+  const network& address()  const override   { return *m_address; }
+  const char* description() const override   { return m_name; }
+  const char* reference() const override     { return m_ref; }
+  bool valid_as_source() const override      { return (m_attributes & static_cast<int>(ip::attribute::source)) != 0; }
+  bool valid_as_destination() const override { return (m_attributes & static_cast<int>(ip::attribute::destination)) != 0; }
+  bool is_forwardable() const override       { return (m_attributes & static_cast<int>(ip::attribute::forwardable)) != 0; }
+  bool is_global() const override            { return (m_attributes & static_cast<int>(ip::attribute::global)) != 0; }
+  bool is_mcast() const override             { return (m_attributes & static_cast<int>(ip::attribute::multicast)) != 0; }
+};
+
+class special_numbers : public special_numbers_base<special_number, ip::ipv6::assigned>
+{
+ public:
+  special_numbers();
+};
+
+special_numbers::special_numbers() : special_numbers_base(enum_type::count)
+{
+  m_assigned_numbers[enum_type::unspecified] = value_type(&rfc_unspecified, "Unspecified address", "RFC4291", true, false, false, false, false);
+  m_assigned_numbers[enum_type::loopback] = value_type(&rfc_loopback, "Loopback address", "RFC4291", false, false, false, false, false);
+  m_assigned_numbers[enum_type::ipv4map] = value_type(&rfc_ipv4map, "IPv4-mapped address", "RFC4291", false, false, false, false, true);
+  m_assigned_numbers[enum_type::ipv4xlat] = value_type(&rfc_ipv4translate, "IPv4-IPv6 translation", "RFC6052", true, true, true, true, true);
+  m_assigned_numbers[enum_type::ipv4xlat_local] = value_type(&rfc_ipv4translate_local, "IPv4-IPv6 translation for local use", "RFC8215", true, true, true, false, true);
+  m_assigned_numbers[enum_type::discard] = value_type(&rfc_discard, "Discard-only address block", "RFC6666", true, true, true, false, false);
+  m_assigned_numbers[enum_type::ietf] = value_type(&rfc_ietf, "IETF protocol assignments", "RFC2928", false, false, false, false, false);
+  m_assigned_numbers[enum_type::ietf_teredo] = value_type(&ietf_teredo, "TEREDO", "RFC4380", true, true, true, false, false);
+  m_assigned_numbers[enum_type::ietf_pcp_anycast] = value_type(&ietf_pcp_anycast, "Port control protocol anycast", "RFC7723", true, true, true, true, false);
+  m_assigned_numbers[enum_type::ietf_nat_anycast] = value_type(&ietf_nat_anycast, "Traversal using relays around NAT anycast", "RFC8155", true, true, true, true, false);
+  m_assigned_numbers[enum_type::ietf_benchmark] = value_type(&rfc_benchmark, "Benchmarking", "RFC5180", true, true, true, false, false);
+  m_assigned_numbers[enum_type::ietf_amt] = value_type(&rfc_amt, "Automatic multicast tunneling", "RFC7450", true, true, true, true, false);
+  m_assigned_numbers[enum_type::ietf_as112] = value_type(&rfc_as112, "AS112-v6", "RFC7535", true, true, true, true, false);
+  m_assigned_numbers[enum_type::ietf_orchid_v2] = value_type(&rfc_orchid_v2, "ORCHIDv2", "RFC7343", true, true, true, true, false);
+  m_assigned_numbers[enum_type::documentation] = value_type(&rfc_documentation, "Documentation", "RFC3849", false, false, false, false, false);
+  m_assigned_numbers[enum_type::rfc_6to4] = value_type(&rfc_6to4, "Connection of IPv6 domains via IPv4 clouds", "RFC3056", true, true, true, false, false);
+  m_assigned_numbers[enum_type::as112_delegation] = value_type(&rfc_as112_delegation, "Direct delegation AS112 service", "RFC7534", true, true, true, true, false);
+  m_assigned_numbers[enum_type::multicast] = value_type(&rfc_multicast, "multicast", "RFC2373", false, true, true, true, false, true);
+  m_assigned_numbers[enum_type::local] = value_type(&rfc_local, "Unique-local", "RFC4193", true, true, true, false, false);
+  m_assigned_numbers[enum_type::link_local] = value_type(&rfc_link_local, "Link-local unicast", "RFC4291", true, true, false, false, false);
+}
+
+special_numbers& get_assigned_numbers()
+{
+  static special_numbers assigned;
+
+  return assigned;
+}
 
 } // namespace ipv6
 
-bool is_assigned(list_t const list[], std::size_t size, const ip::address& addr)
+bool is_ipv4_host(const address& addr_)
 {
-  for (size_t i = 0; i < size; ++i)
-  {
-    switch (static_cast<list_t::value_t>(list[i]).kind())
-    {
-      case ip::kind::host:
-        if (list[i] == addr)
-          return true;
-        break;
+  if (addr_.kind() != ip::kind::host)
+    return false;
+  if (addr_.version() == ip::version::ipv4)
+    return true;
 
-      case ip::kind::network:
-        if (addr.in(dynamic_cast<const ip::network&>(static_cast<list_t::value_t>(list[i]))))
-          return true;
-        break;
+  for (auto it = detail::ipv6::get_assigned_numbers().cbegin(); it != detail::ipv6::get_assigned_numbers().cend(); ++it)
+  {
+    if ((it->m_attributes & ATTR_IPv4_ORIGINATED) != 0)
+    {
+      if (addr_.in(*it->m_address))
+        return true;
     }
   }
   return false;
@@ -1058,6 +1303,7 @@ std::ostream& visualizer::operator()(ip::style s_)
     case ip::style::dotted_quad:
       return dotted_quad();
   }
+  return m_stream;
 }
 
 std::ostream& visualizer::deflated(std::size_t limit, char delimiter, bool& ends_with_deflated)
@@ -1241,6 +1487,54 @@ std::istream& sin(std::istream& is, cool::ng::ip::address& val)
 namespace ipv6
 {
 
+host const host::loopback = { 1 };
+host const host::unspecified;
+host const host::any;
+
+// ============= assigned class
+const std::size_t assigned::count = assigned::link_local + 1;
+
+const network& assigned::get(std::size_t what_)
+{
+  return *detail::ipv6::get_assigned_numbers().at(what_).m_address;
+
+}
+
+const assigned_number& assigned::get_info(std::size_t what_)
+{
+  return detail::ipv6::get_assigned_numbers().at(what_);
+}
+
+std::size_t assigned::add(
+    const network &addr_
+  , const char *desc_
+  , const char *ref_
+  , bool is_src_
+  , bool is_dst_
+  , bool is_fwd_
+  , bool is_glob_
+  , bool is_mcast_)
+{
+  static const char* empty = "";
+  std::size_t index;
+
+  index = detail::ipv6::get_assigned_numbers().size();
+  detail::ipv6::get_assigned_numbers().add(
+    detail::ipv6::special_numbers::value_type(
+        &addr_
+      , desc_ == nullptr ? empty : desc_
+      , ref_ == nullptr ? empty : ref_
+      , is_src_
+      , is_dst_
+      , is_fwd_
+      , is_glob_
+      , false
+      , is_mcast_
+  ));
+
+  return index;
+}
+
 // ============= host class
 
 bool host::equals(const ip::address &other) const
@@ -1251,12 +1545,10 @@ bool host::equals(const ip::address &other) const
   if (other.version() == version())
     return m_data == static_cast<const uint8_t*>(other);
 
-  // special treatment for IPv4 mapped addresses
-  if (kind() == ip::kind::host)
-  {
-    if (in(rfc_ipv4map) || in(rfc_ipv4translate))
-      return ::memcmp(&m_data[12], static_cast<const uint8_t*>(other), 4) == 0;
-  }
+  // special treatment if this host is mapped IPv4 host
+  if (detail::is_ipv4_host(*this))
+    return ::memcmp(&m_data[12], static_cast<const uint8_t*>(other), 4) == 0;
+
   return false;
 }
 
@@ -1264,12 +1556,11 @@ host::operator struct in_addr() const
 {
   struct in_addr result;
 
-  if (in(rfc_ipv4map) || in(rfc_ipv4translate))
+  if (detail::is_ipv4_host(*this))
     ::memcpy(static_cast<void*>(&result), m_data.data() + 12, 4);
   else
     throw exception::bad_conversion();
 
-  ::memcpy(static_cast<void*>(&result), m_data.data() + 12, 4);
   return result;
 }
 
@@ -1296,7 +1587,7 @@ std::ostream& host::visualize(std::ostream& os, ip::style style_) const
       return visualize(os, ip::style::canonical);  // call again with the real style
 
     case ip::style::canonical:
-      if (in(ipv6::rfc_ipv4map) || in(ipv6::rfc_ipv4translate))
+      if (detail::is_ipv4_host(*this))
         return visualize(os, ip::style::dotted_quad);
       break;
 
@@ -1324,7 +1615,7 @@ void host::assign(const ip::address& val)
       break;
 
     case ip::version::ipv4:
-      m_data = static_cast<const uint8_t*>(rfc_ipv4map);
+      m_data = static_cast<const uint8_t*>(detail::ipv6::rfc_ipv4map);
       ::memcpy(&m_data[size() - val.size()], static_cast<const uint8_t*>(val), val.size());
       break;
   }
@@ -1332,7 +1623,7 @@ void host::assign(const ip::address& val)
 
 void host::assign(const struct in_addr& rhs)
 {
-  m_data = static_cast<const uint8_t*>(rfc_ipv4map);
+  m_data = static_cast<const uint8_t*>(detail::ipv6::rfc_ipv4map);
   ::memcpy(&m_data[12], &rhs, 4);
 }
 
@@ -1359,17 +1650,26 @@ bool host::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::attribute::loopback:
-      return *this == loopback;
     case ip::attribute::unspecified:
-      return *this == unspecified;
-    case ip::attribute::ipv4mapped:
-      return in(rfc_ipv4map) || in(rfc_ipv4translate);
+      return in(ip::ipv6::assigned::get(ip::ipv6::assigned::unspecified));
+
+    case ip::attribute::loopback:
+      return in(ip::ipv6::assigned::get(ip::ipv6::assigned::loopback));
+
+    case ip::attribute::ipv4originated:
+      return detail::has_attribute(detail::ipv6::get_assigned_numbers(), *this, static_cast<ip::attribute>(ATTR_IPv4_ORIGINATED));
+
     case ip::attribute::assigned:
-      return detail::is_assigned(detail::ipv6::assigned_list,
-                                   detail::ipv6::assigned_list_size,
-                                   *this);
+      return detail::is_special_number(detail::ipv6::get_assigned_numbers(), *this);
+
+    case ip::attribute::source:
+    case ip::attribute::destination:
+    case ip::attribute::forwardable:
+    case ip::attribute::global:
+    case ip::attribute::multicast:
+      return detail::has_attribute(detail::ipv6::get_assigned_numbers(), *this, a);
   }
+
   return false;
 }
 
@@ -1491,21 +1791,28 @@ bool network::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::attribute::loopback:
-      return false;
     case ip::attribute::unspecified:
-      return false;
-    case ip::attribute::ipv4mapped:
-      return false;
+      return in(ip::ipv6::assigned::get(ip::ipv6::assigned::unspecified));
+
+    case ip::attribute::loopback:
+      return in(ip::ipv6::assigned::get(ip::ipv6::assigned::loopback));
+
+    case ip::attribute::ipv4originated:
+      return detail::has_attribute(detail::ipv6::get_assigned_numbers(), *this, static_cast<ip::attribute>(ATTR_IPv4_ORIGINATED));
+
     case ip::attribute::assigned:
-      return detail::is_assigned(detail::ipv6::assigned_list,
-                                   detail::ipv6::assigned_list_size,
-                                   *this);
+      return detail::is_special_number(detail::ipv6::get_assigned_numbers(), *this);
+
+    case ip::attribute::source:
+    case ip::attribute::destination:
+    case ip::attribute::forwardable:
+    case ip::attribute::global:
+    case ip::attribute::multicast:
+      return detail::has_attribute(detail::ipv6::get_assigned_numbers(), *this, a);
   }
+
   return false;
 }
-
-
 
 bool network::in(const ip::network& net) const
 {
@@ -1535,9 +1842,55 @@ bool network::has(const ip::address& other) const
 // ==== ======================================================================
 
 namespace ipv4 {
+
+const host host::loopback = { 127, 0, 0, 1 };
+const host host::unspecified;
+const host host::any;
+
+// ============= reserved class
+const std::size_t assigned::count = assigned::link_local + 1;
+
+const network& assigned::get(std::size_t what_)
+{
+  return *detail::ipv4::get_assigned_numbers().at(what_).m_address;
+}
+
+const ip::assigned_number& assigned::get_info(std::size_t what_)
+{
+  return detail::ipv4::get_assigned_numbers().at(what_);
+}
+
+std::size_t assigned::add(
+    const network &addr_
+  , const char *desc_
+  , const char *ref_
+  , bool is_src_
+  , bool is_dst_
+  , bool is_fwd_
+  , bool is_glob_
+  , bool is_mcast_)
+{
+  static const char* empty = "";
+  std::size_t index;
+
+  index = detail::ipv4::get_assigned_numbers().size();
+  detail::ipv4::get_assigned_numbers().add(
+    detail::ipv4::special_numbers::value_type(
+        &addr_
+      , desc_ == nullptr ? empty : desc_
+      , ref_ == nullptr ? empty : ref_
+      , is_src_
+      , is_dst_
+      , is_fwd_
+      , is_glob_
+      , false
+      , is_mcast_
+  ));
+
+  return index;
+}
+
 // ============= host class
-
-
 bool host::equals(const ip::address &other) const
 {
   if (kind() != other.kind())
@@ -1547,11 +1900,8 @@ bool host::equals(const ip::address &other) const
     return m_data == static_cast<const uint8_t*>(other);
 
   // special treatment for IPv4 mapped addresses
-  if (kind() == ip::kind::host)
-  {
-    if (other.in(ipv6::rfc_ipv4map) || other.in(ipv6::rfc_ipv4translate))
-      return ::memcmp(m_data.data(), static_cast<const uint8_t*>(other) + 12, 4) == 0;
-  }
+  if (detail::is_ipv4_host(other))
+    return ::memcmp(m_data.data(), static_cast<const uint8_t*>(other) + 12, 4) == 0;
 
   return false;
 }
@@ -1573,7 +1923,7 @@ host::operator struct in6_addr() const
 {
   struct in6_addr result;
 
-  ::memcpy(static_cast<void*>(&result), static_cast<const uint8_t*>(ipv6::rfc_ipv4map), 12);
+  ::memcpy(static_cast<void*>(&result), static_cast<const uint8_t*>(*detail::ipv6::get_assigned_numbers().at(ip::ipv6::assigned::ipv4map).m_address), 12);
   ::memcpy(static_cast<uint8_t*>(static_cast<void*>(&result)) + 12, m_data.data(), 4);
   return result;
 }
@@ -1597,7 +1947,7 @@ void host::assign(const ip::address& rhs)
       break;
 
     case ip::version::ipv6:
-      if (!(rhs.in(ipv6::rfc_ipv4map) || rhs.in(ipv6::rfc_ipv4translate)))
+      if (!detail::is_ipv4_host(rhs))
         throw exception::bad_conversion();
       m_data = static_cast<const uint8_t*>(rhs) + (rhs.size() - size());
       break;
@@ -1613,7 +1963,7 @@ void host::assign(const struct in6_addr& rhs)
 {
   ipv6::host aux(rhs);
 
-  if (!(aux.in(ipv6::rfc_ipv4map) || aux.in(ipv6::rfc_ipv4translate)))
+  if (!detail::is_ipv4_host(aux))
     throw exception::bad_conversion();
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs)) + 12;
 }
@@ -1636,17 +1986,26 @@ bool host::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::attribute::loopback:
-      return *this == loopback;
     case ip::attribute::unspecified:
-      return *this == any;
-    case ip::attribute::ipv4mapped:
-      return false;
+      return in(ip::ipv4::assigned::get(ip::ipv4::assigned::unspecified));
+
+    case ip::attribute::loopback:
+      return in(ip::ipv4::assigned::get(ip::ipv4::assigned::loopback));
+
+    case ip::attribute::ipv4originated:
+      return true;
+
     case ip::attribute::assigned:
-      return detail::is_assigned(detail::ipv4::assigned_list,
-                                   detail::ipv4::assigned_list_size,
-                                   *this);
+      return detail::is_special_number(detail::ipv4::get_assigned_numbers(), *this);
+
+    case ip::attribute::source:
+    case ip::attribute::destination:
+    case ip::attribute::forwardable:
+    case ip::attribute::global:
+    case ip::attribute::multicast:
+      return detail::has_attribute(detail::ipv4::get_assigned_numbers(), *this, a);
   }
+
   return false;
 }
 
@@ -1702,17 +2061,26 @@ bool network::is(ip::attribute a) const
 {
   switch (a)
   {
-    case ip::attribute::loopback:
-      return false;
     case ip::attribute::unspecified:
-      return false;
-    case ip::attribute::ipv4mapped:
-      return false;
+      return in(ip::ipv4::assigned::get(ip::ipv4::assigned::unspecified));
+
+    case ip::attribute::loopback:
+      return in(ip::ipv4::assigned::get(ip::ipv4::assigned::loopback));
+
+    case ip::attribute::ipv4originated:
+      return true;
+
     case ip::attribute::assigned:
-      return detail::is_assigned(detail::ipv4::assigned_list,
-                                   detail::ipv4::assigned_list_size,
-                                   *this);
+      return detail::is_special_number(detail::ipv4::get_assigned_numbers(), *this);
+
+    case ip::attribute::source:
+    case ip::attribute::destination:
+    case ip::attribute::forwardable:
+    case ip::attribute::global:
+    case ip::attribute::multicast:
+      return detail::has_attribute(detail::ipv4::get_assigned_numbers(), *this, a);
   }
+
   return false;
 }
 
@@ -1728,7 +2096,7 @@ void network::assign(const ip::address& rhs)
         break;
 
       case version::ipv6:
-        if (!(rhs.in(ipv6::rfc_ipv4map) || rhs.in(ipv6::rfc_ipv4translate)))
+        if (!detail::is_ipv4_host(rhs))
           throw exception::bad_conversion();
         m_data = static_cast<const uint8_t*>(rhs) + 12;
         break;

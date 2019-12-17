@@ -36,10 +36,14 @@ namespace cool { namespace ng { namespace ip {
 enum class style;
 class address;
 class service;
+class network;
+
 namespace ipv4 { class host; class network; }
 namespace ipv6 { class host; class network; }
 
 namespace detail {
+
+#define ATTR_IPv4_ORIGINATED  0x8000
 
 dlldecl std::istream& sin(std::istream& is, address& val);
 dlldecl std::istream& sin(std::istream& is, service& val);
@@ -48,6 +52,30 @@ dlldecl ip::ipv6::host literal_ipv6(const char* lit_);
 dlldecl ip::ipv4::network literal_ipv4_net(const char* lit_);
 dlldecl ip::ipv6::network literal_ipv6_net(const char* lit_);
 dlldecl std::shared_ptr<ip::address> literal_ip(const char* lit_);
+
+template <typename T>
+struct special_number
+{
+  special_number()
+    : m_address(nullptr)
+    , m_name(nullptr)
+    , m_ref (nullptr)
+    , m_attributes(0)
+  { /* noop */ }
+
+  special_number(const T* n_, const char* a_, const char* b_, uint32_t attrs_)
+    : m_address(n_)
+    , m_name(a_)
+    , m_ref (b_)
+    , m_attributes(attrs_)
+  { /* noop */ }
+
+  const T*    m_address;
+  const char* m_name;
+  const char* m_ref;
+  uint32_t    m_attributes;
+};
+
 
 template <std::size_t Size>
 cool::ng::util::binary<Size> calculate_mask(std::size_t length)

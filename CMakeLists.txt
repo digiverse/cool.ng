@@ -51,6 +51,10 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # ###
 # ### ##################################################
 
+if( POLICY CMP0074 )
+  cmake_policy( SET CMP0074 OLD )
+ endif()
+
 if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
 
 # --- Apple OS/X
@@ -89,6 +93,9 @@ elseif ( MSVC )
   add_definitions( -D_SCL_SECURE_NO_WARNINGS )
   set( TASK_RUNNER_IMPL WIN_COMPLETION_PORT )
   set( COOL_PLATFORM_TARGET WIN64 )
+
+  # warnings suppression
+  add_compile_options( /wd4624 /wd4091 /wd4251 /wd4275 )
 else()
 
 # --- unknown target
