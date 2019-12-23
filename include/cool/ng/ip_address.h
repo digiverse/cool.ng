@@ -842,7 +842,7 @@ class dlldecl host : public ip::host
    * Construct a host address object from another address object.
    *
    * The other address object can be another IPv6 host address or an @ref ipv4::host "IPv4 host"
-   * address. In the latter case the new host address object will receive  stanard @ref reserved::ipv4map
+   * address. In the latter case the new host address object will receive  stanard @ref assigned::ipv4map
    * "SIIT prefix" for mapped addresses (<tt>:</tt><tt>:ffff:0:0/96</tt>).
    *
    * @param other_ the other IP address
@@ -1267,7 +1267,7 @@ class dlldecl assigned
     , bool is_dst_
     , bool is_fwd_
     , bool is_glob_
-  , bool is_mcast_ = false
+    , bool is_mcast_ = false
   );
 };
 

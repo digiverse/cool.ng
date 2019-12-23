@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#define BOOST_TEST_MODULE Binary
 #include <unit_test_common.h>
 
 #include "cool/ng/binary.h"

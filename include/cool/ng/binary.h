@@ -431,7 +431,7 @@ template <std::size_t Size> class binary : public std::array<uint8_t, Size>
     return b_.visualize(os_);
   }
   /**
-   * @defgroup comparison Comparison operators.
+   * @defgroup comparison Comparison operators
    *
    * The comparison operator overloads compare two binary instances, or a binary with the array of bytes.
    * When comparing a binary with the array  of bytes, it is assumed that the length of the array matches the

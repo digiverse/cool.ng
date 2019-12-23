@@ -189,7 +189,7 @@ set( executor_SRCS tests/unit/executor/executor.cpp )
 set( ip_address_SRCS tests/unit/net/ip_address.cpp )
 set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp )
 set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )
-set( utilities_SRCS tests/unit/utilities/binary.cpp)
+set( utilities_SRCS tests/unit/utilities/binary.cpp  tests/unit/utilities/identification.cpp)
 
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )

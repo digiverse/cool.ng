@@ -32,32 +32,19 @@ namespace cool { namespace ng {
 namespace util
 {
 
-unsigned long identified::next_number()
+namespace detail {
+
+unsigned long get_next_id()
 {
-  static std::atomic<unsigned long> counter(0);
-  return ++counter;
+  static std::atomic<unsigned long> id_(0);
+
+  return ++id_;
 }
 
-identified::identified()
-  : m_number(next_number())
-{ /* noop */ }
+}  // identified
 
-identified::identified(identified&& original)
-{
-  m_number = original.m_number;
-  original.m_number = 0;
-}
-
-identified& identified::operator =(identified&& original)
-{
-  m_number = original.m_number;
-  original.m_number = 0;
-  return *this;
-}
 
 named::named(const std::string& prefix)
-    : identified()
-    , m_prefix(prefix)
 {
   m_name = prefix + "-" + std::to_string(id());
 }
@@ -66,6 +53,12 @@ named::named(named&& original)
 {
   m_name = std::move(original.m_name);
   original.m_name = "moved-0";
+}
+
+named& named::operator =(const named& original)
+{
+  m_name = original.prefix() + "-" + std::to_string(id());
+  return *this;
 }
 
 named& named::operator =(named&& original)
