@@ -230,6 +230,15 @@ enum class style {
   dotted_quad
 };
 
+/**
+ * Convert style enumeration to text.
+ *
+ * Helper function to convert style enumeration to text.
+ * @param style_ style enumerator
+ * @return enumerator text
+ */
+dlldecl std::string to_string(style style_) NOEXCEPT_;
+
 class network;
 class host;
 
@@ -243,7 +252,7 @@ class host;
  * common alternative formats, such as <tt>struct in_addr</tt>, <tt>struct in_addr</tt>, binary arrays and
  * the textual presentation.
  */
-class address
+class dlldecl address
 {
  public:
   /**
@@ -564,7 +573,7 @@ class address
 /**
  * Interface class representing host/interface address.
  */
-class host : public address
+class dlldecl host : public address
 {
  public:
   EXPLICIT_ operator const uint8_t * () const override = 0;
@@ -601,7 +610,7 @@ class host : public address
 /**
  * Interface class representing network address.
  */
-class network : public address
+class dlldecl network : public address
 {
  public:
   EXPLICIT_ operator const uint8_t * () const override = 0;
@@ -653,7 +662,7 @@ class network : public address
  * @see @ref ipv6::assigned "IPv6 numbers reserved for special purposes"
  * @see @ref ipv4::assigned "IPv4 numbers reserved for special purposes"
  */
-class assigned_number
+class dlldecl assigned_number
 {
  public:
   /**

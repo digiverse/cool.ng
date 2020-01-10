@@ -26,6 +26,7 @@
 
 
 #include <string>
+#include <memory>
 #include <array>
 #include <vector>
 #include <exception>
@@ -38,23 +39,19 @@
 
 namespace cool { namespace ng {
 
-/**
- * This namespace defines exception generic objects that help the applications
- * in building their own exception hierarcy.
- *
- * TODO:
- * used by the rest of Cool.NG library.
- * They are designed as a general purpose classes and the applications are
- * free to use them for own purposes. It is recommended that the semantics of
- * their use reflect the intended semantics as described in the associated
- * documentation.
- */
-
 namespace exception {
 
+/**
+ * The compile time constant defining the maximal number ofcall stack traces captured by @ref backtrace.
+ */
 const std::size_t default_bt_depth = 40;
-
+/**
+ * The platform independent type used to store call stack addresses.
+ */
 using stack_address = void*;
+/**
+ * The platform independent null pointer value for call stack traces.
+ */
 const stack_address null_address = nullptr;
 
 /**
@@ -62,13 +59,13 @@ const stack_address null_address = nullptr;
  * used by an @ref base "exception base" class to capture the stack
  * backtrace.
  */
-class backtrace
+class dlldecl backtrace
 {
  public:
   /**
    * Constructs an instance of backtrace.
    */
-  dlldecl backtrace(bool capture_) NOEXCEPT_;
+  backtrace(bool capture_) NOEXCEPT_;
   /**
    * Returns the number of stack backtraces captured by this instance.
    */
@@ -78,12 +75,12 @@ class backtrace
    *
    * @throw out_of_range thrown if index @c idx_ is out of range.
    */
-  dlldecl stack_address operator [](std::size_t idx_) const;
+  stack_address operator [](std::size_t idx_) const;
   /**
    * Return the program symbols that correspond to the captured stack backtrace
    * addresses.
    */
-  dlldecl std::vector<std::string> symbols() const NOEXCEPT_;
+  std::vector<std::string> symbols() const NOEXCEPT_;
 
  private:
   std::array<stack_address, default_bt_depth> m_traces;
@@ -91,41 +88,86 @@ class backtrace
 };
 
 /**
- * Common base class for all exceptions in this module.
+ * Helper class that captures the system error code. If listed as a base class before any
+ * other base classes it can fetch the last system error code value before the failure in construction
+ * of other bases may corrupt it.
  */
-class base : public std::runtime_error
+class dlldecl system_error_code
+{
+ public:
+  /**
+   * Ctor that stores the error code passed to it.
+   * @param errno_ the error code to store
+   */
+  system_error_code(int errno_) NOEXCEPT_  { m_errno = errno_; }
+  /**
+   * Type conversion operator.
+   * @return The stored error code.
+   */
+  EXPLICIT_ operator int() const NOEXCEPT_ { return m_errno;   }
+
+ private:
+  int m_errno;
+};
+
+/**
+ * @ingroup excgen
+ * Common base class for all exceptions in @ref errh.
+ *
+ * This class is a base class for all exceptions thrown by the Cool.NG library code. The class will, if so
+ * instructed, and if possible, capture the call stack of the execution path that led to the creation
+ * of this instance. Since in C++ the exception objects are typically created just before they are thrown,
+ * this call stack represents the exection path that led to the exceptional situation which required throwing an
+ * exception. The base class itself derives from the @c std::runtime_exception so that all
+ * exceptions thrown by the Cool.NG library can be caught as usually, by catching @c std::exception
+ * based objects.
+ *
+ * This base class is resuable and can be used by the application's code as a base for their application
+ * level exceptions.
+ */
+class dlldecl base : public std::runtime_error
 {
  public:
   /**
    * Construct a new exception object with optional user message that optionally
    * captures the call stack backtrace.
    *
-   * @param msg_ optional user message
+   * @param msg_ optional user message, empty by default
    * @param backtrace_ optional flag to set to @c false if the call stack backtrace is not
    *                   wanted; default value is @c true.
+   * @note The user message, as provided, can be obtained via @c what() method of the
+   * @c std::exception base class. The @ref message() method will return more
+   * elaborate description, including the exception @ref name() and the @ref error::library_category::message()
+   * "standard error text", if available.
    */
-  base(const std::string& msg_ = "", bool backtrace_ = true)
-      : runtime_error(msg_), m_backtrace(backtrace_)
-  { /* noop */ }
+  base(const std::string& msg_ = "", bool backtrace_ = true) NOEXCEPT_;
   /**
    * Return user message, if any, or an empty string if none.
    */
-  dlldecl virtual std::string message() const;
+  virtual std::string message() const;
   /**
    * Return @ref backtrace "captured call stack backtrace".
    */
-  const backtrace& stack_backtrace() const             { return m_backtrace; }
+  const backtrace& stack_backtrace() const;
   /**
-   * Return the error code associated with this instance of exception object.
+   * Return the error code associated with this instance of the exception object.
+   *
+   * @return the default implementation returns @ref error::errc::not_set
+   *
+   * @note The derived classes should override this method to return more specific error codes,  if
+   * so desired by design.
    */
-  virtual std::error_code code() const NOEXCEPT_ = 0;
+  virtual std::error_code code() const NOEXCEPT_;
   /**
    * Return the name of this exception object type.
+   *
+   * @return the default implementation returns name @em base.
+   * @note The derived classes should override this method to return more specific names.
    */
-  virtual const char* name() const NOEXCEPT_ = 0;
+  virtual const char* name() const NOEXCEPT_;
 
  private:
-  backtrace m_backtrace;
+  std::shared_ptr<backtrace> m_backtrace;
 };
 
 /* ---------------------------------------------------------------------------
@@ -134,17 +176,8 @@ class base : public std::runtime_error
  * -----
  * ------------------------------------------------------------------------ */
 
-class system_error_code
-{
- public:
-  system_error_code(int errno_) NOEXCEPT_    { m_errno = errno_; }
-  dlldecl operator int() const NOEXCEPT_     { return m_errno;   }
-
- private:
-  int m_errno;
-};
-
 /**
+ * @ingroup excgen
  * Exception class that captures the system error code at the moment of
  * its construction and present them in the C++ standard manner. This and the
  * derived exception classes contain an error code of the @c std::system_error
@@ -185,6 +218,7 @@ class system_error : public system_error_code, public base
 };
 
 /**
+ * @ingroup excgen
  * Exception class that captures the system error code of the networking subsystem
  * at the moment of its construction and present them in the C++ standard manner.
  * This and the derived exception classes contain an error code of the
@@ -192,9 +226,10 @@ class system_error : public system_error_code, public base
  *
  * @note This class is necessary because the network socket library on the
  * Microsoft Windows uses own error codes. Thus instead of calling @c GetLastError()
- * this class calls @c WSAGetLastError() to capture the error code. On other operating
- * system this type is an alias for @ref system_error.
- *
+ * this class calls @c WSAGetLastError() to capture the error code. On other platforms
+ * this type is an alias for @ref system_error.
+ * @note The multi-platform application code should use this type as a base type to report all failures
+ * related to the socket operations.
  * @note The error handling code should not catch this type of exception. It should
  * always catch @ref system_error instead.
  */
@@ -222,7 +257,7 @@ class network_error : public system_error
   dlldecl network_error(int code_, const std::string& msg_ = "", bool backtrace_ = true);
   const char* name() const NOEXCEPT_ override
   {
-    return "socket_error";
+    return "network_error";
   }
 };
 #else
@@ -230,10 +265,13 @@ using network_error = system_error;
 #endif
 
 /**
- * Exception class denoting condition where the weak pointer to the runner
+ * @ingroup excool
+ * Exception class denoting condition where the weak pointer to the @ref async::runner "runner"
  * object can no longer lock on this object.
+ *
+ * @note The @ref code() method will return @ref error::errc::no_runner "no_runner".
  */
-class runner_not_available : public base
+class runner_not_available final : public base
 {
  public:
   /**
@@ -257,10 +295,15 @@ class runner_not_available : public base
 };
 
 /**
- * Exception class denoting condition where the pointer to the runner
+ * @ingroup excool
+ * Exception class denoting condition where the pointer to the @ref async::runner "runner"
  * object cannot be cast into the pointer to the desired data type.
+ *
+ * @note The @ref code() method will return @ref error::errc::bad_runner_cast "bad_runner_cast".
+ * @note While the code path to throw this exception exists, it should never be thrown. Compiler's type
+ *   safety mechnisms should prevent the use of this code path.
  */
-class bad_runner_cast : public base
+class bad_runner_cast final : public base
 {
  public:
   /**
@@ -284,10 +327,13 @@ class bad_runner_cast : public base
 };
 
 /**
+ * @ingroup excool
  * Exception class denoting condition where the value cannot be converted into
  * the value of the desired data type.
+ *
+ * @note The @ref code() method will return @ref error::errc::bad_conversion "bad_conversion".
  */
-class bad_conversion : public base
+class bad_conversion final : public base
 {
  public:
   /**
@@ -311,9 +357,15 @@ class bad_conversion : public base
 };
 
 /**
+ * @ingroup excool
  * Exception class denoting concurrency problem condition.
+ *
+ * This exception is typically thrown by objects that aren't thread-safe when they detect possible concurrent
+ * use which prevents them to successfully complete the task at hand.
+ *
+ * @note The @ref code() method will return @ref error::errc::concurrency_problem "concurrency_problem".
  */
-class concurrency_problem : public base
+class concurrency_problem final : public base
 {
  public:
   /**
@@ -337,9 +389,12 @@ class concurrency_problem : public base
 };
 
 /**
- * Exception class denoting that the expected operation context does not exist.
+ * @ingroup excool
+ * Exception class denoting that the expected context for the asynchronous or delayed  operation does not exist.
+ *
+ * @note The @ref code() method will return @ref error::errc::no_context "no_context".
  */
-class no_context : public base
+class no_context final : public base
 {
  public:
   /**
@@ -364,9 +419,13 @@ class no_context : public base
 
 
 /**
- * Exception class denoting problem with the value out of the valid value range.
+ * @ingroup excool
+ * Exception class denoting problem with the index of the array exceeding the array size, or the value was
+ * detected to be out of the valid value range for the operation.
+ *
+ * @note The @ref code() method will return @ref error::errc::out_of_range "out_of_range".
  */
-class out_of_range : public base
+class out_of_range final : public base
 {
  public:
   /**
@@ -390,9 +449,12 @@ class out_of_range : public base
 };
 
 /**
+ * @ingroup excool
  * Exception class denoting problem with one or more parameters being set to illegal value.
+ *
+ * @note The @ref code() method will return @ref error::errc::illegal_argument "illegal_argument".
  */
-class illegal_argument : public base
+class illegal_argument final : public base
 {
  public:
   /**
@@ -416,10 +478,13 @@ class illegal_argument : public base
 };
 
 /**
- * Exception class denoting problem with the unexpected internal state or the
+ * @ingroup excool
+ * Exception class denoting problem with the unexpected internal state,  or with the
  * internal state preventing the requested action.
+ *
+ * @note The @ref code() method will return @ref error::errc::invalid_state "invalid_state".
  */
-class invalid_state : public base
+class invalid_state final : public base
 {
  public:
   /**
@@ -443,9 +508,12 @@ class invalid_state : public base
 };
 
 /**
- * Exception class denoting problem with the requested resouse is already spoken for.
+ * @ingroup excool
+ * Exception class denoting that the requested resource is already spoken for.
+ *
+ * @note The @ref code() method will return @ref error::errc::resource_busy "resource_busy".
  */
-class resource_busy : public base
+class resource_busy final : public base
 {
  public:
   /**
@@ -469,11 +537,13 @@ class resource_busy : public base
 };
 
 /**
- * Exception class denoting that the requested operation failed.
+ * @ingroup excool
+ * Exception class denoting that the requested operation failed for the unspecified reason.
  *
  * @note The user message should provide more details on the cause of the failure.
+ * @note The @ref code() method will return @ref error::errc::operation_failed "operation_failed".
  */
-class operation_failed : public base
+class operation_failed final : public base
 {
  public:
   /**
@@ -497,9 +567,12 @@ class operation_failed : public base
 };
 
 /**
+ * @ingroup excool
  * Exception class denoting that the object on which to perform the operation was found empty.
+ *
+ * @note The @ref code() method will return @ref error::errc::empty_object "empty_object".
  */
-class empty_object : public base
+class empty_object final : public base
 {
  public:
   /**
@@ -523,9 +596,12 @@ class empty_object : public base
 };
 
 /**
- * Exception class denoting that the similar item already exists.
+ * @ingroup excool
+ * Exception class denoting that the item already exists.
+ *
+ * @note The @ref code() method will return @ref error::errc::already_exists "already_exists".
  */
-class already_exists : public base
+class already_exists final : public base
 {
  public:
   /**
@@ -549,9 +625,12 @@ class already_exists : public base
 };
 
 /**
+ * @ingroup excool
  * Exception class denoting that the requested item was not found.
+ *
+ * @note The @ref code() method will return @ref error::errc::not_found "not_found".
  */
-class not_found : public base
+class not_found final : public base
 {
  public:
   /**
@@ -577,7 +656,7 @@ class not_found : public base
 /**
  * Exception class denoting that the problem occured during parsing of the input.
  */
-class parsing_error : public base
+class parsing_error final : public base
 {
  public:
   /**

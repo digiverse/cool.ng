@@ -8,5 +8,6 @@ It consists of the following modules:
   - @ref async, which offers abstractions for structed approach to asynchronous programming
   - @ref ip, which offer abstractions to simplify the work with IPv4 and IPv6 addresses
   - @ref util, which contains a collection of miscellaneous utility classes
+  - @ref errh, the module that provides error handling support for the Cool.NG library code
  
 */

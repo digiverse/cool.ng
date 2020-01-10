@@ -34,6 +34,29 @@ namespace cool { namespace ng {
 
 namespace ip {
 
+std::string to_string(style style_) NOEXCEPT_
+{
+  switch (style_)
+  {
+    case style::customary:
+      return "customary";
+    case style::dot_decimal:
+      return "dot_decimal";
+    case style::canonical:
+      return "canonical";
+    case style::strict:
+      return "strict";
+    case style::expanded:
+      return "expanded";
+    case style::microsoft:
+      return "microsoft";
+    case style::dotted_quad:
+      return "dotted_quad";
+    default:
+      return "-unknown-";
+  }
+}
+
 // ==== ======================================================================
 // ==== ======================================================================
 // ====
@@ -95,7 +118,7 @@ host_container& host_container::operator =(const struct sockaddr_storage& addr_)
       break;
 
     default:
-      throw cool::ng::exception::bad_conversion();
+      throw cool::ng::exception::bad_conversion("unknown address family with numerical value " + std::to_string(addr_.ss_family));
   }
   return *this;
 }
@@ -198,13 +221,13 @@ void parser::parse()
     else if (aux == "udp://")
       m_proto = transport::udp;
     else
-      throw cool::ng::exception::parsing_error();
+      throw cool::ng::exception::parsing_error("tcp:// or udp:// protocol specifier expected");
   }
 
   {
     char c = m_stream.get();
     if (m_stream.eof() || !(c == '[' || (c >= '0' && c <='9')))
-      throw cool::ng::exception::parsing_error();
+      throw cool::ng::exception::parsing_error("either an IPv6 address in square brackets or an IPv4 address expected");
 
     if (c == '[')  // ipv6 address assumed
     {
@@ -212,7 +235,7 @@ void parser::parse()
       m_stream >> h;
       m_stream >> c;
       if (c != ']')
-        throw cool::ng::exception::parsing_error();
+        throw cool::ng::exception::parsing_error("closing square bracket ']' expected");
       m_host = h;
     }
     else
@@ -224,7 +247,7 @@ void parser::parse()
     }
     m_stream >> c;
     if (c != ':')
-      throw cool::ng::exception::parsing_error();
+      throw cool::ng::exception::parsing_error("port number separator (':') expected in a service address");
     m_stream >> m_port;
   }
 }
@@ -252,7 +275,7 @@ std::ostream& service::visualize(std::ostream& os, style style_) const
   switch (m_proto)
   {
     case transport::unknown:
-      throw cool::ng::exception::bad_conversion();
+      throw cool::ng::exception::bad_conversion("this service object does not contain valid service data");
 
     case transport::tcp:
       os << "tcp://";
@@ -281,7 +304,7 @@ std::ostream& service::visualize(std::ostream& os, style style_) const
 const struct sockaddr* service::sockaddr() const
 {
   if (m_proto == transport::unknown)
-    throw cool::ng::exception::bad_conversion();
+    throw cool::ng::exception::bad_conversion("this service object does not contain valid service data");
 
   switch (static_cast<const address&>(m_host).version())
   {
@@ -292,13 +315,13 @@ const struct sockaddr* service::sockaddr() const
       return reinterpret_cast<const struct sockaddr*>(&m_in6);
   }
 
-  throw cool::ng::exception::bad_conversion();
+  throw cool::ng::exception::bad_conversion("this service object does not contain valid service data");
 }
 
 socklen_t service::sockaddr_len() const
 {
   if (m_proto == transport::unknown)
-    throw cool::ng::exception::bad_conversion();
+    throw cool::ng::exception::bad_conversion("this service object does not contain valid service data");
 
   switch (static_cast<const address&>(m_host).version())
   {
@@ -309,15 +332,15 @@ socklen_t service::sockaddr_len() const
       return sizeof(m_in6);
   }
 
-  throw cool::ng::exception::bad_conversion();
+  throw cool::ng::exception::bad_conversion("this service object does not contain valid service data");
 }
 
 void service::assign(const struct sockaddr *sa_)
 {
   if (sa_ == nullptr)
-    throw cool::ng::exception::illegal_argument();
+    throw cool::ng::exception::illegal_argument("nullptr input pointer");
   if (m_proto == transport::unknown)
-    throw cool::ng::exception::invalid_state();
+    throw cool::ng::exception::invalid_state("this service object has unknown transport");
 
   switch (sa_->sa_family)
   {
@@ -332,7 +355,7 @@ void service::assign(const struct sockaddr *sa_)
       break;
 
     default:
-      throw cool::ng::exception::bad_conversion();
+      throw cool::ng::exception::bad_conversion("unknown address family with numerical value " + std::to_string(sa_->sa_family));
       break;
   }
   sync();
@@ -346,9 +369,9 @@ void service::assign(const std::string& uri_)
     *this = static_cast<service>(parser(ss));
     sync();
   }
-  catch (...)
+  catch (const std::exception& e)
   {
-    throw cool::ng::exception::bad_conversion();
+    throw cool::ng::exception::bad_conversion(e.what());
   }
 }
 
@@ -430,7 +453,7 @@ int parse_hexval(char c)
   else if (c >= 'A' && c <= 'F')
     res += c - 'A';
   else
-    throw exception::parsing_error();
+    throw exception::parsing_error("hexadecimal digit excpected, got '" + std::to_string(c) + "' instead");
 
   return res;
 }
@@ -477,7 +500,7 @@ class special_numbers_base
   inline const value_type& at(std::size_t ndx) const
   {
     if (ndx >= m_assigned_numbers.size())
-      throw cool::ng::exception::out_of_range();
+      throw cool::ng::exception::out_of_range("index " + std::to_string(ndx) + " is out of range 0-" + std::to_string(m_assigned_numbers.size() - 1));
     return m_assigned_numbers[ndx];
   }
 
@@ -816,16 +839,16 @@ void parser::parse()
       int aux = -1;
       c = parse_num(m_stream, aux);
       if (aux < 0 || aux > 255)  // number required but not found or number too large
-        throw exception::parsing_error();
+        throw exception::parsing_error("number " + std::to_string(aux) + " is out of valid value range 0-255");
 
       m_address[count] = static_cast<uint8_t>(aux);
 
       if (c != '.' && count < 3)
-        throw exception::parsing_error();
+        throw exception::parsing_error("invalid character '" + std::to_string(c) + "' encountered in an IPv4 IP address");
     }
 
     if (count < 4)
-      throw exception::parsing_error();
+      throw exception::parsing_error("the IPv4 IP address has only " + std::to_string(count) + " fields, 4 were expected");
 
     if (!m_stream.eof())   // push back the last character if not EOF
       m_stream.unget();
@@ -862,7 +885,7 @@ void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mas
         if (!is.eof())
           is.unget();
 
-        throw cool::ng::exception::bad_conversion();
+        throw cool::ng::exception::bad_conversion("CIDR seperator '/' expected, found '" + std::to_string(c) + "' instead");
       }
       else
       {
@@ -870,19 +893,19 @@ void parse(std::istream& is, binary_t& addr, std::size_t& mask, bool require_mas
         if (!is.eof())
           is.unget();
         if (aux < 0)
-          throw cool::ng::exception::bad_conversion();
+          throw cool::ng::exception::bad_conversion("bitmask length " + std::to_string(aux) + " is out of valid range 0-32");
       }
 
       if (aux > 32)
-        throw exception::out_of_range();
+        throw exception::out_of_range("bitmask length " + std::to_string(aux) + " is out of valid range 0-32");
       mask = aux;
     }
 
     addr = aux_addr;
   }
-  catch (const cool::ng::exception::parsing_error&)
+  catch (const cool::ng::exception::parsing_error& e)
   {
-    throw cool::ng::exception::bad_conversion();
+    throw cool::ng::exception::bad_conversion(e.what());
   }
 }
 
@@ -896,7 +919,7 @@ visualizer::visualizer(std::ostream& os_, const binary_t& b_, ip::style s_)
       break;
 
     default:
-      throw cool::ng::exception::bad_conversion();
+      throw cool::ng::exception::bad_conversion("invalid visual style " + to_string(s_) + " requested");
   }
 }
 
@@ -911,8 +934,6 @@ std::ostream& visualizer::operator ()()
   }
   return m_stream;
 }
-
-
 
 } // namespace ipv4
 
@@ -957,7 +978,7 @@ quad::operator uint16_t() const
 quad& quad::operator =(const std::string& str_)
 {
   if (str_.length() > 4)
-    throw cool::ng::exception::parsing_error();
+    throw cool::ng::exception::parsing_error("IPv6 address quad string longer than 4 characters: '" + str_ + "'");
   m_str = str_;
   return *this;
 }
@@ -994,13 +1015,13 @@ char delimiter::operator =(char c_)
   {
     if (c_ == delim_rfc || c_ == delim_ms)
       return set_(c_);
-    throw cool::ng::exception::parsing_error();
+    throw cool::ng::exception::parsing_error("IPv6 address quad delimiter (':' or '-') expected, got '" + std::to_string(c_) + "' instead");
   }
   if (c_ != m_char)
   {
     if (m_char == delim_rfc && c_ == delim_dot)  // only permitted change
       return set_(c_);
-    throw cool::ng::exception::parsing_error();
+    throw cool::ng::exception::parsing_error("cannot change IPv6 quad delimiter from ':' to '-' or vice versa");
   }
   return m_char;
 }
@@ -1087,7 +1108,7 @@ parser::token parser::fetch(std::string& str_, base b_)
           break;
         str_ += c;
         if (str_.length() > 4)
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::parsing_error("IPv6 quad string is longer than 4 characters: '" + str_ + "'");
         m_stream >> c;
       } while (!m_stream.eof());
 
@@ -1105,7 +1126,7 @@ parser::token parser::fetch(std::string& str_, base b_)
         {
           for (int i = 0; i < str_.length(); ++i)
             if (!is_digit(str_[i], base::decimal))
-              throw cool::ng::exception::parsing_error();
+              throw cool::ng::exception::parsing_error("only decimal digits are permitted when using dot_decimal visual style");
         }
         return token::decimal;
       }
@@ -1137,11 +1158,11 @@ void parser::parse()
 
       case token::quad:
         if (need_compression)
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::parsing_error("zero-compressed field ('::' or '--') was expected");
 
         ++m_last_quad;
         if (m_last_quad >= 8)
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::parsing_error("more than 8 address quads are present in an IPv6 address");
 
         m_quads[m_last_quad] = text;
         break;
@@ -1149,7 +1170,7 @@ void parser::parse()
       case token::compression:
         need_compression = false;
         if (m_is_deflated)     // can't have two :: sequences
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::parsing_error("only a single zero-compressed field ('::') is allowed in an IPv6 address");
         m_is_deflated = true;
         m_first_deflated = m_last_quad + 1;
         break;
@@ -1163,11 +1184,11 @@ void parser::parse()
           throw cool::ng::exception::parsing_error();
 
         if (m_decimal_count >= 4)
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::parsing_error("zero-compressed field ('::' or '--') was expected");
         std::istringstream is(text);
         parse_num(is, aux);
         if (aux < 0 || aux > 255)
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::parsing_error("dot_decimal style permits numeric field range 0-255, value " + std::to_string(aux) + " found");
         m_address[12 + m_decimal_count] = static_cast<uint8_t>(aux);
         ++m_decimal_count;
         numeric_base = base::decimal;
@@ -1179,12 +1200,12 @@ void parser::parse()
     inflate();
 
   if (m_last_quad != number_of_quads() - 1)
-    throw cool::ng::exception::parsing_error();
+    throw cool::ng::exception::parsing_error("IPv6 address does not contain 8 quads (zero compressed field included)");
 
   if (m_decimal_count > 0)
   {         // must have exactly 4 decimal fields with two spare quads to use
     if (m_decimal_count != 4)
-      throw cool::ng::exception::parsing_error();
+      throw cool::ng::exception::parsing_error("dot_decimal style must have 4 decimal fields");
   }
 
   for (int i = 0; i < number_of_quads(); ++i)
@@ -1250,7 +1271,7 @@ std::ostream& q_wrap::dot_decimal(std::ostream& os, std::size_t index) const
 uint_fast16_t q_wrap::operator[](std::size_t index) const
 {
   if (index >= size() )
-    throw cool::ng::exception::out_of_range();
+    throw cool::ng::exception::out_of_range("index out of range");
 
   std::size_t r_index = index << 1;
   return (m_data[r_index] << 8) | m_data[r_index + 1];
@@ -1286,10 +1307,6 @@ std::ostream& visualizer::operator()(ip::style s_)
 
   switch (s_)
   {
-    case ip::style::customary:
-    case ip::style::dot_decimal:
-      throw cool::ng::exception::bad_conversion();
-
     case ip::style::expanded:
       return expanded(m_buffer.size());
 
@@ -1302,6 +1319,11 @@ std::ostream& visualizer::operator()(ip::style s_)
 
     case ip::style::dotted_quad:
       return dotted_quad();
+
+    case ip::style::customary:
+    case ip::style::dot_decimal:
+    default:
+      throw cool::ng::exception::bad_conversion("invalid visual style " + to_string(s_) + " requested");
   }
   return m_stream;
 }
@@ -1398,7 +1420,7 @@ void parse(std::istream& is, binary_t& val, std::size_t& mask, bool require_mask
       {
         if (!is.eof())
           is.unget();
-        throw cool::ng::exception::bad_conversion();
+        throw cool::ng::exception::bad_conversion("CIDR seperator '/' expected, found '" + std::to_string(c) + "' instead");
       }
       else
       {
@@ -1406,19 +1428,19 @@ void parse(std::istream& is, binary_t& val, std::size_t& mask, bool require_mask
         if (!is.eof())
           is.unget();
         if (aux < 0)
-          throw cool::ng::exception::parsing_error();
+          throw cool::ng::exception::out_of_range("netmask length " + std::to_string(aux) + " is out of valid range 0-128");
 
         if (aux > 128)
-          throw exception::out_of_range();
+          throw exception::out_of_range("netmask length " + std::to_string(aux) + " is out of valid range 0-128");
         mask = aux;
       }
     }
 
     val = addr;
   }
-  catch (const cool::ng::exception::parsing_error&)
+  catch (const cool::ng::exception::parsing_error& e)
   {
-    throw cool::ng::exception::bad_conversion();
+    throw cool::ng::exception::bad_conversion(e.what());
   }
 }
 
@@ -1465,9 +1487,9 @@ std::istream& sin(std::istream& is, cool::ng::ip::address& val)
         break;
     }
   }
-  catch (const cool::ng::exception::parsing_error&)
+  catch (const cool::ng::exception::parsing_error& e)
   {
-    throw cool::ng::exception::bad_conversion();
+    throw cool::ng::exception::bad_conversion(e.what());
   }
   return is;
 }
@@ -1559,7 +1581,7 @@ host::operator struct in_addr() const
   if (detail::is_ipv4_host(*this))
     ::memcpy(static_cast<void*>(&result), m_data.data() + 12, 4);
   else
-    throw exception::bad_conversion();
+    throw exception::bad_conversion("this address is not convertible to IPv4 host address");
 
   return result;
 }
@@ -1598,7 +1620,7 @@ std::ostream& host::visualize(std::ostream& os, ip::style style_) const
       break;
 
     case ip::style::dot_decimal:
-      throw cool::ng::exception::bad_conversion();
+      throw cool::ng::exception::bad_conversion("IPv6 adddress cannot be visualized using " + to_string(style_) + "visual style");
   }
 
   return detail::ipv6::visualizer(os, m_data)(style_);
@@ -1607,7 +1629,8 @@ std::ostream& host::visualize(std::ostream& os, ip::style style_) const
 void host::assign(const ip::address& val)
 {
   if (val.kind() != kind())
-    throw exception::bad_conversion();
+    throw exception::bad_conversion("cannot assign a network address to the host address object");
+
   switch (val.version())
   {
     case ip::version::ipv6:
@@ -1687,7 +1710,7 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::out_of_range();
+    throw exception::out_of_range("network mask is out of the valid value range 0..128");
   // zero host part of the address
   m_data &= detail::calculate_mask<16>(m_length);
 }
@@ -1717,7 +1740,7 @@ std::ostream& network::visualize(std::ostream& os, ip::style style_) const
 
     case ip::style::dotted_quad:  // not useful for networks
     case ip::style::dot_decimal:
-      throw cool::ng::exception::bad_conversion();
+      throw cool::ng::exception::bad_conversion("visual style " + to_string(style_) + " cannot be used to visualize network address");
   }
 
   return detail::ipv6::visualizer(os, m_data)(style_) << "/" << std::dec << m_length;
@@ -1732,7 +1755,7 @@ network::operator std::string() const
 
 network::operator struct in_addr() const
 {
-  throw exception::bad_conversion();
+  throw exception::bad_conversion("IPv6 network address cannot be converted to struct in_addr");
 }
 
 network::operator struct in6_addr() const
@@ -1754,7 +1777,7 @@ void network::assign(const ip::address& rhs)
   }
 
   if (kind() != rhs.kind() || version() != rhs.version())
-    throw exception::bad_conversion();
+    throw exception::bad_conversion("only and IPv6 network address can be assigned to an IPv6 network address object");
   m_data = static_cast<const uint8_t*>(rhs);
   m_length = dynamic_cast<const ip::network&>(rhs).mask();
 
@@ -1764,7 +1787,7 @@ void network::assign(const ip::address& rhs)
 
 void network::assign(const struct in_addr& rhs)
 {
-  throw exception::bad_conversion();
+  throw exception::bad_conversion("cannot assign struct in_addr to an IPv6 network address object");
 }
 
 void network::assign(const struct in6_addr& rhs)
@@ -1938,7 +1961,7 @@ host::operator std::string() const
 void host::assign(const ip::address& rhs)
 {
   if (kind() != rhs.kind())
-    throw exception::bad_conversion();
+    throw exception::bad_conversion("cannot assign network address to host addresss object");
 
   switch (rhs.version())
   {
@@ -1948,7 +1971,7 @@ void host::assign(const ip::address& rhs)
 
     case ip::version::ipv6:
       if (!detail::is_ipv4_host(rhs))
-        throw exception::bad_conversion();
+        throw exception::bad_conversion("cannot assign IPv6 host address not originated in IPv4 space to an IPv4 host address object");
       m_data = static_cast<const uint8_t*>(rhs) + (rhs.size() - size());
       break;
   }
@@ -1964,7 +1987,7 @@ void host::assign(const struct in6_addr& rhs)
   ipv6::host aux(rhs);
 
   if (!detail::is_ipv4_host(aux))
-    throw exception::bad_conversion();
+    throw exception::bad_conversion("cannot assign IPv6 host address not originated in IPv4 space to an IPv4 host address object");
   m_data = static_cast<const uint8_t*>(static_cast<const void*>(&rhs)) + 12;
 }
 
@@ -2025,7 +2048,7 @@ network::network(std::size_t mask_size, std::initializer_list<uint8_t> args)
   , m_length(mask_size)
 {
   if (mask_size > size() * 8)
-    throw exception::out_of_range();
+    throw exception::out_of_range("netmask size " + std::to_string(mask_size) + " is out of valid value range 0-32");
   m_data &= detail::calculate_mask<4>(m_length);
 }
 
@@ -2097,7 +2120,7 @@ void network::assign(const ip::address& rhs)
 
       case version::ipv6:
         if (!detail::is_ipv4_host(rhs))
-          throw exception::bad_conversion();
+          throw exception::bad_conversion("cannot assign IPv6 host address not originated in IPv4 space to an IPv4 network address object");
         m_data = static_cast<const uint8_t*>(rhs) + 12;
         break;
     }
@@ -2107,7 +2130,7 @@ void network::assign(const ip::address& rhs)
   }
 
   if (rhs.version() != version::ipv4)
-    throw exception::bad_conversion();
+    throw exception::bad_conversion("cannot assign IPv6 host address to IPv4 network address object");
   m_data = static_cast<const uint8_t*>(rhs);
   m_data = m_data & detail::calculate_mask<4>(m_length);
 }
@@ -2120,7 +2143,7 @@ void network::assign(const struct in_addr& rhs)
 
 void network::assign(const struct in6_addr& rhs)
 {
-  throw exception::bad_conversion();
+  throw exception::bad_conversion("cannot assign struct inn6_addr to an IPv4 network address object");
 }
 
 void network::assign(uint8_t const rhs[])

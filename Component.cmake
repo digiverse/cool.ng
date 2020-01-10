@@ -108,6 +108,7 @@ endif()
 set( COO_NG_DOCUMENTED_API_HEADERS
   include/cool/ng/async.h
   include/cool/ng/exception.h
+  include/cool/ng/error.h
   include/cool/ng/bases.h
   include/cool/ng/ip_address.h
   include/cool/ng/binary.h
@@ -123,6 +124,7 @@ set( COOL_NG_API_DOCUMENTATION_FILES
   doc/api/module-async.dox
   doc/api/module-ip.dox
   doc/api/module-util.dox
+  doc/api/module-errh.dox
 )
 
 set( COOL_NG_API_HEADERS

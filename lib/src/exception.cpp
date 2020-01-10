@@ -46,6 +46,9 @@
 
 namespace cool { namespace ng { namespace exception {
 
+// ---
+// --- backtrace class ---------------------------------------------------------
+// ---
 backtrace::backtrace(bool capture_) NOEXCEPT_
   : m_count(0)
 {
@@ -126,9 +129,44 @@ std::vector<std::string> backtrace::symbols() const NOEXCEPT_
   return ret;
 }
 
+// ---
+// --- base class --------------------------------------------------------------
+// ---
+
+base::base(const std::string& msg_, bool backtrace_) NOEXCEPT_
+    : runtime_error(msg_)
+{
+  try
+  {
+    if (backtrace_)
+      m_backtrace = std::make_shared<backtrace>(true);
+  }
+  catch (...)
+  { /* noop */ }
+}
+
 std::string base::message() const
 {
   return std::string(name()) + ": " + what() + "\n  " + code().message() + "\n";
+}
+
+std::error_code base::code() const NOEXCEPT_
+{
+  static const std::error_code errc_ = error::make_error_code(error::errc::not_set);
+
+  return errc_;
+}
+
+const char* base::name() const NOEXCEPT_
+{
+  return "base";
+}
+
+const backtrace& base::stack_backtrace() const
+{
+  static const backtrace empty_(false);
+
+  return m_backtrace ? *m_backtrace : empty_;
 }
 
 // -------
@@ -179,11 +217,17 @@ std::string to_string(const base& ex)
 {
   std::stringstream os;
   os << ex.message();
-  auto syms = ex.stack_backtrace().symbols();
-  os << "**** Call stack backtrace:\n";
-  for (int i = 0; i < syms.size(); ++i)
-    os << "\t" << syms[i] << "\n";
-
+  if (ex.stack_backtrace().size() > 0)
+  {
+    auto syms = ex.stack_backtrace().symbols();
+    os << "  **** Call stack backtrace:\n";
+    for (int i = 0; i < syms.size(); ++i)
+      os << "\t" << syms[i] << "\n";
+  }
+  else
+  {
+    os << "  **** No call stack backtrace\n";
+  }
   return os.str();
 }
 

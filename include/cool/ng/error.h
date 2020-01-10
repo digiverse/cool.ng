@@ -30,42 +30,69 @@
 
 namespace cool { namespace ng { namespace error {
 
+// !!!! NOTE: Do not reorder this enumeration without adjusting messages[]
+// !!!!       string array in the implementaion file. New codes are to
+// !!!!       appended at the end of the list and their corresponding text
+// !!!!       messages to the end of the said array.
 /**
- * Error codes enumeration.
+ * @ingroup coolerrc
+ * Error codes enumeration for Cool.NG error codes
  */
 enum class errc
 {
-  not_an_error = 0,
-  no_runner = 1,
-  bad_runner_cast = 2,
-  operation_failed = 3,
-  invalid_state = 4,
-  out_of_range = 5,
-  illegal_argument = 6,
-  bad_conversion = 7,
-  resource_busy = 8,
-  parsing_error = 9,
-  concurrency_problem = 10,
-  not_available = 11,
-  empty_object = 12,
-  request_aborted = 13,
-  request_rejected = 14,
-  destination_unreachable = 15,
-  request_failed = 16,
-  not_found = 17,
-  already_exists = 18,
-  no_context = 19,
+         not_an_error = 0,    //!< Not an error
+         not_set      = 1,    //!< Potential error condition detected but no specific error code was set
+         no_runner,           //!< The requested @ref async::runner "runner" instance no longer exists
+         bad_runner_cast,     //!< The target type of the @c dynamic_cast is not a @ref async::runner "runner"
+         operation_failed,    //!< Requested operation failed for the unspecified reason
+         invalid_state,       //!<  The current state was either unexpected or prohibits the operation to proceed
+         out_of_range,        //!< The provided value was out of the valid value range for the operational context.
+         illegal_argument,    //!< The value of one or more parameters was not valid
+         bad_conversion,      //!< The value cannot be converted into the requested data type
+         resource_busy,       //!< The requested resource is already spoken for
+/* 10 */ parsing_error,       //!< The input text failed to parse correctly
+         concurrency_problem, //!< Object that is not thread safe detected concurrent use
+         empty_object,        //!< The object w as found empty and non-functional
+         request_aborted,     //!< The pending request was aborted
+         request_failed,      //!< The asynchronous request has failed
+         not_found,           //!< The item was not found
+         already_exists,      //!< The item already exists
+         no_context,          //!< The expected context for the asynchronous or delayed  operation does not exist.
 };
 
-struct library_category : std::error_category
+/**
+ * The error category for Cool.NG library error codes.
+ */
+struct dlldecl cool_ng_category : std::error_category
 {
-  dlldecl const char* name() const NOEXCEPT_ override;
-  dlldecl std::string message(int ev) const override;
-//  std::error_condition default_error_condition() const NOEXCEPT_ override;
+  /**
+   * Returns the error category name.
+   *
+   * This method overrides  @c std::error_category::name() method.
+   */
+  const char* name() const NOEXCEPT_ override;
+  /**
+   * Returns the error message associated with the error value.
+   *
+   * This method overrides  @c std::error_category::message() method.
+   */
+  std::string message(int ev) const override;
+  /**
+   * Returns the error condition for the given error code.
+   *
+   * This methods overrides @c std::error_category::default_error_condition() method.
+   */
+  std::error_condition default_error_condition(int code_) const NOEXCEPT_ override;
 
 };
 
+/**
+ * Creates a @c std::error_code from the @ref errc "Cool.NG library error code enumerator".
+ */
 dlldecl std::error_code make_error_code(errc);
+/**
+ * Returns an @em no @em error error code.
+ */
 dlldecl std::error_code no_error();
 
 } } } // namespace
@@ -77,6 +104,12 @@ namespace std {
  */
 template <>
 struct is_error_code_enum<cool::ng::error::errc>  : true_type { };
+
+/**
+ * Standard template specialization for @ref cool::ng::error::errc "errc" enumeration.
+ */
+template <>
+struct is_error_condition_enum<cool::ng::error::errc>  : true_type { };
 
 } // namespace
 

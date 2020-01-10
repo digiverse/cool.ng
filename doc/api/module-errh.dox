@@ -1,0 +1,58 @@
+
+/**
+@defgroup errh Error Handling Module
+
+This module contains classes and other constructs to support error handling inside the Cool.NG library code.
+
+Some of the elements are resuable and can be used by the user code as a base for their approach to error handling.
+*/
+
+/**
+@ingroup errh
+@defgroup coolerrc Error Codes
+This module contains the Cool.NG library specific error codes that are contained in @ref excool "the exception objects" thrown by the Cool.NG library code.
+*/
+
+
+/**
+ @ingroup errh
+ @defgroup errexc Exception Objects
+Contains Cool.NG library exception objects.
+
+This module contain both generic exception objects that help the applications in building their own exception hierarcy
+as well as specific exception objects thrown by the Cool.NG library code upon detecting exceptional situations.
+*/
+
+/**
+@ingroup errexc
+@defgroup excgen Generic Exceptions
+Contains generic exception objects.
+
+This module contains exception objects that are resuable and can be used as the base for application defined exceptions. The main features of these
+exception objects are the ability to fetch the call stack backtreace and to fetch the system error code at the point of their construction.
+*/
+
+/**
+@ingroup errexc
+@defgroup excool Cool.NG Library Exceptions
+Contains Coll.NG library specific exception objects.
+
+These exceptions are specific to the Cool.NG library and are thrown by the library code when it encounters an
+exceptional situation. These exception objects are @c final and cannot be further specialized.
+*/
+
+/**
+@namespace cool::ng::exception
+@ingroup errh
+
+This namespace contains both generic exception objects that help the applications in building their own exception hierarcy
+as well as specific exception objects thrown by the Cool.NG library code upon detecting exceptional situations.
+*/
+
+/**
+@namespace cool::ng::error
+@ingroup errh
+
+This namespace contains class templates and classes that support structured approach to
+the asynchronous programming. See the description of @ref async for more details.
+*/

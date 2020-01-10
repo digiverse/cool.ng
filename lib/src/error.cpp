@@ -27,49 +27,46 @@ namespace cool { namespace ng { namespace error {
 
 namespace {
 
-const library_category the_cool_category;
+const cool_ng_category the_cool_category;
 
 } // namespace
 
 std::error_code make_error_code(errc e)
 {
-
   return std::error_code(static_cast<int>(e), the_cool_category);
 }
 
 std::error_code no_error()
 {
-  return std::error_code(0, the_cool_category);
+  return make_error_code(errc::not_an_error);
 }
 
-const char* library_category::name() const NOEXCEPT_
+const char* cool_ng_category::name() const NOEXCEPT_
 {
-  return "cool.ng";
+  return "Cool.NG";
 }
 
-std::string library_category::message(int ev) const
+std::string cool_ng_category::message(int ev) const
 {
   static const char * const messages[] = {
 /*   0 */ "not an error",
+          "potential error detected but no specific error code was set",
           "the runner requested through the weak_ptr no longer exists",
-          "internal: dynamic cast from async::runner to user runner type unexplicably failed",
+          "internal: dynamic cast from async::runner to the user type inexplicably failed",
           "requested operation failed",
-          "the object was in the unexpected state or a wrong state to perform the requested operation",
+          "the current state was either unexpected or prohibits the operation to proceed",
           "the provided value was out of the valid value range",
           "the parameter value was not valid",
-          "failed to convert provided value into the requested value",
-          "the requested resource is busy and not available",
-          "parsing of textual input failed",
-/*  10 */ "an object that is not thread safe has encountered race condition",
-          "the requested item was either not specified or was not made available",
-          "this object is empty and not functional",
+          "failed to convert provided value into the requested data type",
+          "the requested resource is already spoken for and not available",
+/*  10 */ "parsing of textual input failed",
+          "object that is not thread safe has detected a race condition due to concurrent use",
+          "the object is empty and non-functional",
           "the pending request was aborted",
-          "the destination rejected connection",
-          "the destination is not reachable",
           "the request has failed",
           "the item was not found",
           "the item already exists",
-          "the expected operation context does not exist"
+          "the expected context for the asynchronous or delayed  operation does not exist"
   };
   static const char* const unknown = "unrecognized error";
 
@@ -78,6 +75,10 @@ std::string library_category::message(int ev) const
   return unknown;
 }
 
+std::error_condition cool_ng_category::default_error_condition(int code_) const NOEXCEPT_
+{
+  return std::error_condition(code_, the_cool_category);
+}
 
 
 } } } // namespace
