@@ -4,7 +4,7 @@ endmacro()
 
 macro( add_to_list ListType )
   if ( NOT (${ListType} MATCHES "ALL" OR ${ListType} MATCHES "BUILD") )
-      message( FATAL "Unknown list type '${ListType}'")
+      message( FATAL_ERROR "Unknown list type '${ListType}'")
    endif()
   append( COOL_NG_${ListType}_FILES ${ARGN} )
 endmacro()

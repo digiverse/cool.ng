@@ -29,8 +29,6 @@ endif()
 # ###
 # ### ##################################################
 
-include_directories( ${COOL_NG_COMPONENT_INCLUDE_DIRECTORIES} )
-
 set( COOL_NG_COMPONENT_ARCHIVES  ${COOL_NG_LIB_STATIC} )
 set( COOL_NG_COMPONENT_LIBRARIES ${COOL_NG_LIB_DYNAMIC} )
 set( COOL_NG_COMPONENT_DEPENDS   ${COOL_NG_PLATFORM_LIBRARIES} )
@@ -40,14 +38,31 @@ set( COOL_NG_COMPONENT_DEPENDS   ${COOL_NG_PLATFORM_LIBRARIES} )
 add_library( ${COOL_NG_TARGET_STATIC}  STATIC ${COOL_NG_BUILD_FILES} )
 add_library( ${COOL_NG_TARGET_DYNAMIC} SHARED ${COOL_NG_BUILD_FILES} )
 
+if( DEFINED COOL_NG_ADDITIONAL_SYS_INCLUDES )
+  target_include_directories( ${COOL_NG_TARGET_STATIC}  PUBLIC SYSTEM  ${COOL_NG_ADDITIONAL_SYS_INCLUDES} )
+  target_include_directories( ${COOL_NG_TARGET_DYNAMIC} PUBLIC SYSTEM  ${COOL_NG_ADDITIONAL_SYS_INCLUDES} )
+endif()
+if( DEFINED COOL_NG_ADDITIONAL_SYS_LIBDIRS)
+  if (CMAKE_VERSION VERSION_LESS 3.13 )
+    report( FATAL "Would need to add link diretories to target; cmake version 3.14 or later is r equired." )
+  endif()
+  target_link_directories( ${COOL_NG_TARGET_STATIC}  PUBLIC ${COOL_NG_ADDITIONAL_SYS_LIBDIRS} )
+  target_link_directories( ${COOL_NG_TARGET_DYNAMIC} PUBLIC ${COOL_NG_ADDITIONAL_SYS_LIBDIRS} )
+endif()
 target_include_directories( ${COOL_NG_TARGET_STATIC}  BEFORE PRIVATE ${COOL_NG_HOME}/lib ${COOL_NG_HOME}/lib/include )
 target_include_directories( ${COOL_NG_TARGET_STATIC}  PUBLIC  ${COOL_NG_COMPONENT_INCLUDE_DIRECTORIES} )
 target_include_directories( ${COOL_NG_TARGET_DYNAMIC} BEFORE PRIVATE ${COOL_NG_HOME}/lib ${COOL_NG_HOME}/lib/include )
 target_include_directories( ${COOL_NG_TARGET_DYNAMIC} PUBLIC  ${COOL_NG_COMPONENT_INCLUDE_DIRECTORIES} )
-target_compile_definitions( ${COOL_NG_TARGET_STATIC}  PRIVATE COOL_NG_BUILD COOL_NG_STATIC_LIBRARY ${COOL_ASYNC_PLATFORM} ${TASK_RUNNER_IMPL} )
+target_compile_definitions( ${COOL_NG_TARGET_STATIC}  PRIVATE COOL_NG_BUILD ${COOL_ASYNC_PLATFORM} ${TASK_RUNNER_IMPL} )
 target_compile_definitions( ${COOL_NG_TARGET_DYNAMIC} PRIVATE COOL_NG_BUILD ${COOL_ASYNC_PLATFORM} ${TASK_RUNNER_IMPL} )
-target_compile_definitions( ${COOL_NG_TARGET_DYNAMIC} PUBLIC  PLATFORM_TARGET=${COOL_PLATFORM_TARGET} )
-target_compile_definitions( ${COOL_NG_TARGET_STATIC}  PUBLIC  PLATFORM_TARGET=${COOL_PLATFORM_TARGET} )
+target_compile_definitions( ${COOL_NG_TARGET_DYNAMIC} PUBLIC  PLATFORM_TARGET=${COOL_PLATFORM_TARGET} ${COOL_PLATFORM_TARGET} )
+target_compile_definitions( ${COOL_NG_TARGET_STATIC}  PUBLIC COOL_NG_STATIC_LIBRARY PLATFORM_TARGET=${COOL_PLATFORM_TARGET} ${COOL_PLATFORM_TARGET} )
+
+target_compile_options( ${COOL_NG_TARGET_DYNAMIC} PUBLIC ${COOL_NG_COMPILER_OPTIONS} )
+target_compile_options( ${COOL_NG_TARGET_STATIC}  PUBLIC ${COOL_NG_COMPILER_OPTIONS} )
+
+target_link_libraries( ${COOL_NG_TARGET_DYNAMIC} ${COOL_NG_PLATFORM_LIBRARIES} )
+target_link_libraries( ${COOL_NG_TARGET_STATIC}  ${COOL_NG_PLATFORM_LIBRARIES} )
 
 # --- now set file names and locations
 if( NOT WINDOWS )
@@ -62,16 +77,11 @@ if( NOT WINDOWS )
     ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
   )
 
-  target_compile_options( ${COOL_NG_TARGET_DYNAMIC} PUBLIC -g -std=c++11 -fPIC )
-  target_compile_options( ${COOL_NG_TARGET_STATIC}  PUBLIC -g -std=c++11 -fPIC )
-
   if (OSX)
     
     set_target_properties( ${COOL_NG_TARGET_DYNAMIC} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup" )
-    target_compile_options( ${COOL_NG_TARGET_DYNAMIC} PUBLIC -fbracket-depth=10000 )
     target_compile_definitions( ${COOL_NG_TARGET_DYNAMIC} PUBLIC OS_OBJECT_USE_OBJC=0 )
-    target_compile_options( ${COOL_NG_TARGET_STATIC} PUBLIC -fbracket-depth=10000 )
-    target_compile_definitions( ${COOL_NG_TARGET_STATIC} PUBLIC OS_OBJECT_USE_OBJC=0 )
+    target_compile_definitions( ${COOL_NG_TARGET_STATIC}  PUBLIC OS_OBJECT_USE_OBJC=0 )
 
   endif()
 
@@ -82,17 +92,10 @@ else()
     OUTPUT_NAME "${COOL_NG_LIB_DYNAMIC}"
     RUNTIME_OUTPUT_DIRECTORY "${COOL_NG_BIN_DIR}"
   )
-  target_link_libraries( ${COOL_NG_TARGET_DYNAMIC} ${COOL_NG_PLATFORM_LIBRARIES} )
   set_target_properties( ${COOL_NG_TARGET_STATIC} PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "${COOL_NG_LIB_STATIC}"
     ARCHIVE_OUTPUT_DIRECTORY "${COOL_NG_LIB_DIR}"
   )
-  target_link_libraries( ${COOL_NG_TARGET_STATIC} ${COOL_NG_PLATFORM_LIBRARIES} )
-
-  target_compile_options(     ${COOL_NG_TARGET_DYNAMIC} PUBLIC /EHsc /bigobj /Zm750 )
-  target_compile_options(     ${COOL_NG_TARGET_STATIC}  PUBLIC /EHsc /bigobj /Zm750 )
-  target_compile_definitions( ${COOL_NG_TARGET_DYNAMIC} PUBLIC _SCL_SECURE_NO_WARNINGS )
-  target_compile_definitions( ${COOL_NG_TARGET_STATIC}  PUBLIC _SCL_SECURE_NO_WARNINGS )
 
 endif()

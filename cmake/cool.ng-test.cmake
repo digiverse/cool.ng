@@ -6,7 +6,7 @@ set( HEADER_ONLY_UNIT_TESTS
 
 # unit tests for library internals, require static lib owing to MS dll export/import rules
 set( LIBRARY_UNIT_TESTS
-  executor
+#  executor
   run_queue
 )
 
@@ -50,14 +50,16 @@ set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )
 macro(header_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
 
-  target_link_directories( ${TestName}-test PRIVATE ${Boost_LIBRARY_DIRS} )
+#  target_link_directories( ${TestName}-test PRIVATE ${Boost_LIBRARY_DIRS} )
   target_link_libraries( ${TestName}-test ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   target_include_directories( ${TestName}-test SYSTEM PRIVATE ${Boost_INCLUDE_DIR} )
   target_include_directories( ${TestName}-test PRIVATE ${COOL_NG_HOME}/tests/unit ${COOL_NG_COMPONENT_INCLUDE_DIRECTORIES})
-  target_compile_definitions( ${TestName}-test PRIVATE DBOOST_TEST_DYN_LINK )
+  target_compile_definitions( ${TestName}-test PRIVATE BOOST_TEST_DYN_LINK )
+  target_compile_options( ${TestName}-test PRIVATE ${COOL_NG_COMPILER_OPTIONS} )
   set_target_properties( ${TestName}-test PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-      FOLDER "Unit Tests/Header Only"
+    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    LINK_DIRECTORIES  ${Boost_LIBRARY_DIRS}
+    FOLDER "Unit Tests/Header Only"
   )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
@@ -65,14 +67,15 @@ endmacro()
 macro(internal_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
 
-  target_link_directories( ${TestName}-test PRIVATE ${Boost_LIBRARY_DIRS} )
+#  target_link_directories( ${TestName}-test PRIVATE ${Boost_LIBRARY_DIRS} )
   target_link_libraries( ${TestName}-test cool.ng.archive ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
   target_include_directories( ${TestName}-test SYSTEM PRIVATE ${Boost_INCLUDE_DIR} )
   target_include_directories( ${TestName}-test PRIVATE ${COOL_NG_HOME}/tests/unit )
-  target_compile_definitions( ${TestName}-test PRIVATE DBOOST_TEST_DYN_LINK COOL_NG_STATIC_LIBRARY )
+  target_compile_definitions( ${TestName}-test PRIVATE BOOST_TEST_DYN_LINK COOL_NG_STATIC_LIBRARY )
    set_target_properties( ${TestName}-test PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
-    FOLDER "Unit Tests/Internal"
+     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+     LINK_DIRECTORIES  ${Boost_LIBRARY_DIRS}
+     FOLDER "Unit Tests/Internal"
   )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
 endmacro()
@@ -81,24 +84,26 @@ macro(api_unit_test TestName)
   add_executable( ${TestName}-test ${ARGN} )
   add_executable( ${TestName}-test-dyn ${ARGN} )
 
-  target_link_directories( ${TestName}-test PRIVATE ${Boost_LIBRARY_DIRS} )
-  target_link_libraries( ${TestName}-test cool.ng.archive ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
+#  target_link_directories( ${TestName}-test PRIVATE ${Boost_LIBRARY_DIRS} )
+  target_link_libraries( ${TestName}-test cool.ng.archive ${Boost_LIBRARIES} )
   target_include_directories( ${TestName}-test SYSTEM PRIVATE ${Boost_INCLUDE_DIR} )
   target_include_directories( ${TestName}-test PRIVATE ${COOL_NG_HOME}/tests/unit )
-  target_compile_definitions( ${TestName}-test PRIVATE DBOOST_TEST_DYN_LINK )
+  target_compile_definitions( ${TestName}-test PRIVATE BOOST_TEST_DYN_LINK )
   set_target_properties( ${TestName}-test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    LINK_DIRECTORIES  ${Boost_LIBRARY_DIRS}
     FOLDER "Unit Tests/API"
   )
   add_test( NAME ${TestName} COMMAND ${TestName}-test )
   
-  target_link_directories( ${TestName}-test-dyn PRIVATE ${Boost_LIBRARY_DIRS} )
-  target_link_libraries( ${TestName}-test-dyn cool.ng.dynamic ${Boost_LIBRARIES} ${COOL_NG_PLATFORM_LIBRARIES} )
+#  target_link_directories( ${TestName}-test-dyn PRIVATE ${Boost_LIBRARY_DIRS} )
+  target_link_libraries( ${TestName}-test-dyn cool.ng.dynamic ${Boost_LIBRARIES} )
   target_include_directories( ${TestName}-test-dyn SYSTEM PRIVATE ${Boost_INCLUDE_DIR} )
   target_include_directories( ${TestName}-test-dyn PRIVATE ${COOL_NG_HOME}/tests/unit )
-  target_compile_definitions( ${TestName}-test-dyn PRIVATE DBOOST_TEST_DYN_LINK )
+  target_compile_definitions( ${TestName}-test-dyn PRIVATE BOOST_TEST_DYN_LINK )
   set_target_properties( ${TestName}-test-dyn PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${COOL_NG_TEST_DIR}
+    LINK_DIRECTORIES  ${Boost_LIBRARY_DIRS}
     FOLDER "Unit Tests/API"
   )
   add_test( NAME ${TestName}-dyn COMMAND ${TestName}-test-dyn )
@@ -131,7 +136,7 @@ else()
   message("      Library directory: ${Boost_LIBRARY_DIRS}")
 endif()
 
-if( COOL_NG_UNIT_TESTS )
+if( COOL_NG_BUILD_UNIT_TESTS )
 
   enable_testing()
 

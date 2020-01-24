@@ -30,9 +30,16 @@ if( POLICY CMP0074 )
   cmake_policy( SET CMP0074 OLD )
 endif()
 
+include( cmake/cool.ng-platform.cmake )
+
+# ---  silent mode will only report errors
+if( NOT DEFINED COOL_NG_SILENT )
+  set( COOL_NG_SILENT false )
+endif()
+
 # --- top of source tree
 if( NOT DEFINED COOL_NG_HOME )
-  set( COOL_NG_HOME ${CMAKE_SOURCE_DIR} )
+  set( COOL_NG_HOME ${CMAKE_CURRENT_SOURCE_DIR} )
 endif()
 
 # --- build directory
@@ -41,8 +48,8 @@ if( NOT DEFINED COOL_NG_BUILD_DIR )
 endif()
 
 # --- enable/disable and control unit tests
-if( NOT DEFINED COOL_NG_UNIT_TESTS )
-  set( COOL_NG_UNIT_TESTS true)
+if( NOT DEFINED COOL_NG_BUILD_UNIT_TESTS )
+  set( COOL_NG_BUILD_UNIT_TESTS true)
 endif()
 
 # --- enable/disable documentation build
@@ -64,28 +71,38 @@ if( NOT DEFINED COOL_NG_DOC_DIR)
 endif()
 
 # --- test programs location
-if( COOL_NG_UNIT_TESTS )
+if( COOL_NG_BUILD_UNIT_TESTS )
   if( NOT DEFINED COOL_NG_TEST_DIR )
     set( COOL_NG_TEST_DIR ${COOL_NG_BIN_DIR} )
   endif()
 endif()
 
-# --- Boost root, needed for unit tests
-if ( NOT DEFINED BOOST_ROOT )
-  if ( COOL_NG_UNIT_TESTS )
-    message( "BOOST_ROOT is not set, will use internal hardcoded location" )
+
+report( "-- Cool.NG build system with the following parameters:" )
+report( "   COOL_NG_SILENT ............. ${COOL_NG_SILENT}" )
+report( "   COOL_NG_HOME ............... ${COOL_NG_HOME}" )
+report( "   COOL_NG_BUILD_DIR .......... ${COOL_NG_BUILD_DIR}" )
+report( "   COOL_NG_BUILD_UNIT_TESTS ... ${COOL_NG_BUILD_UNIT_TESTS}" )
+report( "   COOL_NG_BUILD_DOC .......... ${COOL_NG_BUILD_DOC}" )
+report( "   COOL_NG_BIN_DIR ............ ${COOL_NG_BIN_DIR}" )
+report( "   COOL_NG_LIB_DIR ............ ${COOL_NG_LIB_DIR}" )
+report( "   COOL_NG_DOC_DIR ............ ${COOL_NG_DOC_DIR}" )
+report( "   COOL_PLATFORM_TARGET ....... ${COOL_PLATFORM_TARGET}" )
+report( "   COOL_ASYNC_PLATFORM ........ ${COOL_ASYNC_PLATFORM}" )
+report( "   COOL_TASK_RUNNER_IMPL ...... ${COOL_TASK_RUNNER_IMPL}" )
+
+if( COOL_NG_BUILD_UNIT_TESTS )
+  report( "   COOL_NG_TEST_DIR ........... ${COOL_NG_TEST_DIR}" )
+  if( DEFINED BOOST_ROOT ) 
+    report( "   BOOST_ROOT ................. ${BOOST_ROOT}" )
+  else()
+    report( "   BOOST_ROOT ................. not defined, will use internal default" )
   endif()
 endif()
 
-
- 
-include( cmake/cool.ng-platform.cmake )
- 
 # --- logical targert for static and dynamic libraries
 set ( COOL_NG_TARGET_STATIC  cool.ng.archive )    # logical targets
 set ( COOL_NG_TARGET_DYNAMIC cool.ng.dynamic )
-
-
 
 include( cmake/cool.ng-files.cmake )
 include( cmake/cool.ng-library.cmake )
@@ -94,7 +111,7 @@ if( COOL_NG_BUILD_DOC )
   cool_ng_api_doc( ${COOL_NG_HOME}/doc doc doc ${COOL_NG_API_DOCUMENTATION_FILES} )
 endif()
 
-if ( COOL_NG_UNIT_TESTS )
+if ( COOL_NG_BUILD_UNIT_TESTS )
   include( cmake/cool.ng-test.cmake )
 endif()
 

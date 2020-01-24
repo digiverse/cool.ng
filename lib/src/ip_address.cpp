@@ -1249,7 +1249,7 @@ class q_wrap
   { /* noop */ }
 
   uint_fast16_t operator[](std::size_t index) const;
-  constexpr std::size_t size() const { return 8; }
+  constexpr static std::size_t size() { return 8; }
   std::ostream& quad(std::ostream& os, std::size_t index) const;
   std::ostream& dot_decimal(std::ostream& os, std::size_t index) const;
 
@@ -1769,7 +1769,7 @@ network::operator struct in6_addr() const
 void network::assign(const ip::address& rhs)
 {
   // special case
-  if (rhs.kind() == kind::host && rhs.version() == version::ipv6)
+  if (rhs.kind() == ip::kind::host && rhs.version() == ip::version::ipv6)
   {
     m_data = static_cast<const uint8_t*>(rhs);
     m_data = m_data & detail::calculate_mask<16>(m_length);
@@ -2110,15 +2110,15 @@ bool network::is(ip::attribute a) const
 void network::assign(const ip::address& rhs)
 {
   // special case
-  if (rhs.kind() == kind::host)
+  if (rhs.kind() == ip::kind::host)
   {
     switch (rhs.version())
     {
-      case  version::ipv4:
+      case ip::version::ipv4:
         m_data = static_cast<const uint8_t*>(rhs);
         break;
 
-      case version::ipv6:
+      case ip::version::ipv6:
         if (!detail::is_ipv4_host(rhs))
           throw exception::bad_conversion("cannot assign IPv6 host address not originated in IPv4 space to an IPv4 network address object");
         m_data = static_cast<const uint8_t*>(rhs) + 12;
@@ -2129,7 +2129,7 @@ void network::assign(const ip::address& rhs)
     return;
   }
 
-  if (rhs.version() != version::ipv4)
+  if (rhs.version() != ip::version::ipv4)
     throw exception::bad_conversion("cannot assign IPv6 host address to IPv4 network address object");
   m_data = static_cast<const uint8_t*>(rhs);
   m_data = m_data & detail::calculate_mask<4>(m_length);

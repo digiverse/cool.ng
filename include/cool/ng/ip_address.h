@@ -33,6 +33,9 @@
 # include <ws2tcpip.h>
 #else
 # include <sys/types.h>
+# if defined(FREEBSD_TARGET)
+#  include <sys/socket.h>
+# endif
 # include <netinet/in.h>
 #endif
 
@@ -1902,7 +1905,7 @@ inline ipv6::network operator "" _ipv6_net(const char* lit_, std::size_t len_)
  * @exception cool::ng::exception::out_of_range thrown if the network mask exceeds the number of
  * address bits for given @ref ip::version "IP address version".
 */
-std::shared_ptr<address> operator "" _ip(const char * lit_, std::size_t len_)
+inline std::shared_ptr<address> operator "" _ip(const char * lit_, std::size_t len_)
 {
   return detail::literal_ip(lit_);
 }
