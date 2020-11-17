@@ -25,13 +25,14 @@
 #include <typeinfo>
 
 #define BOOST_TEST_MODULE TaskTraits
-#include <boost/test/unit_test.hpp>
+#include "unit_test_common.h"
 
 #include "cool/ng/impl/async/task_traits.h"
 
 BOOST_AUTO_TEST_SUITE(task_traits)
 
-BOOST_AUTO_TEST_CASE(is_same)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("is_same test - check if all template types are exactly the same"))
 {
   BOOST_CHECK( !(cool::ng::async::detail::traits::is_same<int, int&>::value));
   BOOST_CHECK( !(cool::ng::async::detail::traits::is_same<int, const int&>::value));
@@ -67,7 +68,8 @@ struct C
   using input_type = Y;
 };
 
-BOOST_AUTO_TEST_CASE(is_chain)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("is_chain test - check that the result type of preceding callable matches the parameter type of next"))
 {
   BOOST_CHECK(  (cool::ng::async::detail::traits::is_chain<C<int,int>, C<void, int>>::result::value));
   BOOST_CHECK(  (cool::ng::async::detail::traits::is_chain<C<void,int>, C<int,void>>::result::value));
@@ -95,7 +97,8 @@ struct A
   using result_type = T;
 };
 
-BOOST_AUTO_TEST_CASE(parallel_result_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("get_parallel_result_type test - determines the result type of the paralel composition"))
 {
   BOOST_CHECK(typeid(std::tuple<int, cool::ng::async::detail::traits::void_type, double>) == typeid(cool::ng::async::detail::traits::get_parallel_result_type<A<int>, A<void>, A<double>>::type));
   BOOST_CHECK(typeid(std::tuple<int, void*, double>) == typeid(cool::ng::async::detail::traits::get_parallel_result_type<A<int>, A<void*>, A<double>>::type));
@@ -107,13 +110,15 @@ BOOST_AUTO_TEST_CASE(parallel_result_type)
   BOOST_CHECK(typeid(std::tuple<int, cool::ng::async::detail::traits::void_type, double>) == typeid(cool::ng::async::detail::traits::get_parallel_result_type<A<int>, A<const_tricky_t>, A<double>>::type));
 }
 
-BOOST_AUTO_TEST_CASE(sequence_result_type)
+COOL_AUTO_TEST_CASE(T004,
+  *utf::description("get_sequence_result_type test - determines the result type of the sequential composition"))
 {
   BOOST_CHECK(typeid(double) == typeid(cool::ng::async::detail::traits::get_sequence_result_type<A<int>, A<void>, A<double>>::type));
   BOOST_CHECK(typeid(void) == typeid(cool::ng::async::detail::traits::get_sequence_result_type<A<int>, A<void>, A<void>>::type));
 }
 
-BOOST_AUTO_TEST_CASE(get_first)
+COOL_AUTO_TEST_CASE(T005,
+  *utf::description("get_first type extractor test - determines the type of the first parameter"))
 {
   BOOST_CHECK(typeid(void) == typeid(cool::ng::async::detail::traits::get_first<void>::type));
   BOOST_CHECK(typeid(void) == typeid(cool::ng::async::detail::traits::get_first<void, int>::type));
@@ -128,7 +133,8 @@ BOOST_AUTO_TEST_CASE(get_first)
 
 }
 
-BOOST_AUTO_TEST_CASE(get_last)
+COOL_AUTO_TEST_CASE(T006,
+  *utf::description("get_last type extractor test - determines the type of the last parameter"))
 {
   BOOST_CHECK(typeid(void) == typeid(cool::ng::async::detail::traits::get_last<void>::type));
   BOOST_CHECK(typeid(void) == typeid(cool::ng::async::detail::traits::get_last<int, void>::type));

@@ -9,5 +9,17 @@ It consists of the following modules:
   - @ref ip, which offer abstractions to simplify the work with IPv4 and IPv6 addresses
   - @ref util, which contains a collection of miscellaneous utility classes
   - @ref errh, the module that provides error handling support for the Cool.NG library code
- 
+
+@section platforms Supported Platforms
+
+Cool.NG library uses Apple's Dispatch or Windows Thread Pool for asynchronous execution in the
+@ref async module. In principle the Cool.NG library can be compiled and run on any platform that
+supports one of these and has cmake 5.1 (or later) and C++11 compliant C++ compiler. The library
+has been build and tested on:
+
+  - MacOS High Sierra and later
+  - Ubuntu 16.04 LTS and Ubuntu 18.04 LTS
+  - FreeBSD 12
+  - Windows 7 with Visual Studio 2015, 2017 and 2019
+  
 */

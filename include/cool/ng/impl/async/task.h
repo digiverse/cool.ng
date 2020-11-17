@@ -24,6 +24,7 @@
 #if !defined(cool_ng_f36abcb0_dda1_42a1_b25a_943f5951523a)
 #define      cool_ng_f36abcb0_dda1_42a1_b25a_943f5951523a
 
+#include <iostream> // TODO: remove
 #include <memory>
 #include <functional>
 #include <type_traits>
@@ -168,50 +169,23 @@ class task
       , const any& input_) const = 0;
 };
 
+// ==== =====
+// ====
+// ==== Static task information
+// ====
+// ==== ====
+
+template <typename TagT, typename RunnerT, typename ResultT, typename... InputT>
+class x_taskinfo
+{ /* noop default template */ };
+
 // ---- task static information
 template <typename TagT, typename RunnerT, typename InputT, typename ResultT, typename... TaskT>
 class taskinfo { };
 
-
 // ---- task runtime information
 template <typename TagT, typename RunnerT, typename InputT, typename ResultT, typename... TaskT>
 class task_context : public context { };
-
-class task_context_base : public context
-{
- public:
-  inline task_context_base(context_stack* stack_, const std::shared_ptr<task>& task_)
-      : m_task(task_), m_stack(stack_)
-  { /* noop */ }
-
-  virtual inline ~task_context_base()
-  { /* noop */ }
-
-  void set_res_reporter(const result_reporter& arg_) override
-  {
-    m_res_reporter = arg_;
-  }
-  void set_exc_reporter(const exception_reporter& arg_) override
-  {
-    m_exc_reporter = arg_;
-  }
-  void set_input(const any& input_) override
-  {
-    m_input = input_;
-  }
-
-  // most task types do not need entry point as their context gets called
-  // through exception and result reporters
-  void entry_point(const std::shared_ptr<async::runner>& r_, context* ctx_) override
-  { /* noop */ }
-
- protected:
-  std::shared_ptr<task> m_task;         // Reference to static task data
-  context_stack*        m_stack;        // Reference to context stack
-  any                   m_input;        // Input to pass to task
-  result_reporter       m_res_reporter; // result reporter if set
-  exception_reporter    m_exc_reporter; // exception reporter if set
-};
 
 // ---- Task execution kick-starter
 dlldecl void kickstart(context_stack*);
@@ -288,12 +262,13 @@ class taskinfo : public detail::task
 #define __COOL_INCLUDE_TASK_IMPL_FILES__
 
 #include "simple_impl.h"
+#if 0
 #include "sequential_impl.h"
 #include "intercept_impl.h"
 #include "conditional_impl.h"
 #include "repeat_impl.h"
 #include "loop_impl.h"
-
+#endif
 #undef __COOL_INCLUDE_TASK_IMPL_FILES__
 
 

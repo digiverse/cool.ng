@@ -26,20 +26,18 @@
 
 #include <cstddef>
 #include <memory>
+#include <tuple>
 #include <functional>
 #include <type_traits>
 
-// Visual Studio has broken std::is_copy_constructible trait
-#if _MSC_VER == 1800
-#include "boost/type_traits.hpp"
-#endif
-
+#include "cool/ng/exception.h"
 namespace cool { namespace ng {  namespace async {
 
 class runner;
 
 namespace detail {
 
+#if 1
 // ---- ----
 // ----  Helper class that is a replacement for boost::any - the latter
 // ----  is not usable owing to its requirement for the value type to be
@@ -64,14 +62,26 @@ class any
   class value : public valueholder
   {
    public:
-    value(const ValueType& v_) : m_v(v_)       { /* noop */ }
-    value(ValueType&& v_) : m_v(std::move(v_)) { /* noop */ }
+    using value_type = ValueType;
+
+    value(const ValueType& v_) : m_v(v_)
+    { /* noop */ }
+    template <typename ValueT>
+    value(ValueT && v_,
+        typename std::enable_if<std::is_move_constructible<ValueT>::value>::type* = 0)
+      : m_v(std::move(v_))
+    { /* noop */ }
+
     const std::type_info& type() const override
-    { return typeid(ValueType); }
+    {
+      return typeid(ValueType);
+    }
+
     std::unique_ptr<valueholder> clone() override
     {
       return std::unique_ptr<value>(new value(std::move(m_v)));
     }
+
    private:
     template <typename T>
     friend T* any_cast(any*);
@@ -88,7 +98,7 @@ class any
     : m_value(new value<typename std::decay<ValueT>::type>(value_))
   { /* noop */ }
   template <typename ValueT> any(ValueT&& value_
-    , typename std::enable_if<!std::is_const<ValueT>::value>::type* = 0)
+    , typename std::enable_if<!std::is_const<ValueT>::value && std::is_move_constructible<ValueT>::value>::type* = 0)
         : m_value(new value<typename std::decay<ValueT>::type>(std::move(value_)))
   { /* noop */ }
   any& operator =(any&& other_)
@@ -159,12 +169,7 @@ template <typename T> inline T any_cast(any & v_)
 
 template <typename T> inline T any_cast(const any& v_
   , typename std::enable_if<!std::is_rvalue_reference<T>::value
-// Visual Studio has broken std::is_copy_constructible trait
-#if _MSC_VER == 1800
-    && boost::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
-#else
-    && std::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
-#endif
+      && std::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
 {
   using nonref = typename std::remove_reference<T>::type;
 //  return any_cast<const nonref&>(const_cast<any&>(v_));
@@ -173,12 +178,7 @@ template <typename T> inline T any_cast(const any& v_
 
 template <typename T> inline T any_cast(const any& v_
   , typename std::enable_if<std::is_rvalue_reference<T>::value
-// Visual Studio has broken std::is_copy_constructible trait
-#if _MSC_VER == 1800
-    || !boost::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
-#else
-    || !std::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
-#endif
+      || !std::is_copy_constructible<typename std::decay<T>::type>::value, void>::type * = 0)
 {
   using nonref = typename std::remove_reference<T>::type;
 //  return any_cast<const nonref&>(const_cast<any&>(v_));
@@ -189,6 +189,80 @@ template <typename T> inline T any_cast(any&& v_)
 {
   return any_cast<T>(v_);
 }
+
+#endif
+namespace helpers {
+
+//
+// CODE FOR EXPANDING TUPLES INTO A CALLABLE
+//
+// Code was fetched from the StackOverflow and adopted for cool::ng::async use
+// by:
+//  - adding the shared pointer to runner as the first parameter to user callable
+//  - making all paramaters to pass as const references
+//  - using explicit ReturnT to make the code compile with C++11 as the auto
+//    return types were added only in C++14
+//
+
+#if _MSC_VER == 1900 // hack for VS2015 CTP 5 broken decltype(auto) deduction in tuple_into_callable_n
+#define TUPLE_FWD_RETURN(x) std::conditional_t< std::is_rvalue_reference<decltype(x)>::value, std::remove_reference_t<decltype(x)>, decltype(x)>(x)
+#else
+#define TUPLE_FWD_RETURN(x) x
+#endif
+
+template< typename ResultT, typename RunnerT, typename FunctionT, typename TupleT, std::size_t INDEX >
+struct tuple_into_callable_n
+{
+    template< typename... Vs >
+    static ResultT apply(const std::shared_ptr<RunnerT>& runner_, const FunctionT& f_, const TupleT& t_, Vs&&... args_)
+    {
+        return tuple_into_callable_n<ResultT, RunnerT, FunctionT, TupleT, INDEX - 1>::apply(
+            runner_,
+            f_,
+            t_,
+            std::get<INDEX - 1>(t_),
+            std::forward<Vs>(args_)...
+        );
+    }
+};
+
+template< typename ResultT, typename RunnerT, typename FunctionT, typename TupleT >
+struct tuple_into_callable_n< ResultT, RunnerT, FunctionT, TupleT, 0>
+{
+    template< typename... Vs >
+    static ResultT apply(const std::shared_ptr<RunnerT>& runner_, const FunctionT& f_, const TupleT& t_, Vs&&... args_)
+    {
+      return TUPLE_FWD_RETURN(f_(runner_, std::forward<Vs>(args_)...));
+    }
+};
+
+
+template <typename ResultT, typename RunnerT, typename FunctionT, typename TupleT>
+ResultT invoke_callable(const std::shared_ptr<RunnerT>& runner_, const FunctionT& callable_, const TupleT& params_)
+{
+  return tuple_into_callable_n<
+      ResultT,
+      RunnerT,
+      FunctionT,
+      TupleT,
+      std::tuple_size< typename std::remove_reference<TupleT>::type >::value
+  >::apply(runner_, callable_, params_);
+}
+
+} // namespace helpers
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 enum class work_type {
@@ -222,7 +296,11 @@ public:
   }
 };
 
-// ---- execution context interface
+// ==== =====
+// ====
+// ==== Runtime task information (execution context) interfaces
+// ====
+// ==== ====
 class context
 {
 public:
@@ -268,7 +346,63 @@ class context_stack : public  work
 };
 
 
+// ==== =====
+// ====
+// ==== Runtime task information (execution context) implementation
+// ====
+// ==== ====
 
+// Execution context base, common to all task types
+class task;
+class task_context_base : public context
+{
+ public:
+  inline task_context_base(context_stack* stack_, const std::shared_ptr<task>& task_)
+      : m_task(task_), m_stack(stack_)
+  { /* noop */ }
+
+  virtual inline ~task_context_base()
+  { /* noop */ }
+
+  void set_res_reporter(const result_reporter& arg_) override
+  {
+//    m_res_reporter = arg_;
+  }
+  void set_exc_reporter(const exception_reporter& arg_) override
+  {
+    m_exc_reporter = arg_;
+  }
+  void set_input(const any& input_) override
+  {
+//    m_input = input_;
+  }
+  // most task types do not need entry point as their context gets called
+  // through exception and result reporters
+  void entry_point(const std::shared_ptr<async::runner>& r_, context* ctx_) override
+  { /* noop */ }
+
+ protected:
+  std::shared_ptr<task> m_task;         // Reference to static task data
+  context_stack*        m_stack;        // Reference to context stack
+  result_reporter       m_res_reporter; // result reporter if set
+  exception_reporter    m_exc_reporter; // exception reporter if set
+};
+
+
+// task type specific part of the execution context
+// will require partial specialization by TagT for each task type
+template <typename TagT, typename RunnerT, typename ResultT, typename... InputT>
+class context_impl
+{ /* noop default template */ };
+
+// storage for input parameters
+template <typename... InputT>
+struct param_store
+{
+  param_store(const InputT&... values_) : m_arguments(values_...)
+  { /* noop */ }
+  std::tuple<InputT...> m_arguments;
+};
 
 } } } }// namespace
 

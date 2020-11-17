@@ -78,7 +78,7 @@ if( COOL_NG_BUILD_UNIT_TESTS )
 endif()
 
 
-report( "-- Cool.NG build system with the following parameters:" )
+report( "-- Generating Cool.NG build files for ${COOL_PLATFORM_TARGET} with the following parameters:" )
 report( "   COOL_NG_SILENT ............. ${COOL_NG_SILENT}" )
 report( "   COOL_NG_HOME ............... ${COOL_NG_HOME}" )
 report( "   COOL_NG_BUILD_DIR .......... ${COOL_NG_BUILD_DIR}" )

@@ -1,4 +1,6 @@
 
+set( TEST_HEADER tests/unit/unit_test_common.h )
+
 set( HEADER_ONLY_UNIT_TESTS
   traits
   task-traits
@@ -7,43 +9,45 @@ set( HEADER_ONLY_UNIT_TESTS
 # unit tests for library internals, require static lib owing to MS dll export/import rules
 set( LIBRARY_UNIT_TESTS
 #  executor
-  run_queue
+  run-queue
+  task-context
 )
 
 # api level unit tests, will use both static and dynamic library
 set( API_UNIT_TESTS
   utilities
-  ip_address
+  ip-address
   error
 #  task
-#  es_reader
+# es_reader
 #  es_timer
 )
 
 ### Test files
 
 # Header only tests
-set( traits_SRCS            tests/unit/traits/traits.cpp )
-set( task-traits_SRCS       tests/unit/traits/task_traits.cpp )
+set( traits_SRCS            ${TEST_HEADER} tests/unit/traits/traits.cpp )
+set( task-traits_SRCS       ${TEST_HEADER} tests/unit/traits/task_traits.cpp )
 
 # Internal tests
 set( executor_SRCS          tests/unit/executor/executor.cpp )
-set( run_queue_SRCS         tests/unit/run_queue/run_queue.cpp )
+set( run-queue_SRCS         tests/unit/run_queue/run_queue.cpp )
+set( task-context_SRCS        tests/unit/task/task-context.cpp )
 
 # API level tests
-set( utilities_SRCS tests/unit/utilities/binary.cpp  tests/unit/utilities/identification.cpp)
-set( ip_address_SRCS tests/unit/net/ip_address.cpp )
-set( error_SRCS tests/unit/error/error.cpp)
-set( task_SRCS tests/unit/task/task_common.h tests/unit/task/task_common.cpp
+set( utilities_SRCS ${TEST_HEADER} tests/unit/utilities/binary.cpp  tests/unit/utilities/identification.cpp)
+set( ip-address_SRCS ${TEST_HEADER} tests/unit/net/ip_address.cpp )
+set( error_SRCS ${TEST_HEADER} tests/unit/error/error.cpp)
+set( task_SRCS ${TEST_HEADER} tests/unit/task/task_common.h tests/unit/task/task_common.cpp
   tests/unit/task/simple_task.cpp
-  tests/unit/task/intercept_task.cpp
-  tests/unit/task/sequential_task.cpp
-  tests/unit/task/conditional_task.cpp
-  tests/unit/task/repeat_task.cpp
-  tests/unit/task/loop_task.cpp
+#  tests/unit/task/intercept_task.cpp
+#  tests/unit/task/sequential_task.cpp
+#  tests/unit/task/conditional_task.cpp
+#  tests/unit/task/repeat_task.cpp
+#  tests/unit/task/loop_task.cpp
 )
-set( es_reader_SRCS tests/unit/event_sources/es_reader.cpp )
-set( es_timer_SRCS tests/unit/event_sources/es_timer.cpp )
+set( es_reader_SRCS ${TEST_HEADER} tests/unit/event_sources/es_reader.cpp )
+set( es_timer_SRCS${TEST_HEADER} tests/unit/event_sources/es_timer.cpp )
 
 ### Helper macros
 
@@ -114,26 +118,26 @@ endmacro()
 if ( WINDOWS )
   if( NOT DEFINED BOOST_ROOT )
     set( BOOST_ROOT "c:/local/boost/boost_1_62_0" )
-    message( WARNING "-- BOOST_ROOT was not set, will try at ${BOOST_ROOT}" )
+    report( WARNING "-- BOOST_ROOT was not set, will try at ${BOOST_ROOT}" )
   endif()
   
   set( BOOST_LIBRARYDIR "${BOOST_ROOT}/lib64-msvc-14.0")
 endif()
 
 # unit tests require Boost.Test library
-set( Boost_USE_STATIC_LIBS       OFF )
-set( Boost_USE_MULTITHREADED      ON )
-set( Boost_USE_STATIC_RUNTIME    OFF )
+set( Boost_USE_STATIC_LIBS       FALSE )
+set( Boost_USE_MULTITHREADED     TRUE )
+set( Boost_USE_STATIC_RUNTIME    FALSE )
 
 find_package( Boost 1.58.0 COMPONENTS unit_test_framework)
 
 if( NOT Boost_FOUND )
-  message( WARNING "Boost.Test package is required to build unit tests. Will disable unit tests compilation and proceed without unit testst" )
+  report( WARNING "Boost.Test library is required to build unit tests. Will disable unit tests compilation and proceed without unit testst" )
   set( COOL_NG_UNIT_TESTS false )
 else()
-  message("-- Boost found, version ${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION}.")
-  message("      Include directory: ${Boost_INCLUDE_DIR}")
-  message("      Library directory: ${Boost_LIBRARY_DIRS}")
+  report("-- Boost found, version ${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION}.")
+  report("      Include directory: ${Boost_INCLUDE_DIR}")
+  report("      Library directory: ${Boost_LIBRARY_DIRS}")
 endif()
 
 if( COOL_NG_BUILD_UNIT_TESTS )

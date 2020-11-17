@@ -54,7 +54,7 @@
 #include "cool/ng/bases.h"
 #include "cool/ng/async.h"
 
-// #include "test_server.h"
+ #include "test_server.h"
 
 #define TEST01 1
 #define TEST02 1

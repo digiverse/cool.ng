@@ -28,13 +28,13 @@
 # It may set COOL_NG_ADDITIONAL_SYS_INCLUDES and COOL_NG_ADDITIONAL_SYS_LIBDIRS if necessary
 
 macro(report Level)
-  if( Level STREQUAL "FATAL" )
+  if( ${Level} STREQUAL "FATAL" )
     message( FATAL_ERROR "${ARGN}")
-  elseif( LEVEL STREQUAL "ERROR" )
+  elseif( ${Level} STREQUAL "ERROR" )
     message( SEND_ERROR "${ARGN}" )
   else()
     if( NOT COOL_NG_SILENT )
-      if (Level STREQUAL "WARNING" )
+      if (${Level} STREQUAL "WARNING" )
 	message( WARNING "${ARGN}" )
       else()
 	message( "${Level}${ARGN}" )
@@ -43,6 +43,24 @@ macro(report Level)
   endif()
 endmacro()
 	
+if ( ${CMAKE_GENERATOR} MATCHES "Unix Makefiles" )
+
+  if( NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "" )
+    report( "-- Build configuration not set, will assume Debug" )
+    report( "   Use $ cmake -DCMAKE_BUILD_TYPE=Release to change to release build." )	   
+    set( CMAKE_BUILD_TYPE "Debug" )
+   elseif ( CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release" )
+     report( "-- Build configuration is set to ${CMAKE_BUILD_TYPE}" )
+     if( CMAKE_BUILD_TYPE STREQUAL "Debug" )
+       report( "   Use $ cmake -DCMAKE_BUILD_TYPE=Release to change to release build." )	   
+     else()
+       report( "   Use $ cmake -DCMAKE_BUILD_TYPE=Debug to change to development build." )
+     endif()
+   else()
+     report( FATAL "-- Unsupported build configuration '${CMAKE_BUILD_TYPE}'. The supported confgurations are 'Debug' and 'Release'." )
+  endif()
+
+endif()
 
 if( ${CMAKE_SYSTEM_NAME} MATCHES  "Darwin" )
 
@@ -88,7 +106,7 @@ elseif ( MSVC )
   set( WINDOWS true )
 
   if ( MSVC_VERSION LESS_EQUAL 1800 )
-    message ( FATAL_ERROR "Visual Studio versions earlier than Visual Studio 2015 are not supported. Please use Visual Studio 2015 or newer." )
+    report ( FATAL "Visual Studio versions earlier than Visual Studio 2015 are not supported. Please use Visual Studio 2015 or newer." )
   elseif( MSVC_VERSION LESS 1910 )
     set( COOL_NG_MSVC "14" )     # Visual Studio 2015 (14)
   elseif( MSVC_VERSION LESS 1920 )
@@ -96,7 +114,7 @@ elseif ( MSVC )
   elseif( MSVC_VERSION LESS 1930 )
     set( COOL_NG_MSVC "16" )     # Visual Studi 2019 (16.0, 16.1, 16.2, 16.3)
   else()
-    message( WARNING "Your Visual Studio appears newer than Visual Studio 2019. Cool.NG may or may not work with this Visual Studio." )
+    report( WARNING "Your Visual Studio appears newer than Visual Studio 2019. Cool.NG may or may not work with this Visual Studio." )
     set( COOL_NG_MSVC "16" )     # Visual Studi 2019 (16.0, 16.1, 16.2, 16.3)
   endif()
 
@@ -126,6 +144,6 @@ elseif ( MSVC )
 else()
 
 # --- unknown target
-  message( FATAL_ERROR "Platform ${CMAKE_SYSTEM_NAME} is not supported" )
+  report( FATAL_ERROR "Platform ${CMAKE_SYSTEM_NAME} is not supported" )
 
 endif()

@@ -10,7 +10,7 @@
 
 #include <boost/test/unit_test.hpp>
 
-#if !defined(COOL_AUTO_TEST)
+#if !defined(COOL_AUTO_TEST_CASE)
 #  if BOOST_VERSION < 106200
 #    define COOL_AUTO_TEST_CASE(a, b) BOOST_AUTO_TEST_CASE(a)
 #  else

@@ -31,6 +31,16 @@
 #error "This header file cannot be directly included in the application code."
 #endif
 
+
+
+template <typename RunnerT, typename ResultT, typename... InputT>
+class x_taskinfo<tag::simple, RunnerT, ResultT, InputT...> // : public base::taskinfo<InputT, ResultT>
+{
+ public:
+  using function_type = std::function<ResultT(const std::shared_ptr<RunnerT>&, const typename std::decay<InputT>::type&...)>;
+};
+
+#if 0
 template <typename RunnerT, typename InputT, typename ResultT>
 class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public base::taskinfo<InputT, ResultT>
 {
@@ -71,13 +81,148 @@ class taskinfo<tag::simple, RunnerT, InputT, ResultT> : public base::taskinfo<In
   std::weak_ptr<runner_type> m_runner;
   function_type              m_user_func;    // user Callable
 };
-
+#endif
 
 // ---- -----------------------------------------------------------------------
 // ----
 // ---- Runtime task context
 // ----
 // ---- -----------------------------------------------------------------------
+
+namespace helpers {
+
+template<typename ResultT> struct get_result_reporter
+{
+  using type = std::function<void(context*, const ResultT&)>;
+};
+template<> struct get_result_reporter<void>
+{
+  using type = std::function<void(context*)>;
+};
+
+} // namespace helpers
+
+template <typename RunnerT, typename ResultT, typename... InputT>
+class context_impl<tag::simple, RunnerT, ResultT, InputT...>
+  : public task_context_base
+  , public param_store<InputT...>
+{
+ public:
+  using task_type  = x_taskinfo<tag::simple, RunnerT, ResultT, InputT...>;
+  using this_type  = context_impl;
+  using store_type = param_store<InputT...>;
+  using result_reporter_type = typename helpers::get_result_reporter<ResultT>::type;
+
+  inline static this_type* create(
+      context_stack* stack_
+    , const std::shared_ptr<task>& task_
+    , const typename task_type::function_type& function_
+    , const result_reporter_type& res_reporter_
+    , const InputT&... input_)
+  {
+    auto aux = new this_type(stack_, task_, function_, res_reporter_, input_...);
+    if (stack_ != nullptr)
+      stack_->push(aux);
+    return aux;
+  }
+
+  // context interface
+  inline std::weak_ptr<async::runner> get_runner() const override
+  {
+    return m_task->get_runner();
+  }
+  const char* name() const override
+  {
+    return "context::simple";
+  }
+  bool will_execute() const override
+  {
+    return true;
+  }
+
+  void entry_point(const std::shared_ptr<async::runner>& r_, context* ctx_) override;
+
+  private:
+   inline context_impl(
+         context_stack* st_
+       , const std::shared_ptr<task>& t_
+       , const typename task_type::function_type& f_
+       , const result_reporter_type& res_reporter_
+       , const InputT&... input_)
+     : task_context_base(st_, t_)
+     , param_store<InputT...>(input_...)
+     , m_user_func(f_)
+     , m_result_reporter(res_reporter_)
+   { /* noop */ }
+
+  private:
+   const typename task_type::function_type&  m_user_func;
+   const result_reporter_type& m_result_reporter;
+};
+
+
+template <typename ResultT, typename TupleT>
+struct callable_invoker
+{
+  template<typename EntryPointT, typename RunnerT, typename ReporterT>
+  static void invoke(
+      const EntryPointT& ep_
+    , context* rep_ctx_
+    , const std::shared_ptr<RunnerT>& r_
+    , const ReporterT& rep_
+    , const TupleT& input_)
+  {
+    if (rep_)
+      rep_(rep_ctx_, helpers::invoke_callable<ResultT>(r_, ep_, input_));
+    else
+      helpers::invoke_callable<ResultT>(r_, ep_, input_);
+  }
+};
+
+template <typename TupleT>
+struct callable_invoker<void, TupleT>
+{
+  template<typename EntryPointT, typename RunnerT, typename ReporterT>
+  static void invoke(
+      const EntryPointT& ep_
+    , context* rep_ctx_
+    , const std::shared_ptr<RunnerT>& r_
+    , const ReporterT& rep_
+    , const TupleT& input_)
+  {
+    helpers::invoke_callable<void>(r_, ep_, input_);
+    if (rep_)
+      rep_(rep_ctx_);
+  }
+};
+// ----
+// ---- Entry point for simple task
+// ----
+template <typename RunnerT, typename ResultT, typename... InputT>
+void context_impl<tag::simple, RunnerT, ResultT, InputT...>::entry_point(
+    const std::shared_ptr<async::runner>& r_, context* ctx_)
+{
+  try
+  {
+    auto runner = std::dynamic_pointer_cast<RunnerT>(r_);
+    if (!runner)
+      throw exception::bad_runner_cast();
+
+    callable_invoker<ResultT, decltype(store_type::m_arguments)>::invoke(m_user_func, nullptr, runner, m_result_reporter, store_type::m_arguments);
+  }
+  catch (...)
+  {
+
+  }
+}
+
+
+
+
+
+
+
+#if 0
 
 template <typename RunnerT, typename InputT, typename ResultT>
 class task_context<tag::simple, RunnerT, InputT, ResultT>
@@ -239,4 +384,4 @@ void task_context<tag::simple, RunnerT, InputT, ResultT>::entry_point(
     delete this;  // now suicide is in order
 }
 
-
+#endif

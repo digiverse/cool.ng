@@ -748,6 +748,16 @@ struct factory;
  * See @ref tag for more details on ech kind of tasks.
  */
 
+template <typename ResultT, typename... InputT>
+class x_task
+{
+ public:
+
+ private:
+  using impl_type = detail::x_taskinfo<ResultT, InputT...>;
+
+};
+
 template <typename InputT, typename ResultT>
 class task
 {

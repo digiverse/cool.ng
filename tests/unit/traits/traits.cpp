@@ -26,12 +26,12 @@
 #include <typeinfo>
 
 #define BOOST_TEST_MODULE Functional
-#include <boost/test/unit_test.hpp>
+#include "unit_test_common.h"
 
 #include "cool/ng/traits.h"
 
 
-BOOST_AUTO_TEST_SUITE(function_pointer)
+BOOST_AUTO_TEST_SUITE(function_pointers)
 
 using fp_void_0  = void (*)();
 using fp_float_0 = float (*)();
@@ -45,7 +45,8 @@ using fp_by_rref = void (*)(int&&);
 using fp_by_lref = void (*)(int&);
 using fp_by_clref = void (*)(const int&);
 
-BOOST_AUTO_TEST_CASE(result_type)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("functional::result_type test for function pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_void_0>::result_type) == typeid(void));
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_float_0>::result_type) == typeid(float));
@@ -57,7 +58,8 @@ BOOST_AUTO_TEST_CASE(result_type)
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_ulong_6>::result_type) == typeid(unsigned long));
 }
 
-BOOST_AUTO_TEST_CASE(arity)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("functional::arity test for function pointers"))
 {
   BOOST_CHECK_EQUAL(0, cool::ng::traits::functional<fp_void_0>::arity::value);
   BOOST_CHECK_EQUAL(0, cool::ng::traits::functional<fp_float_0>::arity::value);
@@ -69,7 +71,8 @@ BOOST_AUTO_TEST_CASE(arity)
   BOOST_CHECK_EQUAL(6, cool::ng::traits::functional<fp_ulong_6>::arity::value);
 }
 
-BOOST_AUTO_TEST_CASE(arg_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("functional::arg::type test for function pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_void_1>::arg<0>::type) == typeid(double));
   BOOST_CHECK(typeid(cool::ng::traits::functional<fp_int_1>::arg<0>::type) == typeid(char*));
@@ -120,7 +123,8 @@ class member_functions
   unsigned long ulong_6(char*, unsigned char*, char, unsigned char, double, void*) { return 0; }
 };
 
-BOOST_AUTO_TEST_CASE(result_type)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("functional::result_type test for member function pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_0)>::result_type) == typeid(void));
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::float_0)>::result_type) == typeid(float));
@@ -133,7 +137,8 @@ BOOST_AUTO_TEST_CASE(result_type)
 }
 
 // Note: member functions have one implicit parameter (this pointer)
-BOOST_AUTO_TEST_CASE(arity)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("functional::arity test for member function pointers"))
 {
   BOOST_CHECK_EQUAL(1, cool::ng::traits::functional<decltype(&member_functions::void_0)>::arity::value);
   BOOST_CHECK_EQUAL(1, cool::ng::traits::functional<decltype(&member_functions::float_0)>::arity::value);
@@ -145,7 +150,8 @@ BOOST_AUTO_TEST_CASE(arity)
   BOOST_CHECK_EQUAL(7, cool::ng::traits::functional<decltype(&member_functions::ulong_6)>::arity::value);
 }
 
-BOOST_AUTO_TEST_CASE(arg_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("functional::arg::type test for member function pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_0)>::arg<0>::type) == typeid(member_functions*));
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::float_0)>::arg<0>::type) == typeid(member_functions*));
@@ -187,7 +193,8 @@ public:
   unsigned long ulong_6(char*, unsigned char*, char, unsigned char, double, void*) const { return 0; }
 };
 
-BOOST_AUTO_TEST_CASE(result_type)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("functional::result_type test for member const function pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_0)>::result_type) == typeid(void));
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::float_0)>::result_type) == typeid(float));
@@ -200,7 +207,8 @@ BOOST_AUTO_TEST_CASE(result_type)
 }
 
 // Note: member functions have one implicit parameter (this pointer)
-BOOST_AUTO_TEST_CASE(arity)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("functional::arity test for member const function pointers"))
 {
   BOOST_CHECK_EQUAL(1, cool::ng::traits::functional<decltype(&member_functions::void_0)>::arity::value);
   BOOST_CHECK_EQUAL(1, cool::ng::traits::functional<decltype(&member_functions::float_0)>::arity::value);
@@ -212,7 +220,8 @@ BOOST_AUTO_TEST_CASE(arity)
   BOOST_CHECK_EQUAL(7, cool::ng::traits::functional<decltype(&member_functions::ulong_6)>::arity::value);
 }
 
-BOOST_AUTO_TEST_CASE(arg_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("functional::arg::type test for member const function pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::void_0)>::arg<0>::type) == typeid(const member_functions*));
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&member_functions::float_0)>::arg<0>::type) == typeid(const member_functions*));
@@ -248,17 +257,20 @@ class members {
   void* member;
 };
 
-BOOST_AUTO_TEST_CASE(member_type)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("functional::result_type test for member pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&members::member)>::result_type) == typeid(void*));
 }
 
-BOOST_AUTO_TEST_CASE(arity)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("functional::arity test for member pointers"))
 {
   BOOST_CHECK_EQUAL(1, cool::ng::traits::functional<decltype(&members::member)>::arity::value);
 }
 
-BOOST_AUTO_TEST_CASE(arg_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("functional::arg::type test for member pointers"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<decltype(&members::member)>::arg<0>::type) == typeid(members*));
 }
@@ -274,7 +286,8 @@ struct int_1 { int operator() (char*) { return 0; } };
 struct void_6 { void operator () (double, int, int*, int&, unsigned int*, short) const { } };
 struct ulong_6 { unsigned long operator() (char*, unsigned char*, char, unsigned char, double, void*) const { return 0; } };
 
-BOOST_AUTO_TEST_CASE(result_type)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("functional::result_type test for functors"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<void_0>::result_type) == typeid(void));
   BOOST_CHECK(typeid(cool::ng::traits::functional<float_0>::result_type) == typeid(float));
@@ -286,7 +299,8 @@ BOOST_AUTO_TEST_CASE(result_type)
   BOOST_CHECK(typeid(cool::ng::traits::functional<ulong_6>::result_type) == typeid(unsigned long));
 }
 
-BOOST_AUTO_TEST_CASE(arity)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("functional::arity test for functors"))
 {
   BOOST_CHECK_EQUAL(0, cool::ng::traits::functional<void_0>::arity::value);
   BOOST_CHECK_EQUAL(0, cool::ng::traits::functional<float_0>::arity::value);
@@ -298,7 +312,8 @@ BOOST_AUTO_TEST_CASE(arity)
   BOOST_CHECK_EQUAL(6, cool::ng::traits::functional<ulong_6>::arity::value);
 }
 
-BOOST_AUTO_TEST_CASE(arg_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("functional::arg::type test for functors"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<void_1>::arg<0>::type) == typeid(double));
   BOOST_CHECK(typeid(cool::ng::traits::functional<int_1>::arg<0>::type) == typeid(char*));
@@ -334,7 +349,8 @@ using by_rref = std::function<void(int&&)>;
 using by_lref = std::function<void(int&)>;
 using by_clref = std::function<void(const int&)>;
 
-BOOST_AUTO_TEST_CASE(result_type)
+COOL_AUTO_TEST_CASE(T001,
+  *utf::description("functional::result_type test for std::function"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<void_0>::result_type) == typeid(void));
   BOOST_CHECK(typeid(cool::ng::traits::functional<float_0>::result_type) == typeid(float));
@@ -346,7 +362,8 @@ BOOST_AUTO_TEST_CASE(result_type)
   BOOST_CHECK(typeid(cool::ng::traits::functional<ulong_6>::result_type) == typeid(unsigned long));
 }
 
-BOOST_AUTO_TEST_CASE(arity)
+COOL_AUTO_TEST_CASE(T002,
+  *utf::description("functional::arity test for std::function"))
 {
   BOOST_CHECK_EQUAL(0, cool::ng::traits::functional<void_0>::arity::value);
   BOOST_CHECK_EQUAL(0, cool::ng::traits::functional<float_0>::arity::value);
@@ -358,7 +375,8 @@ BOOST_AUTO_TEST_CASE(arity)
   BOOST_CHECK_EQUAL(6, cool::ng::traits::functional<ulong_6>::arity::value);
 }
 
-BOOST_AUTO_TEST_CASE(arg_type)
+COOL_AUTO_TEST_CASE(T003,
+  *utf::description("functional::arg::type test for std::function"))
 {
   BOOST_CHECK(typeid(cool::ng::traits::functional<void_1>::arg<0>::type) == typeid(double));
   BOOST_CHECK(typeid(cool::ng::traits::functional<int_1>::arg<0>::type) == typeid(char*));

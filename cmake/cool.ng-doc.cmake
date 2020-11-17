@@ -9,11 +9,13 @@ macro( cool_ng_api_doc DocHome Target OutputDir)
 
   find_package(Doxygen OPTIONAL_COMPONENTS dot)
   if( NOT DOXYGEN_FOUND )
-    message(WARNING "Doxygen package was not found, will not generate the Cool.NG API documentation")
+    report(WARNING "Doxygen package was not found, will not generate the Cool.NG API documentation")
   else()
 
     if( ${CMAKE_VERSION} VERSION_LESS "3.9.0" )
-      message ( WARNING "Your cmake is version ${CMAKE_VERSION}. This build system requires version 3.9 or later to build the Doxygen documentation.")
+      
+      report ( WARNING "Your cmake is version ${CMAKE_VERSION}. This build system requires version 3.9 or later to build the Doxygen documentation.")
+
     else()
 
       if( ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.16.0" )
